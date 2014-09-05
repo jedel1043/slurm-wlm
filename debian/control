@@ -6,14 +6,41 @@ Build-Depends: debhelper (>= 9.0.0), autotools-dev, libmunge-dev, libncurses5-de
 Standards-Version: 3.9.5
 Homepage: http://www.schedmd.com
 
-Package: slurm-llnl
+Package: slurm-llnl-base
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, openssl, ucf, munge, slurm-llnl-basic-plugins (= ${binary:Version}), adduser, openssl-blacklist, openssl (>= 0.9.8g-9), lsb-base (>= 3.2-12)
+Depends: ${shlibs:Depends}, ${misc:Depends}, munge, ucf
+Replaces: slurm-llnl
+Breaks: slurm-llnl
 Description: Simple Linux Utility for Resource Management
  SLURM stands for Simple Linux Utility for Resource Management, it
  is an open-source cluster resource management and job scheduling system
  that strives to be simple, scalable, portable, fault-tolerant, and
  interconnect agnostic.
+ This package contains all client side commands.
+
+Package: slurm-llnl-slurmd
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, openssl, slurm-llnl-base (= ${binary:Version}), slurm-llnl-basic-plugins (= ${binary:Version}), adduser, openssl-blacklist, openssl (>= 0.9.8g-9), lsb-base (>= 3.2-12)
+Replaces: slurm-llnl
+Breaks: slurm-llnl
+Description: Simple Linux Utility for Resource Management
+ SLURM stands for Simple Linux Utility for Resource Management, it
+ is an open-source cluster resource management and job scheduling system
+ that strives to be simple, scalable, portable, fault-tolerant, and
+ interconnect agnostic.
+ This package contains the slurmd demon.
+
+Package: slurm-llnl-slurmctld
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, openssl, slurm-llnl-base (= ${binary:Version}), slurm-llnl-basic-plugins (= ${binary:Version}), adduser, openssl-blacklist, openssl (>= 0.9.8g-9), lsb-base (>= 3.2-12)
+Replaces: slurm-llnl
+Breaks: slurm-llnl
+Description: Simple Linux Utility for Resource Management
+ SLURM stands for Simple Linux Utility for Resource Management, it
+ is an open-source cluster resource management and job scheduling system
+ that strives to be simple, scalable, portable, fault-tolerant, and
+ interconnect agnostic.
+ This package contains the slurmctld demon.
 
 Package: libslurmdb27
 Section: libs
@@ -103,7 +130,7 @@ Description: SLURM basic plugins development files
 
 Package: slurm-llnl-sview
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, slurm-llnl (= ${binary:Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}, slurm-llnl-base (= ${binary:Version})
 Description: GUI to view and modify SLURM state
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
@@ -144,7 +171,7 @@ Description: Perl API for the SLURM database
 
 Package: slurm-llnl-torque
 Architecture: all
-Depends: libslurm-perl (>= ${source:Version}), libslurmdb-perl (>= ${source:Version}), ${perl:Depends}, ${misc:Depends}, slurm-llnl (>= ${source:Version})
+Depends: libslurm-perl (>= ${source:Version}), libslurmdb-perl (>= ${source:Version}), ${perl:Depends}, ${misc:Depends}, slurm-llnl-base (>= ${source:Version})
 Conflicts: gridengine-client, torque-client, torque-client-x11
 Description: Torque compatibility wrappers for SLURM
  SLURM, the Simple Linux Utility for Resource Management,
