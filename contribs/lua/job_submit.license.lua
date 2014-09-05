@@ -41,8 +41,7 @@ function slurm_job_submit ( job_desc, part_list, submit_uid )
 	if bad_license_count > 0 then
 		log_info("slurm_job_submit: for user %d, invalid licenses value: %s",
 			 job_desc.user_id, job_desc.licenses)
---		ESLURM_INVALID_LICENSES is 2048
-		return 2048
+		return slurm.ESLURM_INVALID_LICENSES
 	end
 
 	return 0
@@ -60,8 +59,7 @@ function slurm_job_modify ( job_desc, job_rec, part_list, modify_uid )
 	if bad_license_count > 0 then
 		log_info("slurm_job_modify: for job %u, invalid licenses value: %s",
 			 job_rec.job_id, job_desc.licenses)
---		ESLURM_INVALID_LICENSES is 2048
-		return 2048
+		return slurm.ESLURM_INVALID_LICENSES
 	end
 
 	return 0
@@ -80,6 +78,7 @@ log_info = slurm.log_info
 log_verbose = slurm.log_verbose
 log_debug = slurm.log_debug
 log_err = slurm.error
+log_user = slurm.log_user
 
 job_rec_meta = {
 	__index = function (table, key)

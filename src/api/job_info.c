@@ -56,12 +56,163 @@
 #include "slurm/slurm_errno.h"
 
 #include "src/common/forward.h"
+#include "src/common/macros.h"
 #include "src/common/node_select.h"
 #include "src/common/parse_time.h"
 #include "src/common/slurm_auth.h"
 #include "src/common/slurm_protocol_api.h"
 #include "src/common/uid.h"
 #include "src/common/xstring.h"
+
+static pthread_mutex_t job_node_info_lock = PTHREAD_MUTEX_INITIALIZER;
+static node_info_msg_t *job_node_ptr = NULL;
+
+/* This set of functions loads/free node information so that we can map a job's
+ * core bitmap to it's CPU IDs based upon the thread count on each node. */
+static void _load_node_info(void)
+{
+	slurm_mutex_lock(&job_node_info_lock);
+	if (!job_node_ptr)
+		(void) slurm_load_node((time_t) NULL, &job_node_ptr, 0);
+	slurm_mutex_unlock(&job_node_info_lock);
+}
+static uint32_t _threads_per_core(char *host)
+{
+	uint32_t i, threads = 1;
+
+	if (!job_node_ptr || !host)
+		return threads;
+
+	slurm_mutex_lock(&job_node_info_lock);
+	for (i = 0; i < job_node_ptr->record_count; i++) {
+		if (job_node_ptr->node_array[i].name &&
+		    !strcmp(host, job_node_ptr->node_array[i].name)) {
+			threads = job_node_ptr->node_array[i].threads;
+			break;
+		}
+	}
+	slurm_mutex_unlock(&job_node_info_lock);
+	return threads;
+}
+static void _free_node_info(void)
+{
+#if 0
+	slurm_mutex_lock(&job_node_info_lock);
+	if (job_node_ptr) {
+		slurm_free_node_info_msg(job_node_ptr);
+		job_node_ptr = NULL;
+	}
+	slurm_mutex_unlock(&job_node_info_lock);
+#endif
+}
+
+/* Perform file name substitutions
+ * %A - Job array's master job allocation number.
+ * %a - Job array ID (index) number.
+ * %j - Job ID
+ * %u - User name
+ */
+static void _fname_format(char *buf, int buf_size, job_info_t * job_ptr,
+			  char *fname)
+{
+	char *ptr, *tmp, *tmp2 = NULL, *user;
+
+	tmp = xstrdup(fname);
+	while ((ptr = strstr(tmp, "%A"))) {	/* Array job ID */
+		ptr[0] = '\0';
+		if (job_ptr->array_task_id == NO_VAL) {
+			/* Not a job array */
+			xstrfmtcat(tmp2, "%s%u%s", tmp, job_ptr->job_id, ptr+2);
+		} else {
+			xstrfmtcat(tmp2, "%s%u%s", tmp, job_ptr->array_job_id,
+				   ptr+2);
+		}
+		xfree(tmp);	/* transfer the results */
+		tmp = tmp2;
+		tmp2 = NULL;
+	}
+	while ((ptr = strstr(tmp, "%a"))) {	/* Array task ID */
+		ptr[0] = '\0';
+		xstrfmtcat(tmp2, "%s%u%s", tmp, job_ptr->array_task_id, ptr+2);
+		xfree(tmp);	/* transfer the results */
+		tmp = tmp2;
+		tmp2 = NULL;
+	}
+	while ((ptr = strstr(tmp, "%j"))) {	/* Job ID */
+		ptr[0] = '\0';
+		xstrfmtcat(tmp2, "%s%u%s", tmp, job_ptr->job_id, ptr+2);
+		xfree(tmp);	/* transfer the results */
+		tmp = tmp2;
+		tmp2 = NULL;
+	}
+	while ((ptr = strstr(tmp, "%u"))) {	/* User name */
+		ptr[0] = '\0';
+		user = uid_to_string((uid_t) job_ptr->user_id);
+		xstrfmtcat(tmp2, "%s%s%s", tmp, user, ptr+2);
+		xfree(user);
+		xfree(tmp);	/* transfer the results */
+		tmp = tmp2;
+		tmp2 = NULL;
+	}
+	if (tmp[0] == '/')
+		snprintf(buf, buf_size, "%s", tmp);
+	else
+		snprintf(buf, buf_size, "%s/%s", job_ptr->work_dir, tmp);
+	xfree(tmp);
+}
+
+/* Given a job record pointer, return its stderr path in buf */
+extern void slurm_get_job_stderr(char *buf, int buf_size, job_info_t * job_ptr)
+{
+	if (job_ptr == NULL)
+		snprintf(buf, buf_size, "%s", "job pointer is NULL");
+	else if (job_ptr->std_err)
+		snprintf(buf, buf_size, "%s", job_ptr->std_err);
+	else if (job_ptr->batch_flag == 0)
+		snprintf(buf, buf_size, "%s", "");
+	else if (job_ptr->std_out)
+		_fname_format(buf, buf_size, job_ptr, job_ptr->std_out);
+	else if (job_ptr->array_job_id) {
+		snprintf(buf, buf_size, "%s/slurm-%u_%u.out",
+			 job_ptr->work_dir,
+			 job_ptr->array_job_id, job_ptr->array_task_id);
+	} else {
+		snprintf(buf, buf_size, "%s/slurm-%u.out",
+			 job_ptr->work_dir, job_ptr->job_id);
+	}
+}
+
+/* Given a job record pointer, return its stdin path in buf */
+extern void slurm_get_job_stdin(char *buf, int buf_size, job_info_t * job_ptr)
+{
+	if (job_ptr == NULL)
+		snprintf(buf, buf_size, "%s", "job pointer is NULL");
+	else if (job_ptr->std_in)
+		_fname_format(buf, buf_size, job_ptr, job_ptr->std_in);
+	else if (job_ptr->batch_flag == 0)
+		snprintf(buf, buf_size, "%s", "");
+	else
+		snprintf(buf, buf_size, "%s", "StdIn=/dev/null");
+}
+
+/* Given a job record pointer, return its stdout path in buf */
+extern void slurm_get_job_stdout(char *buf, int buf_size, job_info_t * job_ptr)
+{
+	if (job_ptr == NULL)
+		snprintf(buf, buf_size, "%s", "job pointer is NULL");
+	else if (job_ptr->std_out)
+		_fname_format(buf, buf_size, job_ptr, job_ptr->std_out);
+	else if (job_ptr->batch_flag == 0)
+		snprintf(buf, buf_size, "%s", "");
+	else if (job_ptr->array_job_id) {
+		snprintf(buf, buf_size, "%s/slurm-%u_%u.out",
+			 job_ptr->work_dir,
+			 job_ptr->array_job_id, job_ptr->array_task_id);
+	} else {
+		snprintf(buf, buf_size, "%s/slurm-%u.out",
+			 job_ptr->work_dir, job_ptr->job_id);
+	}
+}
 
 /*
  * slurm_xlate_job_id - Translate a Slurm job ID string into a slurm job ID
@@ -95,7 +246,7 @@ extern uint32_t slurm_xlate_job_id(char *job_id_str)
 		if (job_ptr->array_task_id == array_id) {
 			job_id = job_ptr->job_id;
 			break;
-		}	
+		}
 	}
 	slurm_free_job_info_msg(resp);
 	return job_id;
@@ -159,9 +310,13 @@ static void _sprint_range(char *str, uint32_t str_size,
 extern void
 slurm_print_job_info ( FILE* out, job_info_t * job_ptr, int one_liner )
 {
-	char *print_this = slurm_sprint_job_info(job_ptr, one_liner);
+	char *print_this;
+
+	_load_node_info();
+	print_this = slurm_sprint_job_info(job_ptr, one_liner);
 	fprintf(out, "%s", print_this);
 	xfree(print_this);
+	_free_node_info();
 }
 
 /*
@@ -175,10 +330,11 @@ slurm_print_job_info ( FILE* out, job_info_t * job_ptr, int one_liner )
 extern char *
 slurm_sprint_job_info ( job_info_t * job_ptr, int one_liner )
 {
-	int i, j;
+	int i, j, k;
 	char time_str[32], *group_name, *user_name;
-	char tmp1[128], tmp2[128], tmp3[128], tmp4[128], tmp5[128], *tmp6_ptr;
-	char tmp_line[512];
+	char tmp1[128], tmp2[128], tmp3[128], tmp4[128], tmp5[128], tmp6[128];
+	char *tmp6_ptr;
+	char tmp_line[1024];
 	char *ionodes = NULL;
 	uint16_t exit_status = 0, term_sig = 0;
 	job_resources_t *job_resrcs = job_ptr->job_resrcs;
@@ -186,10 +342,11 @@ slurm_sprint_job_info ( job_info_t * job_ptr, int one_liner )
 	time_t run_time;
 	uint32_t min_nodes, max_nodes = 0;
 	char *nodelist = "NodeList";
-	bitstr_t *core_bitmap;
+	bitstr_t *cpu_bitmap;
 	char *host;
 	int sock_inx, sock_reps, last;
 	int abs_node_inx, rel_node_inx;
+	int nice;
 	int bit_inx, bit_reps;
 	uint32_t *last_mem_alloc_ptr = NULL;
 	uint32_t last_mem_alloc = NO_VAL;
@@ -197,6 +354,7 @@ slurm_sprint_job_info ( job_info_t * job_ptr, int one_liner )
 	hostlist_t hl, hl_last;
 	char select_buf[122];
 	uint32_t cluster_flags = slurmdb_setup_cluster_flags();
+	uint32_t threads;
 
 	if (cluster_flags & CLUSTER_FLAG_BG) {
 		nodelist = "MidplaneList";
@@ -209,7 +367,7 @@ slurm_sprint_job_info ( job_info_t * job_ptr, int one_liner )
 	snprintf(tmp_line, sizeof(tmp_line), "JobId=%u ", job_ptr->job_id);
 	out = xstrdup(tmp_line);
 	if (job_ptr->array_job_id) {
-		snprintf(tmp_line, sizeof(tmp_line), 
+		snprintf(tmp_line, sizeof(tmp_line),
 			 "ArrayJobId=%u ArrayTaskId=%u ",
 			 job_ptr->array_job_id, job_ptr->array_task_id);
 		xstrcat(out, tmp_line);
@@ -236,9 +394,11 @@ slurm_sprint_job_info ( job_info_t * job_ptr, int one_liner )
 		xstrcat(out, "\n   ");
 
 	/****** Line 3 ******/
+	nice  = job_ptr->nice;
+	nice -= NICE_OFFSET;
 	snprintf(tmp_line, sizeof(tmp_line),
-		 "Priority=%u Account=%s QOS=%s",
-		 job_ptr->priority, job_ptr->account, job_ptr->qos);
+		 "Priority=%u Nice=%d Account=%s QOS=%s",
+		 job_ptr->priority, nice, job_ptr->account, job_ptr->qos);
 	xstrcat(out, tmp_line);
 	if (slurm_get_track_wckey()) {
 		snprintf(tmp_line, sizeof(tmp_line),
@@ -499,21 +659,57 @@ line6:
 
 	_sprint_range(tmp1, sizeof(tmp1), job_ptr->num_cpus, job_ptr->max_cpus);
 	_sprint_range(tmp2, sizeof(tmp2), min_nodes, max_nodes);
-	if (job_ptr->sockets_per_node == (uint16_t) NO_VAL)
+	if (job_ptr->boards_per_node == (uint16_t) NO_VAL)
 		strcpy(tmp3, "*");
 	else
-		snprintf(tmp3, sizeof(tmp3), "%u", job_ptr->sockets_per_node);
-	if (job_ptr->cores_per_socket == (uint16_t) NO_VAL)
+		snprintf(tmp3, sizeof(tmp3), "%u", job_ptr->boards_per_node);
+	if (job_ptr->sockets_per_board == (uint16_t) NO_VAL)
 		strcpy(tmp4, "*");
 	else
-		snprintf(tmp4, sizeof(tmp4), "%u", job_ptr->cores_per_socket);
-	if (job_ptr->threads_per_core == (uint16_t) NO_VAL)
+		snprintf(tmp4, sizeof(tmp4), "%u", job_ptr->sockets_per_board);
+	if (job_ptr->cores_per_socket == (uint16_t) NO_VAL)
 		strcpy(tmp5, "*");
 	else
-		snprintf(tmp5, sizeof(tmp5), "%u", job_ptr->threads_per_core);
+		snprintf(tmp5, sizeof(tmp5), "%u", job_ptr->cores_per_socket);
+	if (job_ptr->threads_per_core == (uint16_t) NO_VAL)
+		strcpy(tmp6, "*");
+	else
+		snprintf(tmp6, sizeof(tmp6), "%u", job_ptr->threads_per_core);
 	snprintf(tmp_line, sizeof(tmp_line),
-		 "NumNodes=%s NumCPUs=%s CPUs/Task=%u ReqS:C:T=%s:%s:%s",
-		 tmp2, tmp1, job_ptr->cpus_per_task, tmp3, tmp4, tmp5);
+		 "NumNodes=%s NumCPUs=%s CPUs/Task=%u ReqB:S:C:T=%s:%s:%s:%s",
+		 tmp2, tmp1, job_ptr->cpus_per_task, tmp3, tmp4, tmp5, tmp6);
+	xstrcat(out, tmp_line);
+	if (one_liner)
+		xstrcat(out, " ");
+	else
+		xstrcat(out, "\n   ");
+
+	/****** Line 16 ******/
+	if (job_ptr->sockets_per_node == (uint16_t) NO_VAL)
+		strcpy(tmp1, "*");
+	else
+		snprintf(tmp1, sizeof(tmp1), "%u", job_ptr->sockets_per_node);
+	if (job_ptr->ntasks_per_node == (uint16_t) NO_VAL)
+		strcpy(tmp2, "*");
+	else
+		snprintf(tmp2, sizeof(tmp2), "%u", job_ptr->ntasks_per_node);
+	if (job_ptr->ntasks_per_board == (uint16_t) NO_VAL)
+		strcpy(tmp3, "*");
+	else
+		snprintf(tmp3, sizeof(tmp3), "%u", job_ptr->ntasks_per_board);
+	if ((job_ptr->ntasks_per_socket == (uint16_t) NO_VAL) ||
+	    (job_ptr->ntasks_per_socket == (uint16_t) INFINITE))
+		strcpy(tmp4, "*");
+	else
+		snprintf(tmp4, sizeof(tmp4), "%u", job_ptr->ntasks_per_socket);
+	if ((job_ptr->ntasks_per_core == (uint16_t) NO_VAL) ||
+	    (job_ptr->ntasks_per_core == (uint16_t) INFINITE))
+		strcpy(tmp5, "*");
+	else
+		snprintf(tmp5, sizeof(tmp5), "%u", job_ptr->ntasks_per_core);
+	snprintf(tmp_line, sizeof(tmp_line),
+		 "Socks/Node=%s NtasksPerN:B:S:C=%s:%s:%s:%s CoreSpec=%u",
+		 tmp1, tmp2, tmp3, tmp4, tmp5, job_ptr->core_spec);
 	xstrcat(out, tmp_line);
 	if (one_liner)
 		xstrcat(out, " ");
@@ -600,18 +796,20 @@ line6:
 			sock_reps++;
 
 			bit_reps = job_resrcs->sockets_per_node[sock_inx] *
-				job_resrcs->cores_per_socket[sock_inx];
-
-			core_bitmap = bit_alloc(bit_reps);
-			for (j=0; j < bit_reps; j++) {
-				if (bit_test(job_resrcs->core_bitmap, bit_inx))
-					bit_set(core_bitmap, j);
+				   job_resrcs->cores_per_socket[sock_inx];
+			host = hostlist_shift(hl);
+			threads = _threads_per_core(host);
+			cpu_bitmap = bit_alloc(bit_reps * threads);
+			for (j = 0; j < bit_reps; j++) {
+				if (bit_test(job_resrcs->core_bitmap, bit_inx)){
+					for (k = 0; k < threads; k++)
+						bit_set(cpu_bitmap,
+							(j * threads) + k);
+				}
 				bit_inx++;
 			}
-
-			bit_fmt(tmp1, sizeof(tmp1), core_bitmap);
-			FREE_NULL_BITMAP(core_bitmap);
-			host = hostlist_shift(hl);
+			bit_fmt(tmp1, sizeof(tmp1), cpu_bitmap);
+			FREE_NULL_BITMAP(cpu_bitmap);
 /*
  *		If the allocation values for this host are not the same as the
  *		last host, print the report of the last group of hosts that had
@@ -623,7 +821,7 @@ line6:
 			     (last_mem_alloc !=
 			      job_resrcs->memory_allocated[rel_node_inx]))) {
 				if (hostlist_count(hl_last)) {
-					last_hosts = 
+					last_hosts =
 						hostlist_ranged_string_xmalloc(
 						hl_last);
 					snprintf(tmp_line, sizeof(tmp_line),
@@ -679,7 +877,7 @@ line6:
 		hostlist_destroy(hl);
 		hostlist_destroy(hl_last);
 	}
-	/****** Line 15 ******/
+	/****** Line 17 ******/
 line15:
 	if (job_ptr->pn_min_memory & MEM_PER_CPU) {
 		job_ptr->pn_min_memory &= (~MEM_PER_CPU);
@@ -710,7 +908,7 @@ line15:
 	else
 		xstrcat(out, "\n   ");
 
-	/****** Line 16 ******/
+	/****** Line 18 ******/
 	snprintf(tmp_line, sizeof(tmp_line),
 		 "Features=%s Gres=%s Reservation=%s",
 		 job_ptr->features, job_ptr->gres, job_ptr->resv_name);
@@ -720,7 +918,7 @@ line15:
 	else
 		xstrcat(out, "\n   ");
 
-	/****** Line 17 ******/
+	/****** Line 19 ******/
 	snprintf(tmp_line, sizeof(tmp_line),
 		 "Shared=%s Contiguous=%d Licenses=%s Network=%s",
 		 (job_ptr->shared == 0 ? "0" :
@@ -732,7 +930,7 @@ line15:
 	else
 		xstrcat(out, "\n   ");
 
-	/****** Line 18 ******/
+	/****** Line 20 ******/
 	snprintf(tmp_line, sizeof(tmp_line), "Command=%s",
 		 job_ptr->command);
 	xstrcat(out, tmp_line);
@@ -741,13 +939,13 @@ line15:
 	else
 		xstrcat(out, "\n   ");
 
-	/****** Line 19 ******/
+	/****** Line 21 ******/
 	snprintf(tmp_line, sizeof(tmp_line), "WorkDir=%s",
 		 job_ptr->work_dir);
 	xstrcat(out, tmp_line);
 
 	if (cluster_flags & CLUSTER_FLAG_BG) {
-		/****** Line 20 (optional) ******/
+		/****** Line 22 (optional) ******/
 		select_g_select_jobinfo_sprint(job_ptr->select_jobinfo,
 					       select_buf, sizeof(select_buf),
 					       SELECT_PRINT_BG_ID);
@@ -761,7 +959,7 @@ line15:
 			xstrcat(out, tmp_line);
 		}
 
-		/****** Line 21 (optional) ******/
+		/****** Line 23 (optional) ******/
 		select_g_select_jobinfo_sprint(job_ptr->select_jobinfo,
 					       select_buf, sizeof(select_buf),
 					       SELECT_PRINT_MIXED_SHORT);
@@ -774,7 +972,7 @@ line15:
 		}
 
 		if (cluster_flags & CLUSTER_FLAG_BGL) {
-			/****** Line 22 (optional) ******/
+			/****** Line 24 (optional) ******/
 			select_g_select_jobinfo_sprint(
 				job_ptr->select_jobinfo,
 				select_buf, sizeof(select_buf),
@@ -789,7 +987,7 @@ line15:
 				xstrcat(out, tmp_line);
 			}
 		}
-		/****** Line 23 (optional) ******/
+		/****** Line 25 (optional) ******/
 		select_g_select_jobinfo_sprint(job_ptr->select_jobinfo,
 					       select_buf, sizeof(select_buf),
 					       SELECT_PRINT_LINUX_IMAGE);
@@ -807,7 +1005,7 @@ line15:
 
 			xstrcat(out, tmp_line);
 		}
-		/****** Line 24 (optional) ******/
+		/****** Line 26 (optional) ******/
 		select_g_select_jobinfo_sprint(job_ptr->select_jobinfo,
 					       select_buf, sizeof(select_buf),
 					       SELECT_PRINT_MLOADER_IMAGE);
@@ -820,7 +1018,7 @@ line15:
 				 "MloaderImage=%s", select_buf);
 			xstrcat(out, tmp_line);
 		}
-		/****** Line 25 (optional) ******/
+		/****** Line 27 (optional) ******/
 		select_g_select_jobinfo_sprint(job_ptr->select_jobinfo,
 					       select_buf, sizeof(select_buf),
 					       SELECT_PRINT_RAMDISK_IMAGE);
@@ -839,7 +1037,7 @@ line15:
 		}
 	}
 
-	/****** Line 26 (optional) ******/
+	/****** Line 28 (optional) ******/
 	if (job_ptr->comment) {
 		if (one_liner)
 			xstrcat(out, " ");
@@ -850,7 +1048,37 @@ line15:
 		xstrcat(out, tmp_line);
 	}
 
-	/****** Line 27 (optional) ******/
+	/****** Line 29 (optional) ******/
+	if (job_ptr->batch_flag) {
+		if (one_liner)
+			xstrcat(out, " ");
+		else
+			xstrcat(out, "\n   ");
+		slurm_get_job_stderr(tmp_line, sizeof(tmp_line), job_ptr);
+		xstrfmtcat(out, "StdErr=%s", tmp_line);
+	}
+
+	/****** Line 30 (optional) ******/
+	if (job_ptr->batch_flag) {
+		if (one_liner)
+			xstrcat(out, " ");
+		else
+			xstrcat(out, "\n   ");
+		slurm_get_job_stdin(tmp_line, sizeof(tmp_line), job_ptr);
+		xstrfmtcat(out, "StdIn=%s", tmp_line);
+	}
+
+	/****** Line 31 (optional) ******/
+	if (job_ptr->batch_flag) {
+		if (one_liner)
+			xstrcat(out, " ");
+		else
+			xstrcat(out, "\n   ");
+		slurm_get_job_stdout(tmp_line, sizeof(tmp_line), job_ptr);
+		xstrfmtcat(out, "StdOut=%s", tmp_line);
+	}
+
+	/****** Line 32 (optional) ******/
 	if (job_ptr->batch_script) {
 		if (one_liner)
 			xstrcat(out, " ");
@@ -860,7 +1088,7 @@ line15:
 		xstrcat(out, job_ptr->batch_script);
 	}
 
-	/****** Line 28 (optional) ******/
+	/****** Line 33 (optional) ******/
 	if (job_ptr->req_switch) {
 		char time_buf[32];
 		if (one_liner)
@@ -874,7 +1102,7 @@ line15:
 		xstrcat(out, tmp_line);
 	}
 
-	/****** Line 29 (optional) ******/
+	/****** Line 34 (optional) ******/
 	if (one_liner)
 		xstrcat(out, "\n");
 	else
@@ -1087,7 +1315,7 @@ slurm_pid2jobid (pid_t job_pid, uint32_t *jobid)
 		slurm_free_job_id_response_msg(resp_msg.data);
 		break;
 	case RESPONSE_SLURM_RC:
-	        rc = ((return_code_msg_t *) resp_msg.data)->return_code;
+		rc = ((return_code_msg_t *) resp_msg.data)->return_code;
 		slurm_free_return_code_msg(resp_msg.data);
 		if (rc)
 			slurm_seterrno_ret(rc);
@@ -1267,8 +1495,11 @@ extern int slurm_job_node_ready(uint32_t job_id)
 		else	/* EAGAIN */
 			rc = READY_JOB_ERROR;
 		slurm_free_return_code_msg(resp.data);
-	} else
+	} else if (resp.msg_type == RESPONSE_PROLOG_EXECUTING) {
 		rc = READY_JOB_ERROR;
+	} else {
+		rc = READY_JOB_ERROR;
+	}
 
 	return rc;
 }
@@ -1312,4 +1543,3 @@ extern int slurm_job_cpus_allocated_on_node(job_resources_t *job_resrcs_ptr,
 
 	return slurm_job_cpus_allocated_on_node_id(job_resrcs_ptr, node_id);
 }
-

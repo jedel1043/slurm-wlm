@@ -3,6 +3,7 @@
  *****************************************************************************
  *  Copyright (C) 2002-2007 The Regents of the University of California.
  *  Copyright (C) 2008-2010 Lawrence Livermore National Security.
+ *  Copyright (C) 2010-2013 SchedMD LLC.
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
  *  Written by Joey Ekstrom <ekstrom1@llnl.gov>, Morris Jette <jette1@llnl.gov>
  *  CODE-OCEC-09-009. All rights reserved.
@@ -105,6 +106,7 @@ parse_command_line( int argc, char* argv[] )
 		{"iterate",    required_argument, 0, 'i'},
 		{"jobs",       optional_argument, 0, 'j'},
 		{"long",       no_argument,       0, 'l'},
+		{"licenses",   required_argument, 0, 'L'},
 		{"cluster",    required_argument, 0, 'M'},
 		{"clusters",   required_argument, 0, 'M'},
 		{"name",       required_argument, 0, 'n'},
@@ -142,7 +144,7 @@ parse_command_line( int argc, char* argv[] )
 	}
 
 	while ((opt_char = getopt_long(argc, argv,
-				       "A:ahi:j::ln:M:o:p:q:R:rs::S:t:u:U:vVw:",
+				       "A:ahi:j::lL:n:M:o:p:q:R:rs::S:t:u:U:vVw:",
 				       long_options, &option_index)) != -1) {
 		switch (opt_char) {
 		case (int)'?':
@@ -152,7 +154,7 @@ parse_command_line( int argc, char* argv[] )
 		case (int) 'A':
 		case (int) 'U':	/* backwards compatibility */
 			xfree(params.accounts);
-		        params.accounts = xstrdup(optarg);
+			params.accounts = xstrdup(optarg);
 			params.account_list =
 				_build_str_list( params.accounts );
 		break;
@@ -180,6 +182,11 @@ parse_command_line( int argc, char* argv[] )
 		case (int) 'l':
 			params.long_list = true;
 			override_format_env = true;
+			break;
+		case (int) 'L':
+			xfree(params.licenses);
+			params.licenses = xstrdup(optarg);
+			params.licenses_list = _build_str_list(params.licenses);
 			break;
 		case (int) 'M':
 			if (params.clusters)
@@ -353,6 +360,12 @@ parse_command_line( int argc, char* argv[] )
 	}
 
 	if ( ( params.partitions == NULL ) &&
+	     ( env_val = getenv("SQUEUE_LICENSES") ) ) {
+		params.licenses = xstrdup(env_val);
+		params.licenses_list = _build_str_list( params.licenses );
+	}
+
+	if ( ( params.partitions == NULL ) &&
 	     ( env_val = getenv("SQUEUE_PARTITION") ) ) {
 		params.partitions = xstrdup(env_val);
 		params.part_list = _build_str_list( params.partitions );
@@ -439,6 +452,10 @@ _parse_state( char* str, uint16_t* states )
 	xstrcat(state_names, job_state_string(JOB_COMPLETING));
 	xstrcat(state_names, ",");
 	xstrcat(state_names, job_state_string(JOB_CONFIGURING));
+	xstrcat(state_names, ",");
+	xstrcat(state_names, job_state_string(JOB_RESIZING));
+	xstrcat(state_names, ",");
+	xstrcat(state_names, job_state_string(JOB_SPECIAL_EXIT));
 	error ("Valid job states include: %s\n", state_names);
 	xfree (state_names);
 	return SLURM_ERROR;
@@ -458,6 +475,8 @@ extern int parse_format( char* format )
 	char *prefix = NULL, *suffix = NULL, *token = NULL;
 	char *tmp_char = NULL, *tmp_format = NULL;
 	char field[1];
+	bool format_all = false;
+	int i;
 
 	if (format == NULL) {
 		error ("Format option lacks specification.");
@@ -474,9 +493,16 @@ extern int parse_format( char* format )
 					       prefix);
 	}
 
-	field_size = strlen( format );
-	tmp_format = xmalloc( field_size + 1 );
-	strcpy( tmp_format, format );
+	if (!strcasecmp(format, "%all")) {
+		xstrfmtcat(tmp_format, "%c%c", '%', 'a');
+		for (i = 'b'; i <= 'z'; i++)
+			xstrfmtcat(tmp_format, "|%c%c", '%', (char) i);
+		for (i = 'A'; i <= 'Z'; i++)
+			xstrfmtcat(tmp_format, "|%c%c ", '%', (char) i);
+		format_all = true;
+	} else {
+		tmp_format = xstrdup(format);
+	}
 
 	token = strtok_r( tmp_format, "%", &tmp_char);
 	if (token && (format[0] != '%'))	/* toss header */
@@ -537,12 +563,14 @@ extern int parse_format( char* format )
 							   field_size,
 							   right_justify,
 							   suffix );
+			else if (format_all)
+				;	/* ignore */
 			else {
 				prefix = xstrdup("%");
 				xstrcat(prefix, token);
 				xfree(suffix);
 				suffix = prefix;
-				
+
 				step_format_add_invalid( params.format_list,
 							   field_size,
 							   right_justify,
@@ -691,6 +719,10 @@ extern int parse_format( char* format )
 				job_format_add_nodes( params.format_list,
 						      field_size,
 						      right_justify, suffix );
+			else if (field[0] == 'o')
+				job_format_add_command( params.format_list,
+							field_size,
+							right_justify, suffix);
 			else if (field[0] == 'O')
 				job_format_add_contiguous( params.format_list,
 							   field_size,
@@ -764,6 +796,11 @@ extern int parse_format( char* format )
 							field_size,
 							right_justify,
 							suffix );
+			else if (field[0] == 'V')
+				job_format_add_time_submit( params.format_list,
+							   field_size,
+							   right_justify,
+							   suffix );
 			else if (field[0] == 'w')
 				job_format_add_wckey( params.format_list,
 						      field_size,
@@ -778,17 +815,33 @@ extern int parse_format( char* format )
 							  field_size,
 							  right_justify,
 							  suffix );
+			else if (field[0] == 'X')
+				job_format_add_core_spec( params.format_list,
+							  field_size,
+							  right_justify,
+							  suffix );
+			else if (field[0] == 'y')
+				job_format_add_nice( params.format_list,
+						     field_size, right_justify,
+						     suffix );
 			else if (field[0] == 'z')
 				job_format_add_num_sct( params.format_list,
 							   field_size,
 							   right_justify,
 							   suffix );
+			else if (field[0] == 'Z')
+				job_format_add_work_dir( params.format_list,
+							 field_size,
+							 right_justify,
+							 suffix );
+			else if (format_all)
+				;	/* ignore */
 			else {
 				prefix = xstrdup("%");
 				xstrcat(prefix, token);
 				xfree(suffix);
 				suffix = prefix;
-				
+
 				job_format_add_invalid( params.format_list,
 							   field_size,
 							   right_justify,
@@ -865,7 +918,7 @@ _print_options(void)
 {
 	ListIterator iterator;
 	int i;
-	char *part, *name;
+	char *license, *name, *part;
 	uint32_t *user;
 	enum job_states *state_id;
 	squeue_job_step_t *job_step_id;
@@ -884,6 +937,7 @@ _print_options(void)
 	printf( "iterate     = %d\n", params.iterate );
 	printf( "job_flag    = %d\n", params.job_flag );
 	printf( "jobs        = %s\n", params.jobs );
+	printf( "licenses    = %s\n", params.licenses );
 	printf( "names       = %s\n", params.names );
 	printf( "nodes       = %s\n", hostlist ) ;
 	printf( "partitions  = %s\n", params.partitions ) ;
@@ -918,6 +972,15 @@ _print_options(void)
 		iterator = list_iterator_create( params.name_list );
 		while ( (name = list_next( iterator )) ) {
 			printf( "name_list[%d] = %u\n", i++, *name);
+		}
+		list_iterator_destroy( iterator );
+	}
+
+	if ((params.verbose > 1) && params.licenses_list) {
+		i = 0;
+		iterator = list_iterator_create( params.licenses_list );
+		while ( (license = list_next( iterator )) ) {
+			printf( "licenses_list[%d] = %s\n", i++, license);
 		}
 		list_iterator_destroy( iterator );
 	}
@@ -1018,21 +1081,21 @@ _build_job_list( char* str )
  * RET List of strings
  */
 static List
-_build_str_list( char* str )
+_build_str_list(char* str)
 {
 	List my_list;
-	char *part = NULL, *tmp_char = NULL, *my_part_list = NULL;
+	char *tok = NULL, *tmp_char = NULL, *my_str = NULL;
 
-	if ( str == NULL)
+	if (str == NULL)
 		return NULL;
-	my_list = list_create( NULL );
-	my_part_list = xstrdup( str );
-	part = strtok_r( my_part_list, ",", &tmp_char );
-	while (part) {
-		list_append( my_list, part );
-		part = strtok_r( NULL, ",", &tmp_char );
+	my_list = list_create(NULL);
+	my_str = xstrdup(str);
+	tok = strtok_r(my_str, ",", &tmp_char);
+	while (tok) {
+		list_append(my_list, tok);
+		tok = strtok_r(NULL, ",", &tmp_char);
 	}
-	/* NOTE: Do NOT xfree my_part_list or the elements just added to the
+	/* NOTE: Do NOT xfree my_list or the elements just added to the
 	 * list will also be freed. */
 	return my_list;
 }
@@ -1179,9 +1242,11 @@ _build_user_list( char* str )
 static void _usage(void)
 {
 	printf("\
-Usage: squeue [-i seconds] [-n name] [-o format] [-p partitions]\n\
-              [-R reservation] [-S fields] [--start] [-t states]\n\
-              [-u user_name] [--usage] [-w nodes] [-ahjlsv]\n");
+Usage: squeue [-A account] [--clusters names] [-i seconds] [--job jobid]\n\
+              [-n name] [-o format] [-p partitions] [--qos qos]\n\
+              [--reservation reservation] [--sort fields] [--start]\n\
+              [--step step_id] [-t states] [-u user_name] [--usage]\n\
+              [-L licenses] [-w nodes] [-ahjlrsv]\n");
 }
 
 static void _help(void)
@@ -1197,6 +1262,7 @@ Usage: squeue [OPTIONS]\n\
   -j, --job=job(s)                comma separated list of jobs IDs\n\
 				  to view, default is all\n\
   -l, --long                      long report\n\
+  -L, --licenses=(license names)  comma separated list of license names to view\n\
   -M, --clusters=cluster_name     cluster to issue commands to.  Default is\n\
                                   current cluster.  cluster with no name will\n\
                                   reset to default.\n\
@@ -1207,6 +1273,7 @@ Usage: squeue [OPTIONS]\n\
   -q, --qos=qos(s)                comma separated list of qos's\n\
 				  to view, default is all qos's\n\
   -R, --reservation=name          reservation to view, default is all\n\
+  -r, --array                     display one job array element per line\n\
   -s, --step=step(s)              comma separated list of job steps\n\
 				  to view, default is all\n\
   -S, --sort=fields               comma separated list of fields to sort on\n\

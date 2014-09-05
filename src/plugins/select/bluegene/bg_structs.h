@@ -60,7 +60,7 @@ typedef struct {
 	char *default_linuximage;
 	char *default_mloaderimage;
 	char *default_ramdiskimage;
-	uint16_t default_conn_type[SYSTEM_DIMENSIONS];
+	uint16_t default_conn_type[HIGHEST_DIMENSIONS];
 	uint16_t deny_pass;
 	double io_ratio;
 	uint16_t ionode_cnode_cnt;
@@ -77,6 +77,7 @@ typedef struct {
 	uint16_t quarter_cnode_cnt;
 	uint16_t quarter_ionode_cnt;
 	List ramdisk_list;
+	bitstr_t *reboot_qos_bitmap;
 	uint32_t slurm_debug_flags;
 	uint32_t slurm_debug_level;
 	char *slurm_node_prefix;

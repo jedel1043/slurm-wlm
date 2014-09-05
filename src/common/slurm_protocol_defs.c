@@ -49,6 +49,7 @@
 #endif
 
 #include <stdio.h>
+#include <ctype.h>
 
 #include "src/common/log.h"
 #include "src/common/node_select.h"
@@ -61,6 +62,7 @@
 #include "src/common/job_options.h"
 #include "src/common/forward.h"
 #include "src/common/slurm_jobacct_gather.h"
+#include "src/common/slurm_ext_sensors.h"
 #include "src/common/slurm_acct_gather_energy.h"
 #include "src/plugins/select/bluegene/bg_enums.h"
 
@@ -82,6 +84,7 @@ strong_alias(conn_type_string,	slurm_conn_type_string);
 strong_alias(conn_type_string_full, slurm_conn_type_string_full);
 strong_alias(node_use_string, slurm_node_use_string);
 strong_alias(bg_block_state_string, slurm_bg_block_state_string);
+strong_alias(cray_nodelist2nids, slurm_cray_nodelist2nids);
 strong_alias(reservation_flags_string, slurm_reservation_flags_string);
 
 
@@ -259,8 +262,10 @@ endit:
 	return count;
 }
 
-extern int slurm_sort_char_list_asc(char *name_a, char *name_b)
+extern int slurm_sort_char_list_asc(void *v1, void *v2)
 {
+	char *name_a = *(char **)v1;
+	char *name_b = *(char **)v2;
 	int diff = strcmp(name_a, name_b);
 
 	if (diff < 0)
@@ -271,8 +276,10 @@ extern int slurm_sort_char_list_asc(char *name_a, char *name_b)
 	return 0;
 }
 
-extern int slurm_sort_char_list_desc(char *name_a, char *name_b)
+extern int slurm_sort_char_list_desc(void *v1, void *v2)
 {
+	char *name_a = *(char **)v1;
+	char *name_b = *(char **)v2;
 	int diff = strcmp(name_a, name_b);
 
 	if (diff > 0)
@@ -439,14 +446,42 @@ extern void slurm_free_job_desc_msg(job_desc_msg_t * msg)
 	}
 }
 
+extern void slurm_free_prolog_launch_msg(prolog_launch_msg_t * msg)
+{
+	int i;
+
+	if (msg) {
+		xfree(msg->alias_list);
+		xfree(msg->nodes);
+		xfree(msg->partition);
+		xfree(msg->std_err);
+		xfree(msg->std_out);
+		xfree(msg->work_dir);
+
+		for (i = 0; i < msg->spank_job_env_size; i++)
+			xfree(msg->spank_job_env[i]);
+		xfree(msg->spank_job_env);
+
+		xfree(msg);
+	}
+}
+
+extern void slurm_free_complete_prolog_msg(
+	complete_prolog_msg_t * msg)
+{
+	xfree(msg);
+}
+
 extern void slurm_free_job_launch_msg(batch_job_launch_msg_t * msg)
 {
 	int i;
 
 	if (msg) {
 		xfree(msg->acctg_freq);
+		xfree(msg->user_name);
 		xfree(msg->alias_list);
 		xfree(msg->nodes);
+		xfree(msg->partition);
 		xfree(msg->cpu_bind);
 		xfree(msg->cpus_per_node);
 		xfree(msg->cpu_count_reps);
@@ -516,6 +551,9 @@ extern void slurm_free_job_info_members(job_info_t * job)
 		job->select_jobinfo = NULL;
 		free_job_resources(&job->job_resrcs);
 		xfree(job->state_desc);
+		xfree(job->std_err);
+		xfree(job->std_in);
+		xfree(job->std_out);
 		xfree(job->wckey);
 		xfree(job->work_dir);
 	}
@@ -555,6 +593,7 @@ extern void slurm_free_node_registration_status_msg(
 		xfree(msg->step_id);
 		if (msg->switch_nodeinfo)
 			switch_g_free_node_info(&msg->switch_nodeinfo);
+		xfree(msg->version);
 		xfree(msg);
 	}
 }
@@ -718,6 +757,7 @@ extern void slurm_free_launch_tasks_request_msg(launch_tasks_request_msg_t * msg
 		xfree(msg->env);
 	}
 	xfree(msg->acctg_freq);
+	xfree(msg->user_name);
 	xfree(msg->alias_list);
 	xfree(msg->cwd);
 	xfree(msg->cpu_bind);
@@ -737,7 +777,6 @@ extern void slurm_free_launch_tasks_request_msg(launch_tasks_request_msg_t * msg
 			xfree(msg->global_task_ids[i]);
 		}
 	xfree(msg->tasks_to_launch);
-	xfree(msg->cpus_allocated);
 	xfree(msg->resp_port);
 	xfree(msg->io_port);
 	xfree(msg->global_task_ids);
@@ -751,9 +790,10 @@ extern void slurm_free_launch_tasks_request_msg(launch_tasks_request_msg_t * msg
 
 	xfree(msg->ckpt_dir);
 	xfree(msg->restart_dir);
+	xfree(msg->partition);
 
 	if (msg->switch_job)
-		switch_free_jobinfo(msg->switch_job);
+		switch_g_free_jobinfo(msg->switch_job);
 
 	if (msg->options)
 		job_options_destroy(msg->options);
@@ -815,7 +855,6 @@ extern void slurm_free_epilog_complete_msg(epilog_complete_msg_t * msg)
 {
 	if (msg) {
 		xfree(msg->node_name);
-		switch_g_free_node_info(&msg->switch_nodeinfo);
 		xfree(msg);
 	}
 }
@@ -908,10 +947,16 @@ extern void slurm_free_suspend_msg(suspend_msg_t *msg)
 	xfree(msg);
 }
 
+extern void
+slurm_free_requeue_msg(requeue_msg_t *msg)
+{
+	xfree(msg);
+}
+
 extern void slurm_free_suspend_int_msg(suspend_int_msg_t *msg)
 {
 	if (msg) {
-		interconnect_suspend_info_free(msg->switch_info);
+		switch_g_job_suspend_info_free(msg->switch_info);
 		xfree(msg);
 	}
 }
@@ -942,6 +987,8 @@ extern char *job_reason_string(enum job_state_reason inx)
 	switch (inx) {
 	case WAIT_NO_REASON:
 		return "None";
+	case WAIT_PROLOG:
+		return "Prolog";
 	case WAIT_PRIORITY:
 		return "Priority";
 	case WAIT_DEPENDENCY:
@@ -1004,6 +1051,16 @@ extern char *job_reason_string(enum job_state_reason inx)
 		return "QOSResourceLimit";
 	case WAIT_QOS_TIME_LIMIT:
 		return "QOSTimeLimit";
+	case WAIT_BLOCK_MAX_ERR:
+		return "BlockMaxError";
+	case WAIT_BLOCK_D_ACTION:
+		return "BlockFreeAction";
+	case WAIT_CLEANING:
+		return "Cleaning";
+	case WAIT_QOS:
+		return "QOSNotAllowed";
+	case WAIT_ACCOUNT:
+		return "AccountNotAllowed";
 	default:
 		return "?";
 	}
@@ -1175,57 +1232,8 @@ extern uint16_t log_string2num(char *name)
 		return (uint16_t) 8;
 	if (!strcasecmp(name, "debug5"))
 		return (uint16_t) 9;
-	if (!strcasecmp(name, "debug2"))
-		return (uint16_t) 6;
 
 	return (uint16_t) NO_VAL;
-}
-
-/* Convert SelectTypeParameter to equivalent string
- * NOTE: Not reentrant */
-extern char *sched_param_type_string(uint16_t select_type_param)
-{
-	static char select_str[128];
-
-	select_str[0] = '\0';
-	if ((select_type_param & CR_CPU) &&
-	    (select_type_param & CR_MEMORY))
-		strcat(select_str, "CR_CPU_MEMORY");
-	else if ((select_type_param & CR_CORE) &&
-		 (select_type_param & CR_MEMORY))
-		strcat(select_str, "CR_CORE_MEMORY");
-	else if ((select_type_param & CR_SOCKET) &&
-		 (select_type_param & CR_MEMORY))
-		strcat(select_str, "CR_SOCKET_MEMORY");
-	else if (select_type_param & CR_CPU)
-		strcat(select_str, "CR_CPU");
-	else if (select_type_param & CR_CORE)
-		strcat(select_str, "CR_CORE");
-	else if (select_type_param & CR_SOCKET)
-		strcat(select_str, "CR_SOCKET");
-	else if (select_type_param & CR_MEMORY)
-		strcat(select_str, "CR_MEMORY");
-
-	if (select_type_param & CR_ONE_TASK_PER_CORE) {
-		if (select_str[0])
-			strcat(select_str, ",");
-		strcat(select_str, "CR_ONE_TASK_PER_CORE");
-	}
-	if (select_type_param & CR_CORE_DEFAULT_DIST_BLOCK) {
-		if (select_str[0])
-			strcat(select_str, ",");
-		strcat(select_str, "CR_CORE_DEFAULT_DIST_BLOCK");
-	}
-	if (select_type_param & CR_ALLOCATE_FULL_SOCKET) {
-		if (select_str[0])
-			strcat(select_str, ",");
-		strcat(select_str, "CR_ALLOCATE_FULL_SOCKET");
-	}
-
-	if (select_str[0] == '\0')
-		strcat(select_str, "NONE");
-
-	return select_str;
 }
 
 extern char *job_state_string(uint16_t inx)
@@ -1237,6 +1245,10 @@ extern char *job_state_string(uint16_t inx)
 		return "CONFIGURING";
 	if (inx & JOB_RESIZING)
 		return "RESIZING";
+	if (inx & JOB_SPECIAL_EXIT)
+		return "SPECIAL_EXIT";
+	if (inx & JOB_REQUEUE)
+		return "REQUEUED";
 
 	/* Process JOB_STATE_BASE */
 	switch (inx & JOB_STATE_BASE) {
@@ -1258,6 +1270,8 @@ extern char *job_state_string(uint16_t inx)
 		return "NODE_FAIL";
 	case JOB_PREEMPTED:
 		return "PREEMPTED";
+	case JOB_BOOT_FAIL:
+		return "BOOT_FAIL";
 	default:
 		return "?";
 	}
@@ -1272,6 +1286,10 @@ extern char *job_state_string_compact(uint16_t inx)
 		return "CF";
 	if (inx & JOB_RESIZING)
 		return "RS";
+	if (inx & JOB_SPECIAL_EXIT)
+		return "SE";
+	if (inx & JOB_REQUEUE)
+		return "RQ";
 
 	/* Process JOB_STATE_BASE */
 	switch (inx & JOB_STATE_BASE) {
@@ -1293,6 +1311,8 @@ extern char *job_state_string_compact(uint16_t inx)
 		return "NF";
 	case JOB_PREEMPTED:
 		return "PR";
+	case JOB_BOOT_FAIL:
+		return "BF";
 	default:
 		return "?";
 	}
@@ -1322,6 +1342,8 @@ extern int job_state_num(const char *state_name)
 		return JOB_CONFIGURING;
 	if (_job_name_test(JOB_RESIZING, state_name))
 		return JOB_RESIZING;
+	if (_job_name_test(JOB_SPECIAL_EXIT, state_name))
+		return JOB_SPECIAL_EXIT;
 
 	return -1;
 }
@@ -1418,7 +1440,7 @@ extern char *trigger_type(uint32_t trig_type)
 		return "unknown";
 }
 
-extern char *reservation_flags_string(uint16_t flags)
+extern char *reservation_flags_string(uint32_t flags)
 {
 	char *flag_str = xstrdup("");
 
@@ -1494,6 +1516,11 @@ extern char *reservation_flags_string(uint16_t flags)
 			xstrcat(flag_str, ",");
 		xstrcat(flag_str, "NO_PART_NODES");
 	}
+	if (flags & RESERVE_FLAG_FIRST_CORES) {
+		if (flag_str[0])
+			xstrcat(flag_str, ",");
+		xstrcat(flag_str, "FIRST_CORES");
+	}
 	return flag_str;
 }
 
@@ -1504,6 +1531,8 @@ extern char *node_state_string(uint16_t inx)
 	bool drain_flag      = (inx & NODE_STATE_DRAIN);
 	bool fail_flag       = (inx & NODE_STATE_FAIL);
 	bool maint_flag      = (inx & NODE_STATE_MAINT);
+	bool net_flag        = (inx & NODE_STATE_NET);
+	bool res_flag        = (inx & NODE_STATE_RES);
 	bool resume_flag     = (inx & NODE_RESUME);
 	bool no_resp_flag    = (inx & NODE_STATE_NO_RESPOND);
 	bool power_down_flag = (inx & NODE_STATE_POWER_SAVE);
@@ -1582,6 +1611,10 @@ extern char *node_state_string(uint16_t inx)
 			return "IDLE~";
 		if (no_resp_flag)
 			return "IDLE*";
+		if (net_flag)
+			return "PERFCTRS";
+		if (res_flag)
+			return "RESERVED";
 		return "IDLE";
 	}
 	if (base == NODE_STATE_ERROR) {
@@ -1623,6 +1656,8 @@ extern char *node_state_string_compact(uint16_t inx)
 	bool drain_flag      = (inx & NODE_STATE_DRAIN);
 	bool fail_flag       = (inx & NODE_STATE_FAIL);
 	bool maint_flag      = (inx & NODE_STATE_MAINT);
+	bool net_flag        = (inx & NODE_STATE_NET);
+	bool res_flag        = (inx & NODE_STATE_RES);
 	bool resume_flag     = (inx & NODE_RESUME);
 	bool no_resp_flag    = (inx & NODE_STATE_NO_RESPOND);
 	bool power_down_flag = (inx & NODE_STATE_POWER_SAVE);
@@ -1702,6 +1737,10 @@ extern char *node_state_string_compact(uint16_t inx)
 			return "IDLE~";
 		if (no_resp_flag)
 			return "IDLE*";
+		if (net_flag)
+			return "NPC";
+		if (res_flag)
+			return "RESV";
 		return "IDLE";
 	}
 	if (inx == NODE_STATE_ERROR) {
@@ -1945,6 +1984,68 @@ extern char *bg_block_state_string(uint16_t state)
 	return tmp;
 }
 
+extern char *cray_nodelist2nids(hostlist_t hl_in, char *nodelist)
+{
+	hostlist_t hl = hl_in;
+	char *nids = NULL, *node_name, *sep = "";
+	int i, nid;
+	int nid_begin = -1, nid_end = -1;
+
+	if (!nodelist && !hl_in)
+		return NULL;
+
+	/* Make hl off nodelist */
+	if (!hl_in) {
+		hl = hostlist_create(nodelist);
+		if (!hl) {
+			error("Invalid hostlist: %s", nodelist);
+			return NULL;
+		}
+		//info("input hostlist: %s", nodelist);
+		hostlist_uniq(hl);
+	}
+
+	while ((node_name = hostlist_shift(hl))) {
+		for (i = 0; node_name[i]; i++) {
+			if (!isdigit(node_name[i]))
+				continue;
+			nid = atoi(&node_name[i]);
+			if (nid_begin == -1) {
+				nid_begin = nid;
+				nid_end   = nid;
+			} else if (nid == (nid_end + 1)) {
+				nid_end   = nid;
+			} else {
+				if (nid_begin == nid_end) {
+					xstrfmtcat(nids, "%s%d", sep,
+						   nid_begin);
+				} else {
+					xstrfmtcat(nids, "%s%d-%d", sep,
+						   nid_begin, nid_end);
+				}
+				nid_begin = nid;
+				nid_end   = nid;
+				sep = ",";
+			}
+			break;
+		}
+		free(node_name);
+	}
+	if (nid_begin == -1)
+		;	/* No data to record */
+	else if (nid_begin == nid_end)
+		xstrfmtcat(nids, "%s%d", sep, nid_begin);
+	else
+		xstrfmtcat(nids, "%s%d-%d", sep, nid_begin, nid_end);
+
+	if (!hl_in)
+		hostlist_destroy(hl);
+	//info("output node IDs: %s", nids);
+
+	return nids;
+}
+
+
 /*
  * slurm_free_resource_allocation_response_msg - free slurm resource
  *	allocation response message
@@ -1958,9 +2059,10 @@ extern void slurm_free_resource_allocation_response_msg (
 		select_g_select_jobinfo_free(msg->select_jobinfo);
 		msg->select_jobinfo = NULL;
 		xfree(msg->alias_list);
-		xfree(msg->node_list);
 		xfree(msg->cpus_per_node);
 		xfree(msg->cpu_count_reps);
+		xfree(msg->node_list);
+		xfree(msg->partition);
 		xfree(msg);
 	}
 }
@@ -2018,7 +2120,7 @@ extern void slurm_free_job_step_create_response_msg(
 		if (msg->select_jobinfo)
 			select_g_select_jobinfo_free(msg->select_jobinfo);
 		if (msg->switch_job)
-			switch_free_jobinfo(msg->switch_job);
+			switch_g_free_jobinfo(msg->switch_job);
 
 		xfree(msg);
 	}
@@ -2176,6 +2278,7 @@ extern void slurm_free_front_end_info_members(front_end_info_t * front_end)
 		xfree(front_end->deny_users);
 		xfree(front_end->name);
 		xfree(front_end->reason);
+		xfree(front_end->version);
 	}
 }
 
@@ -2210,14 +2313,18 @@ extern void slurm_free_node_info_members(node_info_t * node)
 {
 	if (node) {
 		xfree(node->arch);
+		acct_gather_energy_destroy(node->energy);
+		ext_sensors_destroy(node->ext_sensors);
 		xfree(node->features);
+		xfree(node->gres);
 		xfree(node->name);
-		xfree(node->node_hostname);
 		xfree(node->node_addr);
+		xfree(node->node_hostname);
 		xfree(node->os);
 		xfree(node->reason);
 		select_g_select_nodeinfo_free(node->select_nodeinfo);
 		node->select_nodeinfo = NULL;
+		xfree(node->version);
 	}
 }
 
@@ -2257,8 +2364,12 @@ extern void slurm_free_partition_info_members(partition_info_t * part)
 {
 	if (part) {
 		xfree(part->allow_alloc_nodes);
+		xfree(part->allow_accounts);
 		xfree(part->allow_groups);
+		xfree(part->allow_qos);
 		xfree(part->alternate);
+		xfree(part->deny_accounts);
+		xfree(part->deny_qos);
 		xfree(part->name);
 		xfree(part->nodes);
 		xfree(part->node_inx);
@@ -2337,6 +2448,7 @@ extern void slurm_free_file_bcast_msg(file_bcast_msg_t *msg)
 	if (msg) {
 		xfree(msg->block);
 		xfree(msg->fname);
+		xfree(msg->user_name);
 		delete_sbcast_cred(msg->cred);
 		xfree(msg);
 	}
@@ -2554,6 +2666,9 @@ extern int slurm_free_msg_data(slurm_msg_type_t type, void *data)
 	case REQUEST_COMPLETE_JOB_ALLOCATION:
 		slurm_free_complete_job_allocation_msg(data);
 		break;
+	case REQUEST_COMPLETE_PROLOG:
+		slurm_free_complete_prolog_msg(data);
+		break;
 	case REQUEST_COMPLETE_BATCH_JOB:
 	case REQUEST_COMPLETE_BATCH_SCRIPT:
 		slurm_free_complete_batch_script_msg(data);
@@ -2566,6 +2681,9 @@ extern int slurm_free_msg_data(slurm_msg_type_t type, void *data)
 		break;
 	case RESPONSE_JOB_STEP_PIDS:
 		slurm_free_job_step_pids(data);
+		break;
+	case REQUEST_LAUNCH_PROLOG:
+		slurm_free_prolog_launch_msg(data);
 		break;
 	case REQUEST_RESOURCE_ALLOCATION:
 	case REQUEST_JOB_WILL_RUN:
@@ -2821,4 +2939,402 @@ extern bool valid_spank_job_env(char **spank_job_env,
 		xfree (entry);
 	}
 	return true;
+}
+
+/* Return ctime like string without the newline.
+ * Not thread safe */
+extern char *slurm_ctime(const time_t *timep)
+{
+	static char time_str[25];
+
+	strftime(time_str, sizeof(time_str), "%a %b %d %T %Y",
+		 localtime(timep));
+
+	return time_str;
+}
+
+/* Return ctime like string without the newline, thread safe. */
+extern char *slurm_ctime_r(const time_t *timep, char *time_str)
+{
+	struct tm newtime;
+	localtime_r(timep, &newtime);
+
+	strftime(time_str, 25, "%a %b %d %T %Y", &newtime);
+
+	return time_str;
+}
+
+/* slurm_free_license_info()
+ *
+ * Free the license info returned previously
+ * from the controller.
+ */
+extern void
+slurm_free_license_info_msg(license_info_msg_t *msg)
+{
+	int cc;
+
+	if (msg == NULL)
+		return;
+
+	for (cc = 0; cc < msg->num_lic; cc++) {
+		xfree(msg->lic_array[cc].name);
+	}
+	xfree(msg->lic_array);
+	xfree(msg);
+}
+extern void slurm_free_license_info_request_msg(license_info_request_msg_t *msg)
+{
+	xfree(msg);
+}
+
+/*
+ * rpc_num2string()
+ *
+ * Given a protocol opcode return its string
+ * description mapping the slurm_msg_type_t
+ * to its name.
+ */
+char *
+rpc_num2string(uint16_t opcode)
+{
+	static char buf[16];
+
+	switch (opcode) {
+		case REQUEST_NODE_REGISTRATION_STATUS:
+			return "REQUEST_NODE_REGISTRATION_STATUS";
+		case MESSAGE_NODE_REGISTRATION_STATUS:
+			return "MESSAGE_NODE_REGISTRATION_STATUS";
+		case REQUEST_RECONFIGURE:
+			return "REQUEST_RECONFIGURE";
+		case RESPONSE_RECONFIGURE:
+			return "RESPONSE_RECONFIGURE";
+		case REQUEST_SHUTDOWN:
+			return "REQUEST_SHUTDOWN";
+		case REQUEST_SHUTDOWN_IMMEDIATE:
+			return "REQUEST_SHUTDOWN_IMMEDIATE";
+		case RESPONSE_SHUTDOWN:
+			return "RESPONSE_SHUTDOWN";
+		case REQUEST_PING:
+			return "REQUEST_PING";
+		case REQUEST_CONTROL:
+			return "REQUEST_CONTROL";
+		case REQUEST_SET_DEBUG_LEVEL:
+			return "REQUEST_SET_DEBUG_LEVEL";
+		case REQUEST_HEALTH_CHECK:
+			return "REQUEST_HEALTH_CHECK";
+		case REQUEST_TAKEOVER:
+			return "REQUEST_TAKEOVER";
+		case REQUEST_SET_SCHEDLOG_LEVEL:
+			return "REQUEST_SET_SCHEDLOG_LEVEL";
+		case REQUEST_SET_DEBUG_FLAGS:
+			return "REQUEST_SET_DEBUG_FLAGS";
+		case REQUEST_REBOOT_NODES:
+			return "REQUEST_REBOOT_NODES";
+		case RESPONSE_PING_SLURMD:
+			return "RESPONSE_PING_SLURMD";
+		case REQUEST_ACCT_GATHER_UPDATE:
+			return "REQUEST_ACCT_GATHER_UPDATE";
+		case RESPONSE_ACCT_GATHER_UPDATE:
+			return "RESPONSE_ACCT_GATHER_UPDATE";
+		case REQUEST_ACCT_GATHER_ENERGY:
+			return "REQUEST_ACCT_GATHER_ENERGY";
+		case RESPONSE_ACCT_GATHER_ENERGY:
+			return "RESPONSE_ACCT_GATHER_ENERGY";
+		case REQUEST_LICENSE_INFO:
+			return "REQUEST_LICENSE_INFO";
+		case RESPONSE_LICENSE_INFO:
+			return "RESPONSE_LICENSE_INFO";
+		case REQUEST_BUILD_INFO:
+			return "REQUEST_BUILD_INFO";
+		case RESPONSE_BUILD_INFO:
+			return "RESPONSE_BUILD_INFO";
+		case REQUEST_JOB_INFO:
+			return "REQUEST_JOB_INFO";
+		case RESPONSE_JOB_INFO:
+			return "RESPONSE_JOB_INFO";
+		case REQUEST_JOB_STEP_INFO:
+			return "REQUEST_JOB_STEP_INFO";
+		case RESPONSE_JOB_STEP_INFO:
+			return "RESPONSE_JOB_STEP_INFO";
+		case REQUEST_NODE_INFO:
+			return "REQUEST_NODE_INFO";
+		case RESPONSE_NODE_INFO:
+			return "RESPONSE_NODE_INFO";
+		case REQUEST_PARTITION_INFO:
+			return "REQUEST_PARTITION_INFO";
+		case RESPONSE_PARTITION_INFO:
+			return "RESPONSE_PARTITION_INFO";
+		case REQUEST_ACCTING_INFO:
+			return "REQUEST_ACCTING_INFO";
+		case RESPONSE_ACCOUNTING_INFO:
+			return "RESPONSE_ACCOUNTING_INFO";
+		case REQUEST_JOB_ID:
+			return "REQUEST_JOB_ID";
+		case RESPONSE_JOB_ID:
+			return "RESPONSE_JOB_ID";
+		case REQUEST_BLOCK_INFO:
+			return "REQUEST_BLOCK_INFO";
+		case RESPONSE_BLOCK_INFO:
+			return "RESPONSE_BLOCK_INFO";
+		case REQUEST_TRIGGER_SET:
+			return "REQUEST_TRIGGER_SET";
+		case REQUEST_TRIGGER_GET:
+			return "REQUEST_TRIGGER_GET";
+		case REQUEST_TRIGGER_CLEAR:
+			return "REQUEST_TRIGGER_CLEAR";
+		case RESPONSE_TRIGGER_GET:
+			return "RESPONSE_TRIGGER_GET";
+		case REQUEST_JOB_INFO_SINGLE:
+			return "REQUEST_JOB_INFO_SINGLE";
+		case REQUEST_SHARE_INFO:
+			return "REQUEST_SHARE_INFO";
+		case RESPONSE_SHARE_INFO:
+			return "RESPONSE_SHARE_INFO";
+		case REQUEST_RESERVATION_INFO:
+			return "REQUEST_RESERVATION_INFO";
+		case RESPONSE_RESERVATION_INFO:
+			return "RESPONSE_RESERVATION_INFO";
+		case REQUEST_PRIORITY_FACTORS:
+			return "REQUEST_PRIORITY_FACTORS";
+		case RESPONSE_PRIORITY_FACTORS:
+			return "RESPONSE_PRIORITY_FACTORS";
+		case REQUEST_TOPO_INFO:
+			return "REQUEST_TOPO_INFO";
+		case RESPONSE_TOPO_INFO:
+			return "RESPONSE_TOPO_INFO";
+		case REQUEST_TRIGGER_PULL:
+			return "REQUEST_TRIGGER_PULL";
+		case REQUEST_FRONT_END_INFO:
+			return "REQUEST_FRONT_END_INFO";
+		case RESPONSE_FRONT_END_INFO:
+			return "RESPONSE_FRONT_END_INFO";
+		case REQUEST_SPANK_ENVIRONMENT:
+			return "REQUEST_SPANK_ENVIRONMENT";
+		case RESPONCE_SPANK_ENVIRONMENT:
+			return "RESPONCE_SPANK_ENVIRONMENT";
+		case REQUEST_STATS_INFO:
+			return "REQUEST_STATS_INFO";
+		case RESPONSE_STATS_INFO:
+			return "RESPONSE_STATS_INFO";
+		case REQUEST_STATS_RESET:
+			return "REQUEST_STATS_RESET";
+		case RESPONSE_STATS_RESET:
+			return "RESPONSE_STATS_RESET";
+		case REQUEST_JOB_USER_INFO:
+			return "REQUEST_JOB_USER_INFO";
+		case REQUEST_NODE_INFO_SINGLE:
+			return "REQUEST_NODE_INFO_SINGLE";
+		case REQUEST_UPDATE_JOB:
+			return "REQUEST_UPDATE_JOB";
+		case REQUEST_UPDATE_NODE:
+			return "REQUEST_UPDATE_NODE";
+		case REQUEST_CREATE_PARTITION:
+			return "REQUEST_CREATE_PARTITION";
+		case REQUEST_DELETE_PARTITION:
+			return "REQUEST_DELETE_PARTITION";
+		case REQUEST_UPDATE_PARTITION:
+			return "REQUEST_UPDATE_PARTITION";
+		case REQUEST_CREATE_RESERVATION:
+			return "REQUEST_CREATE_RESERVATION";
+		case RESPONSE_CREATE_RESERVATION:
+			return "RESPONSE_CREATE_RESERVATION";
+		case REQUEST_DELETE_RESERVATION:
+			return "REQUEST_DELETE_RESERVATION";
+		case REQUEST_UPDATE_RESERVATION:
+			return "REQUEST_UPDATE_RESERVATION";
+		case REQUEST_UPDATE_BLOCK:
+			return "REQUEST_UPDATE_BLOCK";
+		case REQUEST_UPDATE_FRONT_END:
+			return "REQUEST_UPDATE_FRONT_END";
+		case REQUEST_RESOURCE_ALLOCATION:
+			return "REQUEST_RESOURCE_ALLOCATION";
+		case RESPONSE_RESOURCE_ALLOCATION:
+			return "RESPONSE_RESOURCE_ALLOCATION";
+		case REQUEST_SUBMIT_BATCH_JOB:
+			return "REQUEST_SUBMIT_BATCH_JOB";
+		case RESPONSE_SUBMIT_BATCH_JOB:
+			return "RESPONSE_SUBMIT_BATCH_JOB";
+		case REQUEST_BATCH_JOB_LAUNCH:
+			return "REQUEST_BATCH_JOB_LAUNCH";
+		case REQUEST_CANCEL_JOB:
+			return "REQUEST_CANCEL_JOB";
+		case RESPONSE_CANCEL_JOB:
+			return "RESPONSE_CANCEL_JOB";
+		case REQUEST_JOB_RESOURCE:
+			return "REQUEST_JOB_RESOURCE";
+		case RESPONSE_JOB_RESOURCE:
+			return "RESPONSE_JOB_RESOURCE";
+		case REQUEST_JOB_ATTACH:
+			return "REQUEST_JOB_ATTACH";
+		case RESPONSE_JOB_ATTACH:
+			return "RESPONSE_JOB_ATTACH";
+		case REQUEST_JOB_WILL_RUN:
+			return "REQUEST_JOB_WILL_RUN";
+		case RESPONSE_JOB_WILL_RUN:
+			return "RESPONSE_JOB_WILL_RUN";
+		case REQUEST_JOB_ALLOCATION_INFO:
+			return "REQUEST_JOB_ALLOCATION_INFO";
+		case RESPONSE_JOB_ALLOCATION_INFO:
+			return "RESPONSE_JOB_ALLOCATION_INFO";
+		case REQUEST_JOB_ALLOCATION_INFO_LITE:
+			return "REQUEST_JOB_ALLOCATION_INFO_LITE";
+		case RESPONSE_JOB_ALLOCATION_INFO_LITE:
+			return "RESPONSE_JOB_ALLOCATION_INFO_LITE";
+		case REQUEST_UPDATE_JOB_TIME:
+			return "REQUEST_UPDATE_JOB_TIME";
+		case REQUEST_JOB_READY:
+			return "REQUEST_JOB_READY";
+		case RESPONSE_JOB_READY:
+			return "RESPONSE_JOB_READY";
+		case REQUEST_JOB_END_TIME:
+			return "REQUEST_JOB_END_TIME";
+		case REQUEST_JOB_NOTIFY:
+			return "REQUEST_JOB_NOTIFY";
+		case REQUEST_JOB_SBCAST_CRED:
+			return "REQUEST_JOB_SBCAST_CRED";
+		case RESPONSE_JOB_SBCAST_CRED:
+			return "RESPONSE_JOB_SBCAST_CRED";
+		case REQUEST_JOB_STEP_CREATE:
+			return "REQUEST_JOB_STEP_CREATE";
+		case RESPONSE_JOB_STEP_CREATE:
+			return "RESPONSE_JOB_STEP_CREATE";
+		case REQUEST_RUN_JOB_STEP:
+			return "REQUEST_RUN_JOB_STEP";
+		case RESPONSE_RUN_JOB_STEP:
+			return "RESPONSE_RUN_JOB_STEP";
+		case REQUEST_CANCEL_JOB_STEP:
+			return "REQUEST_CANCEL_JOB_STEP";
+		case RESPONSE_CANCEL_JOB_STEP:
+			return "RESPONSE_CANCEL_JOB_STEP";
+		case REQUEST_UPDATE_JOB_STEP:
+			return "REQUEST_UPDATE_JOB_STEP";
+		case DEFUNCT_RESPONSE_COMPLETE_JOB_STEP:
+			return "DEFUNCT_RESPONSE_COMPLETE_JOB_STEP";
+		case REQUEST_CHECKPOINT:
+			return "REQUEST_CHECKPOINT";
+		case RESPONSE_CHECKPOINT:
+			return "RESPONSE_CHECKPOINT";
+		case REQUEST_CHECKPOINT_COMP:
+			return "REQUEST_CHECKPOINT_COMP";
+		case REQUEST_CHECKPOINT_TASK_COMP:
+			return "REQUEST_CHECKPOINT_TASK_COMP";
+		case RESPONSE_CHECKPOINT_COMP:
+			return "RESPONSE_CHECKPOINT_COMP";
+		case REQUEST_SUSPEND:
+			return "REQUEST_SUSPEND";
+		case RESPONSE_SUSPEND:
+			return "RESPONSE_SUSPEND";
+		case REQUEST_STEP_COMPLETE:
+			return "REQUEST_STEP_COMPLETE";
+		case REQUEST_COMPLETE_JOB_ALLOCATION:
+			return "REQUEST_COMPLETE_JOB_ALLOCATION";
+		case REQUEST_COMPLETE_BATCH_SCRIPT:
+			return "REQUEST_COMPLETE_BATCH_SCRIPT";
+		case REQUEST_JOB_STEP_STAT:
+			return "REQUEST_JOB_STEP_STAT";
+		case RESPONSE_JOB_STEP_STAT:
+			return "RESPONSE_JOB_STEP_STAT";
+		case REQUEST_STEP_LAYOUT:
+			return "REQUEST_STEP_LAYOUT";
+		case RESPONSE_STEP_LAYOUT:
+			return "RESPONSE_STEP_LAYOUT";
+		case REQUEST_JOB_REQUEUE:
+			return "REQUEST_JOB_REQUEUE";
+		case REQUEST_DAEMON_STATUS:
+			return "REQUEST_DAEMON_STATUS";
+		case RESPONSE_SLURMD_STATUS:
+			return "RESPONSE_SLURMD_STATUS";
+		case RESPONSE_SLURMCTLD_STATUS:
+			return "RESPONSE_SLURMCTLD_STATUS";
+		case REQUEST_JOB_STEP_PIDS:
+			return "REQUEST_JOB_STEP_PIDS";
+		case RESPONSE_JOB_STEP_PIDS:
+			return "RESPONSE_JOB_STEP_PIDS";
+		case REQUEST_FORWARD_DATA:
+			return "REQUEST_FORWARD_DATA";
+		case REQUEST_COMPLETE_BATCH_JOB:
+			return "REQUEST_COMPLETE_BATCH_JOB";
+		case REQUEST_SUSPEND_INT:
+			return "REQUEST_SUSPEND_INT";
+		case REQUEST_LAUNCH_TASKS:
+			return "REQUEST_LAUNCH_TASKS";
+		case RESPONSE_LAUNCH_TASKS:
+			return "RESPONSE_LAUNCH_TASKS";
+		case MESSAGE_TASK_EXIT:
+			return "MESSAGE_TASK_EXIT";
+		case REQUEST_SIGNAL_TASKS:
+			return "REQUEST_SIGNAL_TASKS";
+		case REQUEST_CHECKPOINT_TASKS:
+			return "REQUEST_CHECKPOINT_TASKS";
+		case REQUEST_TERMINATE_TASKS:
+			return "REQUEST_TERMINATE_TASKS";
+		case REQUEST_REATTACH_TASKS:
+			return "REQUEST_REATTACH_TASKS";
+		case RESPONSE_REATTACH_TASKS:
+			return "RESPONSE_REATTACH_TASKS";
+		case REQUEST_KILL_TIMELIMIT:
+			return "REQUEST_KILL_TIMELIMIT";
+		case REQUEST_SIGNAL_JOB:
+			return "REQUEST_SIGNAL_JOB";
+		case REQUEST_TERMINATE_JOB:
+			return "REQUEST_TERMINATE_JOB";
+		case MESSAGE_EPILOG_COMPLETE:
+			return "MESSAGE_EPILOG_COMPLETE";
+		case REQUEST_ABORT_JOB:
+			return "REQUEST_ABORT_JOB";
+		case REQUEST_FILE_BCAST:
+			return "REQUEST_FILE_BCAST";
+		case TASK_USER_MANAGED_IO_STREAM:
+			return "TASK_USER_MANAGED_IO_STREAM";
+		case REQUEST_KILL_PREEMPTED:
+			return "REQUEST_KILL_PREEMPTED";
+		case REQUEST_LAUNCH_PROLOG:
+			return "REQUEST_LAUNCH_PROLOG";
+		case REQUEST_COMPLETE_PROLOG:
+			return "REQUEST_COMPLETE_PROLOG";
+		case RESPONSE_PROLOG_EXECUTING:
+			return "RESPONSE_PROLOG_EXECUTING";
+		case SRUN_PING:
+			return "SRUN_PING";
+		case SRUN_TIMEOUT:
+			return "SRUN_TIMEOUT";
+		case SRUN_NODE_FAIL:
+			return "SRUN_NODE_FAIL";
+		case SRUN_JOB_COMPLETE:
+			return "SRUN_JOB_COMPLETE";
+		case SRUN_USER_MSG:
+			return "SRUN_USER_MSG";
+		case SRUN_EXEC:
+			return "SRUN_EXEC";
+		case SRUN_STEP_MISSING:
+			return "SRUN_STEP_MISSING";
+		case SRUN_REQUEST_SUSPEND:
+			return "SRUN_REQUEST_SUSPEND";
+		case SRUN_STEP_SIGNAL:
+			return "SRUN_STEP_SIGNAL";
+		case PMI_KVS_PUT_REQ:
+			return "PMI_KVS_PUT_REQ";
+		case PMI_KVS_PUT_RESP:
+			return "PMI_KVS_PUT_RESP";
+		case PMI_KVS_GET_REQ:
+			return "PMI_KVS_GET_REQ";
+		case PMI_KVS_GET_RESP:
+			return "PMI_KVS_GET_RESP";
+		case RESPONSE_SLURM_RC:
+			return "RESPONSE_SLURM_RC";
+		case RESPONSE_SLURM_RC_MSG:
+			return "RESPONSE_SLURM_RC_MSG";
+		case RESPONSE_FORWARD_FAILED:
+			return "RESPONSE_FORWARD_FAILED";
+		case ACCOUNTING_UPDATE_MSG:
+			return "ACCOUNTING_UPDATE_MSG";
+		case ACCOUNTING_FIRST_REG:
+			return "ACCOUNTING_FIRST_REG";
+		case ACCOUNTING_REGISTER_CTLD:
+			return "ACCOUNTING_REGISTER_CTLD";
+		default:
+			(void) snprintf(buf, sizeof(buf), "%u", opcode);
+			return buf;
+	}
 }

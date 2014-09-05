@@ -51,15 +51,18 @@
 #include "src/common/env.h"
 
 
-#define format_task_dist_states(t) (t == SLURM_DIST_BLOCK) ? "block" :   \
-		                 (t == SLURM_DIST_CYCLIC) ? "cyclic" : \
-		                 (t == SLURM_DIST_PLANE) ? "plane" : \
-		                 (t == SLURM_DIST_CYCLIC_CYCLIC) ? "cyclic:cyclic" : \
-		                 (t == SLURM_DIST_CYCLIC_BLOCK) ? "cyclic:block" : \
-		                 (t == SLURM_DIST_BLOCK_CYCLIC) ? "block:cyclic" : \
-		                 (t == SLURM_DIST_BLOCK_BLOCK) ? "block:block" : \
-			         (t == SLURM_DIST_ARBITRARY) ? "arbitrary" : \
-			         "unknown"
+#define format_task_dist_states(t)			\
+(t == SLURM_DIST_BLOCK) ? "block" :			\
+(t == SLURM_DIST_CYCLIC) ? "cyclic" :			\
+(t == SLURM_DIST_PLANE) ? "plane" :			\
+(t == SLURM_DIST_CYCLIC_CYCLIC) ? "cyclic:cyclic" :	\
+(t == SLURM_DIST_CYCLIC_BLOCK) ? "cyclic:block" :	\
+(t == SLURM_DIST_BLOCK_CYCLIC) ? "block:cyclic" :	\
+(t == SLURM_DIST_BLOCK_BLOCK) ? "block:block" :		\
+(t == SLURM_DIST_BLOCK_CFULL) ? "block:fcyclic" :	\
+(t == SLURM_DIST_CYCLIC_CFULL) ? "cyclic:fcyclic" :	\
+(t == SLURM_DIST_ARBITRARY) ? "arbitrary" :		\
+"unknown"
 
 
 /* print this version of SLURM */
@@ -143,7 +146,8 @@ char *print_geometry(const uint16_t *geometry);
 /* Translate a signal option string "--signal=<int>[@<time>]" into
  * it's warn_signal and warn_time components.
  * RET 0 on success, -1 on failure */
-int get_signal_opts(char *optarg, uint16_t *warn_signal, uint16_t *warn_time);
+int get_signal_opts(char *optarg, uint16_t *warn_signal, uint16_t *warn_time,
+		    uint16_t *warn_flags);
 
 /* Convert a signal name to it's numeric equivalent.
  * Return 0 on failure */

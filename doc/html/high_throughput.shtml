@@ -45,6 +45,12 @@ using the ifconfig command. A value of 4096 has been found to work well for one
 site with a very large cluster
 (e.g. <i>"ifconfig <interface> txqueuelen 4096"</i>).</p>
 
+<h2>Munge configuration</h2>
+
+<p>By default the Munge daemon runs with two threads, but a higher thread count
+can improve its throughput. We suggest startint the Munge daemon with ten
+threads for high throughput support (e.g. <i>"munged --num-threads 10"</i>).</p>
+
 <h2>User limits</h2>
 
 <p>The <b>ulimit</b> values in effect for the <b>slurmctld</b> daemon should
@@ -98,6 +104,11 @@ schedules jobs only on a First In First Out (FIFO) basis.</li>
 <li><b>SchedulerParameters</b>:
 Several scheduling parameters are available.
 <ul>
+<li>Setting option <b>batch_sched_delay</b> will control how long the
+scheduling of batch jobs can be delayed. This effects only batch jobs.
+For example, if many jobs are submitted each second, the overhead of
+trying to schedule each one will adversely impact the rate at which jobs
+can be submitted. The default value is 3 seconds.</li>
 <li>Setting option <b>defer</b> will avoid attempting to schedule each job
 individually at job submit time, but defer it until a later time when
 scheduling multiple jobs simultaneously may be possible.
@@ -110,7 +121,7 @@ jobs every time some job completes or another routine action occurs. (NOTE:
 the default value of <b>default_queue_depth</b> should be fine in most
 cases).</li>
 <li>The <i>sched/backfill</i> plugin has relatively high overhead if used with
-large numbers of job. Configuring <b>max_job_bf</b> to a modest size (say 100
+large numbers of job. Configuring <b>bf_max_job_test</b> to a modest size (say 100
 jobs or less) and <b>bf_interval</b> to 30 seconds or more will limit the
 overhead of backfill scheduling (NOTE: the default values are fine for both
 of these parameters). Other backfill options available for tuning backfill 
@@ -158,6 +169,6 @@ not appear to add any measurable overhead.</li>
 appropriate for your environment.</li>
 </ul>
 
-<p style="text-align:center;">Last modified 21 May 2013</p>
+<p style="text-align:center;">Last modified 25 April 2014</p>
 
 <!--#include virtual="footer.txt"-->

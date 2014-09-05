@@ -5,10 +5,11 @@
 <p><b>Slurm User Group Meeting 2014</b><br>
 23-24 September 2014<br>
 Lugano, Switzerland<br>
-Host: Swiss National Supercomputing Centre</p>
-<!--<a href="slurm_ug_cfp.html">Call for Abstracts (Due 24 May)</a><br>-->
-<!--<a href="slurm_ug_agenda.html">Meeting agenda</a><br>-->
-<!--<a href="slurm_ug_registration.html">Registration information</a>--></p>
+Host: <a href="http://cscs.ch/">Swiss National Supercomputing Centre</a></p>
+<!--<a href="slurm_ug_cfp.html">Call for Abstracts: Due 6 June 2014</a><br>-->
+<a href="slurm_ug_agenda.html#agenda">Meeting agenda</a><br>
+<a href="slurm_ug_agenda.html#registration">Meeting registration</a><br>
+<a href="slurm_ug_agenda.html#hotels">Meeting hotels</a><br>
 
 <br>
 <h2>Previous Meetings</h2>
@@ -33,6 +34,6 @@ Host: Bull</p>
 Paris, France<br>
 Host: CEA</p>
 
-<p style="text-align:center;">Last modified 20 September 2013</p>
+<p style="text-align:center;">Last modified 3 July 2014</p>
 
 <!--#include virtual="footer.txt"-->

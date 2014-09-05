@@ -78,6 +78,14 @@
 #  define __list_datatypes_defined
 typedef struct list * List;
 
+/* FreeBSD does not define __compar_fn_t
+ * and rightfully so!
+ */
+#ifndef __COMPAR_FN_T
+# define __COMPAR_FN_T
+typedef int (*__compar_fn_t) (__const void *, __const void *);
+#endif
+
 /*
  *  List opaque data type.
  */
@@ -217,7 +225,7 @@ void list_sort (List l, ListCmpF f);
 /*
  *  Sorts list [l] into ascending order according to the function [f].
  *  Note: Sorting a list resets all iterators associated with the list.
- *  Note: The sort algorithm is stable.
+ *  This function uses the libC qsort() algorithm.
  */
 
 /****************************
@@ -233,18 +241,6 @@ void * list_push (List l, void *x);
 void * list_pop (List l);
 /*
  *  Pops the data item at the top of the stack [l].
- *  Returns the data's ptr, or NULL if the stack is empty.
- */
-
-void * list_pop_top (List l, ListCmpF f);
-/*
- *  Pops the top priority data item from the stack [l].
- *  Returns the data's ptr, or NULL if the stack is empty.
- */
-
-void * list_pop_bottom (List l, ListCmpF f);
-/*
- *  Pops the lowest priority data item from the stack [l].
  *  Returns the data's ptr, or NULL if the stack is empty.
  */
 

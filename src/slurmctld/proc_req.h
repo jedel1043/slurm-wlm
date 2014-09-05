@@ -43,11 +43,19 @@
 
 #include "src/common/slurm_protocol_api.h"
 
+/* Each TCP/IP client connection has a socket
+ * and address with port
+ */
+typedef struct connection_arg {
+	int newsockfd;
+	slurm_addr_t cli_addr;
+} connection_arg_t;
+
 /*
  * slurmctld_req  - Process an individual RPC request
  * IN/OUT msg - the request message, data associated with the message is freed
  */
-void slurmctld_req (slurm_msg_t * msg);
+void slurmctld_req(slurm_msg_t * msg, connection_arg_t *);
 
 /*
  * slurm_drain_nodes - process a request to drain a list of nodes,
@@ -66,11 +74,12 @@ extern int slurm_drain_nodes(char *node_list, char *reason,
  * slurm_fail_job - terminate a job due to a launch failure
  *	no-op for jobs already terminated
  * job_id IN - slurm job id
+ * IN job_state - desired job state (JOB_BOOT_FAIL, JOB_NODE_FAIL, etc.)
  * RET SLURM_SUCCESS or error code
  * NOTE: This is utilzed by plugins and not via RPC and it sets its
  *	own locks.
  */
-extern int slurm_fail_job(uint32_t job_id);
+extern int slurm_fail_job(uint32_t job_id, uint16_t job_state);
 
 /* Copy an array of type char **, xmalloc() the array and xstrdup() the
  * strings in the array */

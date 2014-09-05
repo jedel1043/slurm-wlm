@@ -52,6 +52,7 @@ use English;
 
 my ($start_time,
     $account,
+    $array,
     $err_path,
     $interactive,
     $hold,
@@ -79,6 +80,7 @@ GetOptions('a=s'      => \$start_time,
 	   'I'        => \$interactive,
 	   'j:s'      => sub { warn "option -j is the default, " .
 				    "stdout/stderr go into the same file\n" },
+	   'J=s'      => \$array,
 	   'l=s'      => \$resource_list,
 	   'm=s'      => \$mail_options,
 	   'M=s'      => \$mail_user_list,
@@ -88,6 +90,7 @@ GetOptions('a=s'      => \$start_time,
 	   'q=s'      => \$destination,
 	   'S=s'      => sub { warn "option -S is ignored, " .
 				    "specify shell via #!<shell> in the job script\n" },
+	   't=s'      => \$array,
 	   'v=s'      => \$variable_list,
 	   'V'        => sub { warn "option -V is not necessary, " .
 				    "since the current environment " .
@@ -185,7 +188,7 @@ if($variable_list) {
 	my @parts = $variable_list =~ m/(?:(?<=")[^"]*(?=(?:\s*"\s*,|\s*"\s*$)))|(?<=,)(?:[^",]*(?=(?:\s*,|\s*$)))|(?<=^)(?:[^",]+(?=(?:\s*,|\s*$)))|(?<=^)(?:[^",]*(?=(?:\s*,)))/g;
 	foreach my $part (@parts) {
 		my ($key, $value) = $part =~ /(.*)=(.*)/;
-		if ($key && $value) {
+		if (defined($key) && defined($value)) {
 			$ENV{$key} = $value;
 		}
 	}
@@ -243,6 +246,7 @@ if($res_opts{walltime}) {
 }
 
 $command .= " --account='$group_list'" if $group_list;
+$command .= " --array='$array'" if $array;
 $command .= " --constraint='$res_opts{proc}'" if $res_opts{proc};
 $command .= " --dependency=$depend"   if $depend;
 $command .= " --tmp=$res_opts{file}"  if $res_opts{file};
@@ -291,12 +295,9 @@ if ($interactive) {
 
 	# If available, extract the job ID from the command output and print
 	# it to stdout, as done in the PBS version of qsub.
-	# The "Submitted batch job" header is for backward compatability
-	# with earlier versions of Slurm's qsub wrapper
 	if ($command_exit_status == 0) {
 		my @spcommand_output=split(" ", $command_output[$#command_output]);
 		$job_id= $spcommand_output[$#spcommand_output];
-		print "Submitted batch job ";
 		print "$job_id\n";
 	} else {
 		print("There was an error running the SLURM sbatch command.\n" .
@@ -535,6 +536,10 @@ Specify a new path to receive the standard error output for the job.
 
 Interactive execution.
 
+=item B<-J job_array>
+
+Job array index values. The -J and -t options are equivalent.
+
 =item B<-l resource_list>
 
 Specify an additional list of resources to request for the job.
@@ -562,6 +567,10 @@ Specify the priority under which the job should run.
 =item B<-p priority>
 
 Specify the priority under which the job should run.
+
+=item B<-t job_array>
+
+Job array index values. The -J and -t options are equivalent.
 
 =item B<-v> [variable_list]
 

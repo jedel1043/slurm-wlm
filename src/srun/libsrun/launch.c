@@ -210,14 +210,20 @@ extern int launch_common_create_job_step(srun_job_t *job, bool use_all_cpus,
 	else
 		job->ctx_params.gres = getenv("SLURM_STEP_GRES");
 
-	if (use_all_cpus)
-		job->ctx_params.cpu_count = job->cpu_count;
-	else if (opt.overcommit)
-		job->ctx_params.cpu_count = job->ctx_params.min_nodes;
-	else if (opt.cpus_set)
+	if (opt.overcommit) {
+		if (use_all_cpus)	/* job allocation created by srun */
+			job->ctx_params.cpu_count = job->cpu_count;
+		else
+			job->ctx_params.cpu_count = job->ctx_params.min_nodes;
+	} else if (opt.cpus_set) {
 		job->ctx_params.cpu_count = opt.ntasks * opt.cpus_per_task;
-	else
+	} else if (opt.ntasks_set) {
 		job->ctx_params.cpu_count = opt.ntasks;
+	} else if (use_all_cpus) {	/* job allocation created by srun */
+		job->ctx_params.cpu_count = job->cpu_count;
+	} else {
+		job->ctx_params.cpu_count = opt.ntasks;
+	}
 
 	job->ctx_params.cpu_freq = opt.cpu_freq;
 	job->ctx_params.relative = (uint16_t)opt.relative;
@@ -240,7 +246,11 @@ extern int launch_common_create_job_step(srun_job_t *job, bool use_all_cpus,
 	case SLURM_DIST_CYCLIC_BLOCK:
 	case SLURM_DIST_BLOCK_CYCLIC:
 	case SLURM_DIST_BLOCK_BLOCK:
+	case SLURM_DIST_CYCLIC_CFULL:
+	case SLURM_DIST_BLOCK_CFULL:
 		job->ctx_params.task_dist = opt.distribution;
+		if (opt.ntasks_per_node != NO_VAL)
+			job->ctx_params.plane_size = opt.ntasks_per_node;
 		break;
 	case SLURM_DIST_PLANE:
 		job->ctx_params.task_dist = SLURM_DIST_PLANE;
@@ -250,6 +260,8 @@ extern int launch_common_create_job_step(srun_job_t *job, bool use_all_cpus,
 		job->ctx_params.task_dist = (job->ctx_params.task_count <=
 					     job->ctx_params.min_nodes)
 			? SLURM_DIST_CYCLIC : SLURM_DIST_BLOCK;
+		if (opt.ntasks_per_node != NO_VAL)
+			job->ctx_params.plane_size = opt.ntasks_per_node;
 		opt.distribution = job->ctx_params.task_dist;
 		break;
 

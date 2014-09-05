@@ -94,10 +94,10 @@
 /*
  * Static prototype definitions.
  */
-static void  _make_tmpdir(slurmd_job_t *job);
+static void  _make_tmpdir(stepd_step_rec_t *job);
 static int   _run_script_and_set_env(const char *name, const char *path,
-				     slurmd_job_t *job);
-static void  _proc_stdout(char *buf, char ***env);
+				     stepd_step_rec_t *job);
+static void  _proc_stdout(char *buf, stepd_step_rec_t *job);
 static char *_uint32_array_to_str(int array_len, const uint32_t *array);
 
 /*
@@ -106,12 +106,13 @@ static char *_uint32_array_to_str(int array_len, const uint32_t *array);
  * "unset  NAME"	clears an environment variable
  * "print  <whatever>"	writes that to the job's stdout
  */
-static void _proc_stdout(char *buf, char ***env)
+static void _proc_stdout(char *buf, stepd_step_rec_t *job)
 {
 	bool end_buf = false;
 	int len;
 	char *buf_ptr, *name_ptr, *val_ptr;
 	char *end_line, *equal_ptr;
+	char ***env = &job->env;
 
 	buf_ptr = buf;
 	while (buf_ptr[0]) {
@@ -138,6 +139,16 @@ static void _proc_stdout(char *buf, char ***env)
 				equal_ptr--;
 			equal_ptr[0] = '\0';
 			end_line[0] = '\0';
+			if (!strcmp(name_ptr, "SLURM_PROLOG_CPU_MASK")) {
+				job->cpu_bind_type = CPU_BIND_MASK;
+				xfree(job->cpu_bind);
+				job->cpu_bind = xstrdup(val_ptr);
+				if (task_g_pre_launch(job)) {
+					error("Failed SLURM_PROLOG_CPU_MASK "
+					      "setup");
+					exit(1);
+				}
+			}
 			debug("export name:%s:val:%s:", name_ptr, val_ptr);
 			if (setenvf(env, name_ptr, "%s", val_ptr)) {
 				error("Unable to set %s environment variable",
@@ -184,12 +195,14 @@ rwfail:		 /* process rest of script output */
  * RET 0 on success, -1 on failure.
  */
 static int
-_run_script_and_set_env(const char *name, const char *path, slurmd_job_t *job)
+_run_script_and_set_env(const char *name, const char *path,
+			stepd_step_rec_t *job)
 {
-	int status, rc, nread;
+	int status, rc;
 	pid_t cpid;
-	int pfd[2], offset = 0;
+	int pfd[2];
 	char buf[4096];
+	FILE *f;
 
 	xassert(job->env);
 	if (path == NULL || path[0] == '\0')
@@ -227,18 +240,24 @@ _run_script_and_set_env(const char *name, const char *path, slurmd_job_t *job)
 		setpgrp();
 #endif
 		execve(path, argv, job->env);
-		error("execve(): %m");
+		error("execve(%s): %m", path);
 		exit(127);
 	}
 
 	close(pfd[1]);
-	buf[0] = '\0';
-	while ((nread = read(pfd[0], buf+offset, (sizeof(buf)-offset))) > 0)
-		offset += nread;
-	/* debug ("read %d:%s:", offset, buf); */
-	_proc_stdout(buf, &job->env);
+	f = fdopen(pfd[0], "r");
+	if (f == NULL) {
+		error("Cannot open pipe device");
+		log_fini();
+		exit(1);
+	}
+	while (feof(f) == 0) {
+		if (fgets(buf, sizeof(buf) - 1, f) != NULL) {
+			_proc_stdout(buf, job);
+		}
+	}
+	fclose(f);
 
-	close(pfd[0]);
 	while (1) {
 		rc = waitpid(cpid, &status, 0);
 		if (rc < 0) {
@@ -309,7 +328,7 @@ _build_path(char* fname, char **prog_env)
 }
 
 static int
-_setup_mpi(slurmd_job_t *job, int ltaskid)
+_setup_mpi(stepd_step_rec_t *job, int ltaskid)
 {
 	mpi_plugin_task_info_t info[1];
 
@@ -332,11 +351,11 @@ _setup_mpi(slurmd_job_t *job, int ltaskid)
  *  Current process is running as the user when this is called.
  */
 void
-exec_task(slurmd_job_t *job, int i)
+exec_task(stepd_step_rec_t *job, int i)
 {
 	uint32_t *gtids;		/* pointer to arrary of ranks */
 	int fd, j;
-	slurmd_task_info_t *task = job->task[i];
+	stepd_step_task_info_t *task = job->task[i];
 	char **tmp_env;
 
 	if (i == 0)
@@ -364,6 +383,8 @@ exec_task(slurmd_job_t *job, int i)
 	job->envtp->distribution = -1;
 	job->envtp->ckpt_dir = xstrdup(job->ckpt_dir);
 	job->envtp->batch_flag = job->batch;
+	job->envtp->uid = job->uid;
+	job->envtp->user_name = xstrdup(job->user_name);
 
 	/* Modify copy of job's environment. Do not alter in place or
 	 * concurrent searches of the environment can generate invalid memory
@@ -389,9 +410,9 @@ exec_task(slurmd_job_t *job, int i)
 	}
 
 	if (!job->batch) {
-		if (interconnect_attach(job->switch_job, &job->env,
-				job->nodeid, (uint32_t) i, job->nnodes,
-				job->ntasks, task->gtid) < 0) {
+		if (switch_g_job_attach(job->switch_job, &job->env,
+					job->nodeid, (uint32_t) i, job->nnodes,
+					job->ntasks, task->gtid) < 0) {
 			error("Unable to attach to interconnect: %m");
 			log_fini();
 			exit(1);
@@ -412,7 +433,7 @@ exec_task(slurmd_job_t *job, int i)
 	}
 
 	/* task plugin hook */
-	if (pre_launch(job)) {
+	if (task_g_pre_launch(job)) {
 		error ("Failed task affinity setup");
 		exit (1);
 	}
@@ -486,7 +507,7 @@ exec_task(slurmd_job_t *job, int i)
 }
 
 static void
-_make_tmpdir(slurmd_job_t *job)
+_make_tmpdir(stepd_step_rec_t *job)
 {
 	char *tmpdir;
 

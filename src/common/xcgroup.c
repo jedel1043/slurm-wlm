@@ -405,6 +405,9 @@ int xcgroup_lock(xcgroup_t* cg)
 {
 	int fstatus = XCGROUP_ERROR;
 
+	if (cg->path == NULL)
+		return fstatus;
+
 	if ((cg->fd = open(cg->path, O_RDONLY)) < 0) {
 		debug2("xcgroup_lock: error from open of cgroup '%s' : %m",
 		       cg->path);
@@ -560,18 +563,19 @@ static int cgroup_procs_writable (xcgroup_t *cg)
 	return (rc);
 }
 
-// This call is not intended to be used to move thread pids
+/*This call is not intended to be used to move thread pids
+ */
 int xcgroup_add_pids(xcgroup_t* cg, pid_t* pids, int npids)
 {
 	int fstatus = XCGROUP_ERROR;
 	char* path = NULL;
-	
+
 	// If possible use cgroup.procs to add the processes atomically
 	if (cgroup_procs_writable (cg))
 		xstrfmtcat (path, "%s/%s", cg->path, "cgroup.procs");
 	else
 		xstrfmtcat (path, "%s/%s", cg->path, "tasks");
-	
+
 	fstatus = _file_write_uint32s(path, (uint32_t*)pids, npids);
 	if (fstatus != XCGROUP_SUCCESS)
 		debug2("unable to add pids to '%s'", cg->path);
@@ -580,20 +584,21 @@ int xcgroup_add_pids(xcgroup_t* cg, pid_t* pids, int npids)
 	return fstatus;
 }
 
-// This call is not intended to be used to get thread pids
+/* This call is not intended to be used to get thread pids
+ */
 int xcgroup_get_pids(xcgroup_t* cg, pid_t **pids, int *npids)
 {
 	int fstatus = XCGROUP_ERROR;
 	char* path = NULL;
-	
+
 	if (pids == NULL || npids == NULL)
 		return SLURM_ERROR;
-	
+
 	if (cgroup_procs_readable (cg))
 		xstrfmtcat (path, "%s/%s", cg->path, "cgroup.procs");
 	else
 		xstrfmtcat (path, "%s/%s", cg->path, "tasks");
-	
+
 	fstatus = _file_read_uint32s(path, (uint32_t**)pids, npids);
 	if (fstatus != XCGROUP_SUCCESS)
 		debug2("unable to get pids of '%s'", cg->path);

@@ -187,6 +187,12 @@ static int _set_rec(int *start, int argc, char *argv[],
 				if (*classification)
 					set = 1;
 			}
+		} else if (!strncasecmp(argv[i], "GrpCPURunMins",
+					 MAX(command_len, 7))) {
+			exit_code=1;
+			fprintf(stderr, "GrpCPURunMins is not a valid option "
+				"for the root association of a cluster.\n");
+			break;
 		} else if (!strncasecmp(argv[i], "GrpCPUMins",
 					 MAX(command_len, 7))) {
 			exit_code=1;
@@ -1108,11 +1114,11 @@ extern int sacctmgr_dump_cluster (int argc, char *argv[])
 	if (fprintf(fd,
 		    "# To edit this file start with a cluster line "
 		    "for the new cluster\n"
-		    "# Cluster - cluster_name:MaxNodesPerJob=50\n"
+		    "# Cluster - 'cluster_name':MaxNodesPerJob=50\n"
 		    "# Followed by Accounts you want in this fashion "
 		    "(root is created by default)...\n"
-		    "# Parent - root\n"
-		    "# Account - cs:MaxNodesPerJob=5:MaxJobs=4:"
+		    "# Parent - 'root'\n"
+		    "# Account - 'cs':MaxNodesPerJob=5:MaxJobs=4:"
 		    "MaxProcSecondsPerJob=20:FairShare=399:"
 		    "MaxWallDurationPerJob=40:Description='Computer Science':"
 		    "Organization='LC'\n"
@@ -1122,14 +1128,14 @@ extern int sacctmgr_dump_cluster (int argc, char *argv[])
 		    "Parent THAT HAS ALREADY \n"
 		    "# BEEN CREATED before the account line in this "
 		    "fashion...\n"
-		    "# Parent - cs\n"
-		    "# Account - test:MaxNodesPerJob=1:MaxJobs=1:"
+		    "# Parent - 'cs'\n"
+		    "# Account - 'test':MaxNodesPerJob=1:MaxJobs=1:"
 		    "MaxProcSecondsPerJob=1:FairShare=1:"
 		    "MaxWallDurationPerJob=1:"
 		    "Description='Test Account':Organization='Test'\n"
 		    "# To add users to a account add a line like this after a "
-		    "Parent - line\n"
-		    "# User - lipari:MaxNodesPerJob=2:MaxJobs=3:"
+		    "Parent - 'line'\n"
+		    "# User - 'lipari':MaxNodesPerJob=2:MaxJobs=3:"
 		    "MaxProcSecondsPerJob=4:FairShare=1:"
 		    "MaxWallDurationPerJob=1\n") < 0) {
 		exit_code = 1;
@@ -1142,10 +1148,10 @@ extern int sacctmgr_dump_cluster (int argc, char *argv[])
 		return SLURM_ERROR;
 	}
 
-	line = xstrdup_printf("Cluster - %s", cluster_name);
+	line = xstrdup_printf("Cluster - '%s'", cluster_name);
 
 	if (class_str)
-		xstrfmtcat(line, ":Classification=%s", class_str);
+		xstrfmtcat(line, ":Classification='%s'", class_str);
 
 	slurmdb_hierarchical_rec = list_peek(slurmdb_hierarchical_rec_list);
 	assoc = slurmdb_hierarchical_rec->assoc;

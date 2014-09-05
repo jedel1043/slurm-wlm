@@ -87,7 +87,7 @@
 #include "src/common/uid.h"
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
-
+#include "src/common/util-net.h"
 #include "src/salloc/salloc.h"
 #include "src/salloc/opt.h"
 
@@ -116,6 +116,7 @@
 #define OPT_KILL_CMD    0x16
 #define OPT_TIME_VAL	0x17
 #define OPT_PROFILE     0x18
+#define OPT_CORE_SPEC   0x19
 
 /* generic getopt_long flags, integers and *not* valid characters */
 #define LONG_OPT_CPU_BIND    0x101
@@ -166,6 +167,8 @@
 #define LONG_OPT_WAIT_ALL_NODES  0x142
 #define LONG_OPT_REQ_SWITCH      0x143
 #define LONG_OPT_PROFILE         0x144
+#define LONG_OPT_PRIORITY        0x160
+
 
 /*---- global variables, defined in opt.h ----*/
 opt_t opt;
@@ -302,6 +305,7 @@ static void _opt_default()
 	opt.cpu_bind = NULL;
 	opt.mem_bind_type = 0;
 	opt.mem_bind = NULL;
+	opt.core_spec = 0;
 	opt.time_limit = NO_VAL;
 	opt.time_limit_str = NULL;
 	opt.time_min = NO_VAL;
@@ -329,6 +333,7 @@ static void _opt_default()
 
 	opt.quiet = 0;
 	opt.verbose = 0;
+	opt.warn_flags  = 0;
 	opt.warn_signal = 0;
 	opt.warn_time   = 0;
 
@@ -365,6 +370,9 @@ static void _opt_default()
 	opt.wckey           = NULL;
 	opt.req_switch      = -1;
 	opt.wait4switch     = -1;
+
+	opt.nice = 0;
+	opt.priority = 0;
 }
 
 /*---[ env var processing ]-----------------------------------------------*/
@@ -390,6 +398,7 @@ env_vars_t env_vars[] = {
   {"SALLOC_ACCTG_FREQ",    OPT_STRING,     &opt.acctg_freq,    NULL          },
   {"SALLOC_BELL",          OPT_BELL,       NULL,               NULL          },
   {"SALLOC_CONN_TYPE",     OPT_CONN_TYPE,  NULL,               NULL          },
+  {"SALLOC_CORE_SPEC",     OPT_INT,        &opt.core_spec,     NULL          },
   {"SALLOC_CPU_BIND",      OPT_CPU_BIND,   NULL,               NULL          },
   {"SALLOC_DEBUG",         OPT_DEBUG,      NULL,               NULL          },
   {"SALLOC_EXCLUSIVE",     OPT_EXCLUSIVE,  NULL,               NULL          },
@@ -550,7 +559,7 @@ _process_env_var(env_vars_t *e, const char *val)
 		break;
 	case OPT_SIGNAL:
 		if (get_signal_opts((char *)val, &opt.warn_signal,
-				    &opt.warn_time)) {
+				    &opt.warn_time, &opt.warn_flags)) {
 			error("Invalid signal specification: %s", val);
 			exit(error_exit);
 		}
@@ -631,6 +640,7 @@ void set_options(const int argc, char **argv)
 		{"quiet",         no_argument,       0, 'Q'},
 		{"no-rotate",     no_argument,       0, 'R'},
 		{"share",         no_argument,       0, 's'},
+		{"core-spec",     required_argument, 0, 'S'},
 		{"time",          required_argument, 0, 't'},
 		{"usage",         no_argument,       0, 'u'},
 		{"verbose",       no_argument,       0, 'v'},
@@ -668,6 +678,7 @@ void set_options(const int argc, char **argv)
 		{"mloader-image", required_argument, 0, LONG_OPT_MLOADER_IMAGE},
 		{"network",       required_argument, 0, LONG_OPT_NETWORK},
 		{"nice",          optional_argument, 0, LONG_OPT_NICE},
+		{"priority",      required_argument, 0, LONG_OPT_PRIORITY},
 		{"no-bell",       no_argument,       0, LONG_OPT_NO_BELL},
 		{"no-shell",      no_argument,       0, LONG_OPT_NOSHELL},
 		{"ntasks-per-core",  required_argument, 0, LONG_OPT_NTASKSPERCORE},
@@ -691,7 +702,7 @@ void set_options(const int argc, char **argv)
 		{NULL,            0,                 0, 0}
 	};
 	char *opt_string =
-		"+A:B:c:C:d:D:F:g:hHIJ:kK::L:m:n:N:Op:P:QRst:uU:vVw:W:x:";
+		"+A:B:c:C:d:D:F:g:hHIJ:kK::L:m:n:N:Op:P:QRsS:t:uU:vVw:W:x:";
 	char *pos_delimit;
 
 	struct option *optz = spank_option_table_create(long_options);
@@ -745,7 +756,10 @@ void set_options(const int argc, char **argv)
 			break;
 		case 'D':
 			xfree(opt.cwd);
-			opt.cwd = xstrdup(optarg);
+			if (is_full_path(optarg))
+				opt.cwd = xstrdup(optarg);
+			else
+				opt.cwd = make_full_path(optarg);
 			break;
 		case 'F':
 			xfree(opt.nodelist);
@@ -839,6 +853,9 @@ void set_options(const int argc, char **argv)
 			break;
 		case 's':
 			opt.shared = 1;
+			break;
+		case 'S':
+			opt.core_spec = _get_int(optarg, "core_spec");
 			break;
 		case 't':
 			xfree(opt.time_limit_str);
@@ -1007,6 +1024,19 @@ void set_options(const int argc, char **argv)
 				}
 			}
 			break;
+		case LONG_OPT_PRIORITY: {
+			long long priority = strtoll(optarg, NULL, 10);
+			if (priority < 0) {
+				error("Priority must be >= 0");
+				exit(error_exit);
+			}
+			if (priority >= NO_VAL) {
+				error("Priority must be < %i", NO_VAL);
+				exit(error_exit);
+			}
+			opt.priority = priority;
+			break;
+		}
 		case LONG_OPT_BELL:
 			opt.bell = BELL_ALWAYS;
 			break;
@@ -1140,7 +1170,7 @@ void set_options(const int argc, char **argv)
 			break;
 		case LONG_OPT_SIGNAL:
 			if (get_signal_opts(optarg, &opt.warn_signal,
-					    &opt.warn_time)) {
+					    &opt.warn_time, &opt.warn_flags)) {
 				error("Invalid signal specification: %s",
 				      optarg);
 				exit(error_exit);
@@ -1219,8 +1249,11 @@ static void _opt_args(int argc, char **argv)
 			command_argc++;
 	}
 	command_argv = (char **) xmalloc((command_argc + 1) * sizeof(char *));
-	for (i = 0; i < command_argc; i++)
+	for (i = 0; i < command_argc; i++) {
+		if ((i == 0) && (rest == NULL))
+			break;	/* Fix for CLANG false positive */
 		command_argv[i] = xstrdup(rest[i]);
+	}
 	command_argv[i] = NULL;	/* End of argv's (for possible execv) */
 
 	if (!_opt_verify())
@@ -1327,7 +1360,7 @@ static bool _opt_verify(void)
 		verified = false;
 	}
 
-#if defined(HAVE_CRAY)
+#if defined(HAVE_ALPS_CRAY)
 	if (getenv("BASIL_RESERVATION_ID") != NULL) {
 		error("BASIL_RESERVATION_ID already set - running salloc "
 		      "within salloc?");
@@ -1551,6 +1584,13 @@ static bool _opt_verify(void)
 #ifdef HAVE_AIX
 	if (opt.network == NULL)
 		opt.network = "us,sn_all,bulk_xfer";
+#endif
+
+#ifdef HAVE_NATIVE_CRAY
+	if (opt.network && opt.shared)
+		fatal("Requesting network performance counters requires "
+		      "exclusive access.  Please add the --exclusive option "
+		      "to your request.");
 #endif
 
 	if (slurm_verify_cpu_bind(NULL, &opt.cpu_bind,
@@ -1825,6 +1865,7 @@ static void _opt_list(void)
 	info("user command   : `%s'", str);
 	info("switches          : %d", opt.req_switch);
 	info("wait-for-switches : %d", opt.wait4switch);
+	info("core-spec         : %d", opt.core_spec);
 	xfree(str);
 
 }
@@ -1861,6 +1902,7 @@ static void _usage(void)
 "              [--cpu_bind=...] [--mem_bind=...] [--reservation=name]\n"
 "              [--time-min=minutes] [--gres=list] [--profile=...]\n"
 "              [--switches=max-switches[@max-time-to-wait]]\n"
+"              [--core-spec=cores]\n"
 "              [executable [args...]]\n");
 }
 
@@ -1900,6 +1942,7 @@ static void _help(void)
 "      --ntasks-per-node=n     number of tasks to invoke on each node\n"
 "  -N, --nodes=N               number of nodes on which to run (N = min[-max])\n"
 "  -O, --overcommit            overcommit resources\n"
+"      --priority=value        set the priority of the job to value\n"
 "      --profile=value         enable acct_gather_profile for detailed data\n"
 "                              value is all or none or any combination of\n"
 "                              energy, lustre, network or task\n"
@@ -1907,19 +1950,22 @@ static void _help(void)
 "      --qos=qos               quality of service\n"
 "  -Q, --quiet                 quiet mode (suppress informational messages)\n"
 "  -s, --share                 share nodes with other jobs\n"
+"      --signal=[B:]num[@time] send signal when time limit within time seconds\n"
+"      --switches=max-switches{@max-time-to-wait}\n"
+"                              Optimum switches and max time to wait for optimum\n"
+"  -S, --core-spec=cores       count of reserved cores\n"
 "  -t, --time=minutes          time limit\n"
 "      --time-min=minutes      minimum time limit (if distinct)\n"
 "      --uid=user_id           user ID to run job as (user root only)\n"
 "  -v, --verbose               verbose mode (multiple -v's increase verbosity)\n"
-"      --switches=max-switches{@max-time-to-wait}\n"
-"                              Optimum switches and max time to wait for optimum\n"
 "\n"
 "Constraint options:\n"
 "      --contiguous            demand a contiguous range of nodes\n"
 "  -C, --constraint=list       specify a list of constraints\n"
 "  -F, --nodefile=filename     request a specific list of hosts\n"
 "      --mem=MB                minimum amount of real memory\n"
-"      --mincpus=n             minimum number of logical processors (threads) per node\n"
+"      --mincpus=n             minimum number of logical processors (threads)\n"
+"                              per node\n"
 "      --reservation=name      allocate resources from named reservation\n"
 "      --tmp=MB                minimum amount of temporary disk\n"
 "  -w, --nodelist=hosts...     request a specific list of hosts\n"
@@ -1961,6 +2007,12 @@ static void _help(void)
 #ifdef HAVE_AIX				/* AIX/Federation specific options */
 "AIX related options:\n"
 "      --network=type          communication protocol to be used\n"
+"\n"
+#endif
+#ifdef HAVE_NATIVE_CRAY			/* Native Cray specific options */
+"Cray related options:\n"
+"      --network=type          Use network performace counters\n"
+"                              (system, network, or processor)\n"
 "\n"
 #endif
 #ifdef HAVE_BG				/* Blue gene specific options */

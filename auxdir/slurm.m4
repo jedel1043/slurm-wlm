@@ -66,9 +66,9 @@ AC_DEFUN([X_AC_SLURM_PORTS],
                      [Define the default port count for slurmctld])
   AC_SUBST(SLURMCTLD_PORT_COUNT)
 
-  AC_MSG_CHECKING([for dynamic allocation port to be enabled])
+  AC_MSG_CHECKING([for dynamic allocation port to be enabled for Hadoop])
   AC_ARG_ENABLE([dynamic-allocation],
-    AS_HELP_STRING([--enable-dynamic-allocation, enable dynamic allocation requests from user programs ([disabled])]))
+    AS_HELP_STRING([--enable-dynamic-allocation, enable dynamic allocation requests from user programs for Hadoop ([disabled])]))
   if test "$enable_dynamic_allocation" = "yes"; then
     AC_MSG_RESULT([yes])
     slurm_enable_dynamic_allocation="yes"
@@ -182,7 +182,7 @@ done
 SLURM_API_MAJOR=`expr $SLURM_API_CURRENT - $SLURM_API_AGE`
 SLURM_API_VERSION=`printf "0x%02x%02x%02x" $SLURM_API_MAJOR $SLURM_API_AGE $SLURM_API_REVISION`
 
-AC_DEFINE_UNQUOTED(SLURM_API_VERSION, $SLURM_API_VERSION, [Define the API's version])
+AC_DEFINE_UNQUOTED(SLURM_API_VERSION,  $SLURM_API_VERSION,  [Define the API's version])
 AC_DEFINE_UNQUOTED(SLURM_API_CURRENT,  $SLURM_API_CURRENT,  [API current version])
 AC_DEFINE_UNQUOTED(SLURM_API_MAJOR,    $SLURM_API_MAJOR,    [API current major])
 AC_DEFINE_UNQUOTED(SLURM_API_AGE,      $SLURM_API_AGE,      [API current age])
@@ -195,6 +195,8 @@ AC_SUBST(SLURM_API_REVISION)
 
 # rpm make target needs Version in META, not major and minor version numbers
 VERSION="`perl -ne 'print,exit if s/^\s*VERSION:\s*(\S*).*/\1/i' $srcdir/META`"
+# If you ever use AM_INIT_AUTOMAKE(subdir-objects) do not define VERSION
+# since it will do it this automatically
 AC_DEFINE_UNQUOTED(VERSION, "$VERSION", [Define the project's version.])
 AC_SUBST(VERSION)
 
@@ -233,6 +235,7 @@ AC_DEFINE_UNQUOTED(SLURM_MICRO, "$SLURM_MICRO",
 AC_DEFINE_UNQUOTED(RELEASE, "$RELEASE", [Define the project's release.])
 AC_DEFINE_UNQUOTED(SLURM_VERSION_STRING, "$SLURM_VERSION_STRING",
                    [Define the project's version string.])
+
 AC_SUBST(SLURM_MAJOR)
 AC_SUBST(SLURM_MINOR)
 AC_SUBST(SLURM_MICRO)

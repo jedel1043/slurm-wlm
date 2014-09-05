@@ -106,12 +106,12 @@
  */
 const char	plugin_name[]		= "Gres GPU plugin";
 const char	plugin_type[]		= "gres/gpu";
-const uint32_t	plugin_version		= 110;
+const uint32_t	plugin_version		= 120;
 
 static char	gres_name[]		= "gpu";
 
 static int *gpu_devices = NULL;
-static int nb_available_files;
+static int nb_available_files = 0;
 
 extern int init(void)
 {
@@ -123,6 +123,7 @@ extern int fini(void)
 {
 	debug("%s: unloading %s", __func__, plugin_name);
 	xfree(gpu_devices);
+	nb_available_files = 0;
 
 	return SLURM_SUCCESS;
 }
@@ -148,11 +149,10 @@ extern int node_config_load(List gres_conf_list)
 			nb_gpu++;
 	}
 	list_iterator_destroy(iter);
-	gpu_devices = NULL;
+	xfree(gpu_devices);	/* No-op if NULL */
 	nb_available_files = -1;
 	/* (Re-)Allocate memory if number of files changed */
 	if (nb_gpu > nb_available_files) {
-		xfree(gpu_devices);	/* No-op if NULL */
 		gpu_devices = (int *) xmalloc(sizeof(int) * nb_gpu);
 		nb_available_files = nb_gpu;
 		for (i = 0; i < nb_available_files; i++)
@@ -232,7 +232,8 @@ extern void job_set_env(char ***job_env_ptr, void *gres_ptr)
 				dev_list = xmalloc(128);
 			else
 				xstrcat(dev_list, ",");
-			if (gpu_devices && (gpu_devices[i] >= 0))
+			if (gpu_devices && (i < nb_available_files) &&
+			    (gpu_devices[i] >= 0))
 				xstrfmtcat(dev_list, "%d", gpu_devices[i]);
 			else
 				xstrfmtcat(dev_list, "%d", i);
@@ -277,7 +278,8 @@ extern void step_set_env(char ***job_env_ptr, void *gres_ptr)
 				dev_list = xmalloc(128);
 			else
 				xstrcat(dev_list, ",");
-			if (gpu_devices && (gpu_devices[i] >= 0))
+			if (gpu_devices && (i < nb_available_files) &&
+			    (gpu_devices[i] >= 0))
 				xstrfmtcat(dev_list, "%d", gpu_devices[i]);
 			else
 				xstrfmtcat(dev_list, "%d", i);
@@ -319,11 +321,25 @@ extern void recv_stepd(int fd)
 	int i;
 
 	safe_read(fd, &nb_available_files, sizeof(int));
-	if (nb_available_files > 0)
+	if (nb_available_files > 0) {
+		xfree(gpu_devices);	/* No-op if NULL */
 		gpu_devices = xmalloc(sizeof(int) * nb_available_files);
+	}
 	for (i = 0; i < nb_available_files; i++)
 		safe_read(fd, &gpu_devices[i], sizeof(int));
 	return;
 
 rwfail:	error("gres_plugin_recv_stepd failed");
+}
+
+extern int job_info(gres_job_state_t *job_gres_data, uint32_t node_inx,
+		     enum gres_job_data_type data_type, void *data)
+{
+	return EINVAL;
+}
+
+extern int step_info(gres_step_state_t *step_gres_data, uint32_t node_inx,
+		     enum gres_step_data_type data_type, void *data)
+{
+	return EINVAL;
 }

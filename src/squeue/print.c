@@ -3,6 +3,7 @@
  *****************************************************************************
  *  Copyright (C) 2002-2007 The Regents of the University of California.
  *  Copyright (C) 2008-2010 Lawrence Livermore National Security.
+ *  Copyright (C) 2010-2013 SchedMD LLC.
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
  *  Written by Joey Ekstrom <ekstrom1@llnl.gov>, et. al.
  *  CODE-OCEC-09-009. All rights reserved.
@@ -152,24 +153,27 @@ static bool _merge_job_array(List l, job_info_t * job_ptr)
 
 	if (params.array_flag)
 		return merge;
-	if (job_ptr->array_task_id == (uint16_t) NO_VAL)
+	if (job_ptr->array_task_id == NO_VAL)
 		return merge;
-	if (!IS_JOB_PENDING(job_ptr))
+	if (job_ptr->job_state != JOB_PENDING)	/* Don't merge SPECIAL_EXIT */
 		return merge;
+
 	xfree(job_ptr->node_inx);
 	if (!l)
 		return merge;
 
 	iter = list_iterator_create(l);
 	while ((list_job_ptr = list_next(iter))) {
-		if ((list_job_ptr->array_task_id == (uint16_t) NO_VAL) ||
-		    (job_ptr->array_job_id != list_job_ptr->array_job_id) ||
-		    (!IS_JOB_PENDING(list_job_ptr)))
+
+		if ((list_job_ptr->array_task_id ==  NO_VAL)
+		    || (job_ptr->array_job_id != list_job_ptr->array_job_id)
+		    || (list_job_ptr->job_state != JOB_PENDING))
 			continue;
+
 		/* We re-purpose the job's node_inx array to store the
 		 * array_task_id values */
 		if (!list_job_ptr->node_inx) {
-			list_job_ptr->node_inx = xmalloc(sizeof(int) * 0xffff);
+			list_job_ptr->node_inx = xmalloc(sizeof(int32_t) * 0xffff);
 			list_job_ptr->node_inx[0] = 1;		/* offset */
 			list_job_ptr->node_inx[1] =
 				list_job_ptr->array_task_id;
@@ -334,14 +338,15 @@ job_format_add_function(List list, int width, bool right, char *suffix,
 int _print_job_array_job_id(job_info_t * job, int width, bool right,
 			    char* suffix)
 {
+	char id[FORMAT_STRING_SIZE];
 	if (job == NULL) {	/* Print the Header instead */
 		_print_str("ARRAY_JOB_ID", width, right, true);
-	} else if (job->array_task_id != (uint16_t) NO_VAL) {
-		char id[FORMAT_STRING_SIZE];
+	} else if (job->array_task_id != NO_VAL) {
 		snprintf(id, FORMAT_STRING_SIZE, "%u", job->array_job_id);
 		_print_str(id, width, right, true);
 	} else {
-		_print_str("N/A", width, right, true);
+		snprintf(id, FORMAT_STRING_SIZE, "%u", job->job_id);
+		_print_str(id, width, right, true);
 	}
 	if (suffix)
 		printf("%s", suffix);
@@ -353,7 +358,7 @@ int _print_job_array_task_id(job_info_t * job, int width, bool right,
 {
 	if (job == NULL) {	/* Print the Header instead */
 		_print_str("ARRAY_TASK_ID", width, right, true);
-	} else if (job->array_task_id != (uint16_t) NO_VAL) {
+	} else if (job->array_task_id != NO_VAL) {
 		char id[FORMAT_STRING_SIZE];
 		snprintf(id, FORMAT_STRING_SIZE, "%u", job->array_task_id);
 		_print_str(id, width, right, true);
@@ -381,16 +386,29 @@ int _print_job_batch_host(job_info_t * job, int width, bool right, char* suffix)
 	return SLURM_SUCCESS;
 }
 
+int _print_job_core_spec(job_info_t * job, int width, bool right, char* suffix)
+{
+	if (job == NULL) 	/* Print the Header instead */
+		_print_str("CORE_SPEC", width, right, true);
+	else
+		_print_int(job->core_spec, width, right, true);
+	return SLURM_SUCCESS;
+}
+
 int _print_job_job_id(job_info_t * job, int width, bool right, char* suffix)
 {
 	if (job == NULL) {	/* Print the Header instead */
 		_print_str("JOBID", width, right, true);
-	} else if ((job->array_task_id != (uint16_t) NO_VAL) &&
-		   !params.array_flag && IS_JOB_PENDING(job)  &&
-		   job->node_inx) {
-		int i, local_width = width;
-		char *id = NULL, *task_str = NULL;
-		bitstr_t *task_bits = bit_alloc(0xffff);
+	} else if ((job->array_task_id != NO_VAL)
+		   && !params.array_flag
+		   && (job->job_state == JOB_PENDING)
+		   && job->node_inx) {
+		uint32_t i, local_width = width, max_task_id = 0;
+		char *id, *task_str;
+		bitstr_t *task_bits;
+		for (i = 1; i <= job->node_inx[0]; i++)
+			max_task_id = MAX(max_task_id, job->node_inx[i]);
+		task_bits = bit_alloc(max_task_id + 1);
 		for (i = 1; i <= job->node_inx[0]; i++)
 			bit_set(task_bits, job->node_inx[i]);
 		if (local_width == 0) {
@@ -406,7 +424,7 @@ int _print_job_job_id(job_info_t * job, int width, bool right, char* suffix)
 		bit_free(task_bits);
 		xfree(id);
 		xfree(task_str);
-	} else if (job->array_task_id != (uint16_t) NO_VAL) {
+	} else if (job->array_task_id != NO_VAL) {
 		char id[FORMAT_STRING_SIZE];
 		snprintf(id, FORMAT_STRING_SIZE, "%u_%u",
 			 job->array_job_id, job->array_task_id);
@@ -665,6 +683,18 @@ long job_time_used(job_info_t * job_ptr)
 		return (long) (difftime(end_time, job_ptr->suspend_time)
 				+ job_ptr->pre_sus_time);
 	return (long) (difftime(end_time, job_ptr->start_time));
+}
+
+int _print_job_time_submit(job_info_t * job, int width, bool right,
+                          char* suffix)
+{
+        if (job == NULL)        /* Print the Header instead */
+                _print_str("SUBMIT_TIME", width, right, true);
+        else
+                _print_time(job->submit_time, 0, width, right);
+        if (suffix)
+                printf("%s", suffix);
+        return SLURM_SUCCESS;
 }
 
 int _print_job_time_start(job_info_t * job, int width, bool right,
@@ -1262,6 +1292,46 @@ int _print_job_reservation(job_info_t * job, int width, bool right_justify,
 	return SLURM_SUCCESS;
 }
 
+int _print_job_command(job_info_t * job, int width, bool right_justify,
+			char* suffix)
+{
+	if (job == NULL)
+		_print_str("COMMAND", width, right_justify, true);
+	else
+		_print_str(job->command, width, right_justify, true);
+	if (suffix)
+		printf("%s", suffix);
+	return SLURM_SUCCESS;
+}
+
+int _print_job_work_dir(job_info_t * job, int width, bool right_justify,
+			char* suffix)
+{
+	if (job == NULL)
+		_print_str("WORK_DIR", width, right_justify, true);
+	else
+		_print_str(job->work_dir, width, right_justify, true);
+	if (suffix)
+		printf("%s", suffix);
+	return SLURM_SUCCESS;
+}
+
+int _print_job_nice(job_info_t * job, int width, bool right_justify,
+		    char* suffix)
+{
+	if (job == NULL)
+		_print_str("NICE", width, right_justify, true);
+	else {
+		int nice = (int) job->nice;
+		nice -= NICE_OFFSET;
+		_print_int(nice, width, right_justify, true);
+	}
+	if (suffix)
+		printf("%s", suffix);
+	return SLURM_SUCCESS;
+}
+
+
 /*****************************************************************************
  * Job Step Print Functions
  *****************************************************************************/
@@ -1322,13 +1392,22 @@ int _print_step_id(job_step_info_t * step, int width, bool right, char* suffix)
 	if (step == NULL) {	/* Print the Header instead */
 		_print_str("STEPID", width, right, true);
 	} else if (step->array_job_id) {
-		snprintf(id, FORMAT_STRING_SIZE, "%u_%u.%u",
-			 step->array_job_id, step->array_task_id,
-			 step->step_id);
+		if (step->step_id == INFINITE) {	/* Pending */
+			snprintf(id, FORMAT_STRING_SIZE, "%u_%u.TBD",
+				 step->array_job_id, step->array_task_id);
+		} else {
+			snprintf(id, FORMAT_STRING_SIZE, "%u_%u.%u",
+				 step->array_job_id, step->array_task_id,
+				 step->step_id);
+		}
 		_print_str(id, width, right, true);
 	} else {
-		snprintf(id, FORMAT_STRING_SIZE, "%u.%u", step->job_id,
-			 step->step_id);
+		if (step->step_id == INFINITE) {	/* Pending */
+			snprintf(id, FORMAT_STRING_SIZE, "%u.TBD", step->job_id);
+		} else {
+			snprintf(id, FORMAT_STRING_SIZE, "%u.%u",
+				 step->job_id, step->step_id);
+		}
 		_print_str(id, width, right, true);
 	}
 	if (suffix)
@@ -1503,7 +1582,7 @@ static int _filter_job(job_info_t * job)
 	ListIterator iterator;
 	uint32_t *user;
 	uint16_t *state_id;
-	char *account, *part, *qos, *name;
+	char *account, *license, *part, *qos, *name;
 	squeue_job_step_t *job_step_id;
 
 	if (params.job_list) {
@@ -1536,6 +1615,30 @@ static int _filter_job(job_info_t * job)
 			iterator = list_iterator_create(params.part_list);
 			while ((part = list_next(iterator))) {
 				if (strcmp(part, token) == 0) {
+					filter = 0;
+					break;
+				}
+			}
+			list_iterator_destroy(iterator);
+			token = strtok_r(NULL, ",", &last);
+		}
+		xfree(tmp_name);
+		if (filter == 1)
+			return 2;
+	}
+
+	if (params.licenses_list) {
+		char *token = NULL, *last = NULL, *tmp_name = NULL;
+
+		filter = 1;
+		if (job->licenses) {
+			tmp_name = xstrdup(job->licenses);
+			token = strtok_r(tmp_name, ",", &last);
+		}
+		while (token && filter) {
+			iterator = list_iterator_create(params.licenses_list);
+			while ((license = list_next(iterator))) {
+				if (strcmp(license, token) == 0) {
 					filter = 0;
 					break;
 				}
@@ -1586,6 +1689,10 @@ static int _filter_job(job_info_t * job)
 			    ((*state_id == JOB_COMPLETING) &&
 			     (*state_id & job->job_state)) ||
 			    ((*state_id == JOB_CONFIGURING) &&
+			     (*state_id & job->job_state)) ||
+			    ((*state_id == JOB_RESIZING) &&
+			     (*state_id & job->job_state))||
+			    ((*state_id == JOB_SPECIAL_EXIT) &&
 			     (*state_id & job->job_state))) {
 				filter = 0;
 				break;
