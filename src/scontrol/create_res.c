@@ -36,6 +36,7 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
 
+#define _GNU_SOURCE
 #include "src/scontrol/scontrol.h"
 #include "src/slurmctld/reservation.h"
 
@@ -76,7 +77,7 @@ static char * _process_plus_minus(char plus_or_minus, char *src)
 
 /*
  *  _parse_flags  is used to parse the Flags= option.  It handles
- *  daily, weekly, static_alloc, part_nodes, and maint, optionally 
+ *  daily, weekly, static_alloc, part_nodes, and maint, optionally
  *  preceded by + or -, separated by a comma but no spaces.
  */
 static uint32_t _parse_flags(const char *flagstr, const char *msg)
@@ -151,6 +152,10 @@ static uint32_t _parse_flags(const char *flagstr, const char *msg)
 				outflags |= RESERVE_FLAG_NO_PART_NODES;
 			else
 				outflags |= RESERVE_FLAG_PART_NODES;
+		} else if (!strncasecmp(curr, "First_Cores", MAX(taglen,1)) &&
+			   !flip) {
+			curr += taglen;
+			outflags |= RESERVE_FLAG_FIRST_CORES;
 		} else {
 			error("Error parsing flags %s.  %s", flagstr, msg);
 			return 0xffffffff;
@@ -297,8 +302,32 @@ scontrol_parse_res_options(int argc, char *argv[], const char *msg,
 			   strncasecmp(tag, "CPUCount",  MAX(taglen,5)) == 0) {
 
 			char *endptr = NULL, *core_cnt, *tok, *ptrptr = NULL;
+			char *type;
 			int node_inx = 0;
 
+			type = slurm_get_select_type();
+			if (strcasestr(type, "cray")) {
+				int param;
+				param = slurm_get_select_type_param();
+				if (! (param & CR_OTHER_CONS_RES)) {
+					error("CoreCnt or CPUCnt is only "
+					      "suported when "
+					      "SelectTypeParameters "
+					      "includes OTHER_CONS_RES");
+					xfree(type);
+					return -1;
+				}
+			} else {
+				if (strcasestr(type, "cons_res") == NULL) {
+					error("CoreCnt or CPUCnt is only "
+					      "suported when "
+					      "SelectType includes "
+					      "select/cons_res");
+					xfree(type);
+					return -1;
+				}
+			}
+			xfree(type);
 			core_cnt = xstrdup(val);
 			tok = strtok_r(core_cnt, ",", &ptrptr);
 			while (tok) {
@@ -421,7 +450,6 @@ scontrol_create_res(int argc, char *argv[])
 	resv_desc_msg_t resv_msg;
 	char *new_res_name = NULL;
 	int free_user_str = 0, free_acct_str = 0;
-	int free_node_cnt = 0;
 	int err, ret = 0;
 
 	slurm_init_resv_desc_msg (&resv_msg);
@@ -466,7 +494,7 @@ scontrol_create_res(int argc, char *argv[])
 	 */
 	if ((resv_msg.partition != NULL) && (resv_msg.node_list != NULL) &&
 	    (strcasecmp(resv_msg.node_list, "ALL") == 0)) {
-		if (resv_msg.flags == (uint16_t) NO_VAL)
+		if (resv_msg.flags == NO_VAL)
 			resv_msg.flags = RESERVE_FLAG_PART_NODES;
 		else
 			resv_msg.flags |= RESERVE_FLAG_PART_NODES;
@@ -478,7 +506,7 @@ scontrol_create_res(int argc, char *argv[])
 	 */
 	if ((resv_msg.partition == NULL) && (resv_msg.node_list != NULL) &&
 	    (strcasecmp(resv_msg.node_list, "ALL") == 0) &&
-	    (resv_msg.flags != (uint16_t) NO_VAL) &&
+	    (resv_msg.flags != NO_VAL) &&
 	    (resv_msg.flags & RESERVE_FLAG_PART_NODES)) {
 		exit_code = 1;
 		error("Part_Nodes flag requires specifying a Partition. "
@@ -529,7 +557,5 @@ SCONTROL_CREATE_RES_CLEANUP:
 		xfree(resv_msg.users);
 	if (free_acct_str)
 		xfree(resv_msg.accounts);
-	if (free_node_cnt)
-		xfree(resv_msg.node_cnt);
 	return ret;
 }

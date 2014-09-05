@@ -94,12 +94,14 @@ typedef struct allocation_info {
 	uint32_t                nnodes;
 	char                   *nodelist;
 	uint32_t                num_cpu_groups;
+	char                   *partition;
 	dynamic_plugin_data_t  *select_jobinfo;
 	uint32_t                stepid;
 } allocation_info_t;
 
 static int shepard_fd = -1;
 static pthread_t signal_thread = (pthread_t) 0;
+static int pty_sigarray[] = { SIGWINCH, 0 };
 
 /*
  * Prototypes:
@@ -276,7 +278,7 @@ job_step_create_allocation(resource_allocation_response_msg_t *resp)
 				xfree(buf);
 				while ((node_name = hostlist_shift(tmp_hl)) &&
 				       (i < diff)) {
-					hostlist_push(inc_hl, node_name);
+					hostlist_push_host(inc_hl, node_name);
 					i++;
 				}
 				hostlist_destroy(tmp_hl);
@@ -366,6 +368,7 @@ job_step_create_allocation(resource_allocation_response_msg_t *resp)
 	ai->num_cpu_groups = resp->num_cpu_groups;
 	ai->cpus_per_node  = resp->cpus_per_node;
 	ai->cpu_count_reps = resp->cpu_count_reps;
+	ai->partition = resp->partition;
 
 /* 	info("looking for %d nodes out of %s with a must list of %s", */
 /* 	     ai->nnodes, ai->nodelist, opt.nodelist); */
@@ -391,6 +394,7 @@ job_create_allocation(resource_allocation_response_msg_t *resp)
 	i->alias_list     = resp->alias_list;
 	i->nodelist       = _normalize_hostlist(resp->node_list);
 	i->nnodes	  = resp->node_cnt;
+	i->partition      = resp->partition;
 	i->jobid          = resp->job_id;
 	i->stepid         = NO_VAL;
 	i->num_cpu_groups = resp->num_cpu_groups;
@@ -411,11 +415,12 @@ extern void init_srun(int ac, char **av,
 		      bool handle_signals)
 {
 	/* This must happen before we spawn any threads
-	 * which are not designed to handle them */
+	 * which are not designed to handle arbitrary signals */
 	if (handle_signals) {
 		if (xsignal_block(sig_array) < 0)
 			error("Unable to block signals");
 	}
+	xsignal_block(pty_sigarray);
 
 	/* Initialize plugin stack, read options from plugins, etc.
 	 */
@@ -513,6 +518,20 @@ extern void create_srun_job(srun_job_t **p_job, bool *got_alloc,
 			if (!opt.ntasks_set)
 				opt.ntasks = opt.min_nodes;
 		}
+		if (opt.core_spec_set) {
+			/* NOTE: Silently ignore specialized core count set
+			 * with SLURM_CORE_SPEC environment variable */
+			error("Ignoring --core-spec value for a job step "
+			      "within an existing job. Set specialized cores "
+			      "at job allocation time.");
+		}
+#ifdef HAVE_NATIVE_CRAY
+		if (opt.network) {
+			error("Ignoring --network value for a job step "
+			      "within an existing job. Set network options "
+			      "at job allocation time.");
+		}
+#endif
 		if (opt.alloc_nodelist == NULL)
 			opt.alloc_nodelist = xstrdup(resp->node_list);
 		if (opt.exclusive)
@@ -659,6 +678,8 @@ cleanup:
 
 	if (WIFEXITED(*global_rc))
 		*global_rc = WEXITSTATUS(*global_rc);
+	else if (WIFSIGNALED(*global_rc))
+		*global_rc = 128 + WTERMSIG(*global_rc);
 
 	mpir_cleanup();
 	log_fini();
@@ -767,6 +788,7 @@ _job_create_structure(allocation_info_t *ainfo)
 
  	job->alias_list = xstrdup(ainfo->alias_list);
  	job->nodelist = xstrdup(ainfo->nodelist);
+ 	job->partition = xstrdup(ainfo->partition);
 	job->stepid  = ainfo->stepid;
 
 #if defined HAVE_BG && !defined HAVE_BG_L_P
@@ -817,7 +839,7 @@ _job_create_structure(allocation_info_t *ainfo)
 #endif
 	}
 
-#elif defined HAVE_FRONT_END && !defined HAVE_CRAY
+#elif defined HAVE_FRONT_END && !defined HAVE_ALPS_CRAY
 	/* Limited job step support */
 	opt.overcommit = true;
 	job->nhosts = 1;
@@ -849,9 +871,19 @@ _job_create_structure(allocation_info_t *ainfo)
 	job->jobid   = ainfo->jobid;
 
 	job->ntasks  = opt.ntasks;
-	for (i=0; i<ainfo->num_cpu_groups; i++) {
-		job->cpu_count += ainfo->cpus_per_node[i] *
-			ainfo->cpu_count_reps[i];
+
+	/* If cpus_per_task is set then get the exact count of cpus
+	   for the requested step (we might very well use less,
+	   especially if --exclusive is used).  Else get the total for the
+	   allocation given.
+	*/
+	if (opt.cpus_set)
+		job->cpu_count = opt.ntasks * opt.cpus_per_task;
+	else {
+		for (i=0; i<ainfo->num_cpu_groups; i++) {
+			job->cpu_count += ainfo->cpus_per_node[i] *
+				ainfo->cpu_count_reps[i];
+		}
 	}
 
 	job->rc       = -1;

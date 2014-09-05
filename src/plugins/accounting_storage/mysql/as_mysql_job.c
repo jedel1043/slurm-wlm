@@ -176,6 +176,9 @@ static uint32_t _get_wckeyid(mysql_conn_t *mysql_conn, char **name,
 					    NULL) != SLURM_SUCCESS) {
 			List wckey_list = NULL;
 			slurmdb_wckey_rec_t *wckey_ptr = NULL;
+			/* we have already checked to make
+			   sure this was the slurm user before
+			   calling this */
 
 			wckey_list = list_create(slurmdb_destroy_wckey_rec);
 
@@ -187,9 +190,30 @@ static uint32_t _get_wckeyid(mysql_conn_t *mysql_conn, char **name,
 			/* info("adding wckey '%s' '%s' '%s'", */
 			/* 	     wckey_ptr->name, wckey_ptr->user, */
 			/* 	     wckey_ptr->cluster); */
-			/* we have already checked to make
-			   sure this was the slurm user before
-			   calling this */
+
+			if (*name[0] == '*') {
+				/* make sure the non * wckey has been added */
+				wckey_rec.name = (*name)+1;
+				if (assoc_mgr_fill_in_wckey(
+					    mysql_conn, &wckey_rec,
+					    ACCOUNTING_ENFORCE_WCKEYS,
+					    NULL) != SLURM_SUCCESS) {
+					wckey_ptr = xmalloc(
+						sizeof(slurmdb_wckey_rec_t));
+					wckey_ptr->name =
+						xstrdup(wckey_rec.name);
+					wckey_ptr->user = xstrdup(user);
+					wckey_ptr->cluster = xstrdup(cluster);
+					list_prepend(wckey_list, wckey_ptr);
+					/* info("adding wckey '%s' '%s' " */
+					/*      "'%s'", */
+					/*      wckey_ptr->name, */
+					/*      wckey_ptr->user, */
+					/*      wckey_ptr->cluster); */
+				}
+				wckey_rec.name = (*name);
+			}
+
 			if (as_mysql_add_wckeys(mysql_conn,
 						slurm_get_slurm_user_id(),
 						wckey_list)
@@ -259,7 +283,9 @@ extern int as_mysql_job_start(mysql_conn_t *mysql_conn,
 		/* If we have a db_index lets end the previous record. */
 		if (!job_ptr->db_index) {
 			error("We don't have a db_index for job %u, "
-			      "this should never happen.", job_ptr->job_id);
+			      "this should only happen when resizing "
+			      "jobs and the database interface was down.",
+			      job_ptr->job_id);
 			job_ptr->db_index = _get_db_index(mysql_conn,
 							  submit_time,
 							  job_ptr->job_id,
@@ -323,19 +349,19 @@ extern int as_mysql_job_start(mysql_conn_t *mysql_conn,
 			debug("Need to reroll usage from %sJob %u "
 			      "from %s started then and we are just "
 			      "now hearing about it.",
-			      ctime(&check_time),
+			      slurm_ctime(&check_time),
 			      job_ptr->job_id, mysql_conn->cluster_name);
 		else if (begin_time)
 			debug("Need to reroll usage from %sJob %u "
 			      "from %s became eligible then and we are just "
 			      "now hearing about it.",
-			      ctime(&check_time),
+			      slurm_ctime(&check_time),
 			      job_ptr->job_id, mysql_conn->cluster_name);
 		else
 			debug("Need to reroll usage from %sJob %u "
 			      "from %s was submitted then and we are just "
 			      "now hearing about it.",
-			      ctime(&check_time),
+			      slurm_ctime(&check_time),
 			      job_ptr->job_id, mysql_conn->cluster_name);
 
 		global_last_rollup = check_time;
@@ -432,7 +458,7 @@ no_rollup_change:
 		if (job_ptr->account)
 			xstrcat(query, ", account");
 		if (partition)
-			xstrcat(query, ", partition");
+			xstrcat(query, ", `partition`");
 		if (block_id)
 			xstrcat(query, ", id_block");
 		if (job_ptr->wckey)
@@ -493,7 +519,7 @@ no_rollup_change:
 		if (job_ptr->account)
 			xstrfmtcat(query, ", account='%s'", job_ptr->account);
 		if (partition)
-			xstrfmtcat(query, ", partition='%s'", partition);
+			xstrfmtcat(query, ", `partition`='%s'", partition);
 		if (block_id)
 			xstrfmtcat(query, ", id_block='%s'", block_id);
 		if (job_ptr->wckey)
@@ -530,7 +556,7 @@ no_rollup_change:
 		if (job_ptr->account)
 			xstrfmtcat(query, "account='%s', ", job_ptr->account);
 		if (partition)
-			xstrfmtcat(query, "partition='%s', ", partition);
+			xstrfmtcat(query, "`partition`='%s', ", partition);
 		if (block_id)
 			xstrfmtcat(query, "id_block='%s', ", block_id);
 		if (job_ptr->wckey)
@@ -702,6 +728,7 @@ extern int as_mysql_job_complete(mysql_conn_t *mysql_conn,
 	char *query = NULL, *nodes = NULL;
 	int rc = SLURM_SUCCESS, job_state;
 	time_t submit_time, end_time;
+	uint32_t exit_code = 0;
 
 	if (!job_ptr->db_index
 	    && ((!job_ptr->details || !job_ptr->details->submit_time)
@@ -732,7 +759,11 @@ extern int as_mysql_job_complete(mysql_conn_t *mysql_conn,
 			return SLURM_SUCCESS;
 		}
 		end_time = job_ptr->end_time;
-		job_state = job_ptr->job_state & JOB_STATE_BASE;
+
+		if (IS_JOB_REQUEUED(job_ptr))
+			job_state = JOB_REQUEUE;
+		else
+			job_state = job_ptr->job_state & JOB_STATE_BASE;
 	}
 
 	slurm_mutex_lock(&rollup_lock);
@@ -802,9 +833,17 @@ extern int as_mysql_job_complete(mysql_conn_t *mysql_conn,
 		xfree(comment);
 	}
 
+	exit_code = job_ptr->exit_code;
+	if (exit_code == 1) {
+		/* This wasn't signalled, it was set by Slurm so don't
+		 * treat it like a signal.
+		 */
+		exit_code = 256;
+	}
+
 	xstrfmtcat(query,
 		   ", exit_code=%d, kill_requid=%d where job_db_inx=%d;",
-		   job_ptr->exit_code, job_ptr->requid,
+		   exit_code, job_ptr->requid,
 		   job_ptr->db_index);
 
 	debug3("%d(%s:%d) query\n%s",
@@ -846,8 +885,11 @@ extern int as_mysql_step_start(mysql_conn_t *mysql_conn,
 	if (check_connection(mysql_conn) != SLURM_SUCCESS)
 		return ESLURM_DB_CONNECTION;
 	if (slurmdbd_conf) {
-		tasks = step_ptr->job_ptr->details->num_tasks;
 		cpus = step_ptr->cpu_count;
+		if (step_ptr->job_ptr->details)
+			tasks = step_ptr->job_ptr->details->num_tasks;
+		else
+			tasks = cpus;
 		snprintf(node_list, BUFFER_SIZE, "%s",
 			 step_ptr->job_ptr->nodes);
 		nodes = step_ptr->step_layout->node_cnt;
@@ -1006,7 +1048,10 @@ extern int as_mysql_step_complete(mysql_conn_t *mysql_conn,
 
 	if (slurmdbd_conf) {
 		now = step_ptr->job_ptr->end_time;
-		tasks = step_ptr->job_ptr->details->num_tasks;
+		if (step_ptr->job_ptr->details)
+			tasks = step_ptr->job_ptr->details->num_tasks;
+		else
+			tasks = step_ptr->cpu_count;
 	} else if (step_ptr->step_id == SLURM_BATCH_SCRIPT) {
 		now = time(NULL);
 		tasks = 1;
@@ -1078,11 +1123,11 @@ extern int as_mysql_step_complete(mysql_conn_t *mysql_conn,
 		"max_disk_read_node=%u, ave_disk_read=%f, "
 		"max_disk_write=%f, max_disk_write_task=%u, "
 		"max_disk_write_node=%u, ave_disk_write=%f, "
-		"max_vsize=%u, max_vsize_task=%u, "
+		"max_vsize=%"PRIu64", max_vsize_task=%u, "
 		"max_vsize_node=%u, ave_vsize=%f, "
-		"max_rss=%u, max_rss_task=%u, "
+		"max_rss=%"PRIu64", max_rss_task=%u, "
 		"max_rss_node=%u, ave_rss=%f, "
-		"max_pages=%u, max_pages_task=%u, "
+		"max_pages=%"PRIu64", max_pages_task=%u, "
 		"max_pages_node=%u, ave_pages=%f, "
 		"min_cpu=%u, min_cpu_task=%u, "
 		"min_cpu_node=%u, ave_cpu=%f, "

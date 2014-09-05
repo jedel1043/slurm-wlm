@@ -86,6 +86,7 @@
 #include "src/common/uid.h"
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
+#include "src/common/util-net.h"
 
 #include "src/sbatch/opt.h"
 
@@ -116,6 +117,7 @@
 #define OPT_EXPORT        0x17
 #define OPT_CLUSTERS      0x18
 #define OPT_TIME_VAL      0x19
+#define OPT_CORE_SPEC     0x1a
 #define OPT_ARRAY_INX     0x20
 #define OPT_PROFILE       0x21
 
@@ -175,6 +177,9 @@
 #define LONG_OPT_EXPORT_FILE     0x153
 #define LONG_OPT_PROFILE         0x154
 #define LONG_OPT_IGNORE_PBS      0x155
+#define LONG_OPT_TEST_ONLY       0x156
+#define LONG_OPT_PARSABLE        0x157
+#define LONG_OPT_PRIORITY        0x160
 
 /*---- global variables, defined in opt.h ----*/
 opt_t opt;
@@ -315,6 +320,7 @@ static void _opt_default()
 	opt.cpu_bind = NULL;
 	opt.mem_bind_type = 0;
 	opt.mem_bind = NULL;
+	opt.core_spec = 0;
 	opt.time_limit = NO_VAL;
 	opt.time_min = NO_VAL;
 	opt.partition = NULL;
@@ -339,6 +345,7 @@ static void _opt_default()
 
 	opt.quiet = 0;
 	opt.verbose = 0;
+	opt.warn_flags = 0;
 	opt.warn_signal = 0;
 	opt.warn_time   = 0;
 	opt.wait_all_nodes = (uint16_t) NO_VAL;
@@ -350,6 +357,7 @@ static void _opt_default()
 	opt.tmpdisk	    = -1;
 
 	opt.hold	    = false;
+	opt.parsable	    = false;
 	opt.constraints	    = NULL;
 	opt.gres	    = NULL;
 	opt.contiguous	    = false;
@@ -387,6 +395,11 @@ static void _opt_default()
 	opt.ckpt_interval = 0;
 	opt.ckpt_interval_str = NULL;
 	opt.ckpt_dir = xstrdup(opt.cwd);
+
+	opt.nice = 0;
+	opt.priority = 0;
+
+	opt.test_only   = false;
 }
 
 /*---[ env var processing ]-----------------------------------------------*/
@@ -419,6 +432,7 @@ env_vars_t env_vars[] = {
   {"SLURM_CLUSTERS",       OPT_CLUSTERS,   &opt.clusters,      NULL          },
   {"SBATCH_CNLOAD_IMAGE",  OPT_STRING,     &opt.linuximage,    NULL          },
   {"SBATCH_CONN_TYPE",     OPT_CONN_TYPE,  NULL,               NULL          },
+  {"SBATCH_CORE_SPEC",     OPT_INT,        &opt.core_spec,     NULL          },
   {"SBATCH_CPU_BIND",      OPT_CPU_BIND,   NULL,               NULL          },
   {"SBATCH_DEBUG",         OPT_DEBUG,      NULL,               NULL          },
   {"SBATCH_DISTRIBUTION",  OPT_DISTRIB ,   NULL,               NULL          },
@@ -601,7 +615,7 @@ _process_env_var(env_vars_t *e, const char *val)
 		break;
 	case OPT_SIGNAL:
 		if (get_signal_opts((char *)val, &opt.warn_signal,
-				    &opt.warn_time)) {
+				    &opt.warn_time, &opt.warn_flags)) {
 			error("Invalid signal specification: %s", val);
 			exit(error_exit);
 		}
@@ -667,6 +681,7 @@ static struct option long_options[] = {
 	{"quiet",         no_argument,       0, 'Q'},
 	{"no-rotate",     no_argument,       0, 'R'},
 	{"share",         no_argument,       0, 's'},
+	{"core-spec",     required_argument, 0, 'S'},
 	{"time",          required_argument, 0, 't'},
 	{"usage",         no_argument,       0, 'u'},
 	{"verbose",       no_argument,       0, 'v'},
@@ -711,8 +726,10 @@ static struct option long_options[] = {
 	{"ntasks-per-node",  required_argument, 0, LONG_OPT_NTASKSPERNODE},
 	{"ntasks-per-socket",required_argument, 0, LONG_OPT_NTASKSPERSOCKET},
 	{"open-mode",     required_argument, 0, LONG_OPT_OPEN_MODE},
+	{"parsable",      optional_argument, 0, LONG_OPT_PARSABLE},
 	{"propagate",     optional_argument, 0, LONG_OPT_PROPAGATE},
 	{"profile",       required_argument, 0, LONG_OPT_PROFILE},
+	{"priority",      required_argument, 0, LONG_OPT_PRIORITY},
 	{"qos",		  required_argument, 0, LONG_OPT_QOS},
 	{"ramdisk-image", required_argument, 0, LONG_OPT_RAMDISK_IMAGE},
 	{"reboot",        no_argument,       0, LONG_OPT_REBOOT},
@@ -730,11 +747,12 @@ static struct option long_options[] = {
 	{"wrap",          required_argument, 0, LONG_OPT_WRAP},
 	{"switches",      required_argument, 0, LONG_OPT_REQ_SWITCH},
 	{"ignore-pbs",    no_argument,       0, LONG_OPT_IGNORE_PBS},
+	{"test-only",     no_argument,       0, LONG_OPT_TEST_ONLY},
 	{NULL,            0,                 0, 0}
 };
 
 static char *opt_string =
-	"+ba:A:B:c:C:d:D:e:F:g:hHi:IJ:kL:m:M:n:N:o:Op:P:QRst:uU:vVw:x:";
+	"+ba:A:B:c:C:d:D:e:F:g:hHi:IJ:kL:m:M:n:N:o:Op:P:QRsS:t:uU:vVw:x:";
 char *pos_delimit;
 
 
@@ -1166,7 +1184,10 @@ static void _set_options(int argc, char **argv)
 			break;
 		case 'D':
 			xfree(opt.cwd);
-			opt.cwd = xstrdup(optarg);
+			if (is_full_path(optarg))
+				opt.cwd = xstrdup(optarg);
+			else
+				opt.cwd = make_full_path(optarg);
 			break;
 		case 'e':
 			xfree(opt.efname);
@@ -1280,6 +1301,9 @@ static void _set_options(int argc, char **argv)
 		case 's':
 			opt.shared = 1;
 			break;
+		case 'S':
+			opt.core_spec = _get_int(optarg, "core_spec");
+			break;
 		case 't':
 			xfree(opt.time_limit_str);
 			opt.time_limit_str = xstrdup(optarg);
@@ -1297,15 +1321,6 @@ static void _set_options(int argc, char **argv)
 		case 'w':
 			xfree(opt.nodelist);
 			opt.nodelist = xstrdup(optarg);
-#ifdef HAVE_BG
-			info("\tThe nodelist option should only be used if\n"
-			     "\tthe block you are asking for can be created.\n"
-			     "\tIt should also include all the midplanes you\n"
-			     "\twant to use, partial lists may not\n"
-			     "\twork correctly.\n"
-			     "\tPlease consult smap before using this option\n"
-			     "\tor your job may be stuck with no way to run.");
-#endif
 			break;
 		case 'x':
 			xfree(opt.exc_nodes);
@@ -1455,6 +1470,19 @@ static void _set_options(int argc, char **argv)
 				}
 			}
 			break;
+		case LONG_OPT_PRIORITY: {
+			long long priority = strtoll(optarg, NULL, 10);
+			if (priority < 0) {
+				error("Priority must be >= 0");
+				exit(error_exit);
+			}
+			if (priority >= NO_VAL) {
+				error("Priority must be < %i", NO_VAL);
+				exit(error_exit);
+			}
+			opt.priority = priority;
+			break;
+		}
 		case LONG_OPT_NO_REQUEUE:
 			opt.requeue = 0;
 			break;
@@ -1606,7 +1634,7 @@ static void _set_options(int argc, char **argv)
 			break;
 		case LONG_OPT_SIGNAL:
 			if (get_signal_opts(optarg, &opt.warn_signal,
-					    &opt.warn_time)) {
+					    &opt.warn_time, &opt.warn_flags)) {
 				error("Invalid signal specification: %s",
 				      optarg);
 				exit(error_exit);
@@ -1631,6 +1659,7 @@ static void _set_options(int argc, char **argv)
 		case LONG_OPT_EXPORT:
 			xfree(opt.export_env);
 			opt.export_env = xstrdup(optarg);
+			setenv("SLURM_EXPORT_ENV", opt.export_env, 0);
 			break;
 		case LONG_OPT_EXPORT_FILE:
 			xfree(opt.export_file);
@@ -1649,6 +1678,12 @@ static void _set_options(int argc, char **argv)
 			/* Ignore here, needed to process earlier,
 			 * when the batch script was read. */
                         break;
+		case LONG_OPT_TEST_ONLY:
+			opt.test_only = true;
+			break;
+		case LONG_OPT_PARSABLE:
+			opt.parsable = true;
+			break;
 		default:
 			if (spank_process_option (opt_char, optarg) < 0) {
 				error("Unrecognized command line parameter %c",
@@ -1689,7 +1724,7 @@ static void _set_pbs_options(int argc, char **argv)
 {
 	int opt_char, option_index = 0;
 	char *sep;
-	char *pbs_opt_string = "+a:A:c:C:e:hIj:k:l:m:M:N:o:p:q:r:S:u:v:VW:z";
+	char *pbs_opt_string = "+a:A:c:C:e:hIj::J:k:l:m:M:N:o:p:q:r:S:t:u:v:VW:z";
 
 	struct option pbs_long_options[] = {
 		{"start_time", required_argument, 0, 'a'},
@@ -1700,6 +1735,7 @@ static void _set_pbs_options(int argc, char **argv)
 		{"hold", no_argument, 0, 'h'},
 		{"interactive", no_argument, 0, 'I'},
 		{"join", optional_argument, 0, 'j'},
+		{"job_array", required_argument, 0, 'J'},
 		{"keep", required_argument, 0, 'k'},
 		{"resource_list", required_argument, 0, 'l'},
 		{"mail_options", required_argument, 0, 'm'},
@@ -1710,6 +1746,7 @@ static void _set_pbs_options(int argc, char **argv)
 		{"destination", required_argument, 0, 'q'},
 		{"rerunable", required_argument, 0, 'r'},
 		{"script_path", required_argument, 0, 'S'},
+		{"array", required_argument, 0, 't'},
 		{"running_user", required_argument, 0, 'u'},
 		{"variable_list", required_argument, 0, 'v'},
 		{"all_env", no_argument, 0, 'V'},
@@ -1747,6 +1784,12 @@ static void _set_pbs_options(int argc, char **argv)
 		case 'I':
 			break;
 		case 'j':
+			break;
+		case 'J':
+		case 't':
+			/* PBS Pro uses -J. Torque uses -t. */
+			xfree(opt.array_inx);
+			opt.array_inx = xstrdup(optarg);
 			break;
 		case 'k':
 			break;
@@ -1888,7 +1931,7 @@ static void _parse_pbs_nodes_opts(char *node_opts)
 			_get_next_pbs_node_part(node_opts, &i);
 		} else if (isalpha(node_opts[i])) {
 			temp = _get_pbs_node_name(node_opts, &i);
-			hostlist_push(hl, temp);
+			hostlist_push_host(hl, temp);
 			xfree(temp);
 		} else
 			i++;
@@ -2030,7 +2073,7 @@ static void _parse_pbs_resource_list(char *rl)
 				opt.ntasks_per_node = _get_int(temp, "mpiprocs");
 				xfree(temp);
 			}
-#ifdef HAVE_CRAY
+#ifdef HAVE_ALPS_CRAY
 		/*
 		 * NB: no "mppmem" here since it specifies per-PE memory units,
 		 *     whereas SLURM uses per-node and per-CPU memory units.
@@ -2070,7 +2113,7 @@ static void _parse_pbs_resource_list(char *rl)
 				opt.ntasks_set = true;
 			}
 			xfree(temp);
-#endif	/* HAVE_CRAY */
+#endif	/* HAVE_ALPS_CRAY */
 		} else if (!strncasecmp(rl+i, "naccelerators=", 14)) {
 			i += 14;
 			temp = _get_pbs_option_value(rl, &i, ',');
@@ -2510,6 +2553,15 @@ static bool _opt_verify(void)
 	setenv("SLURM_NETWORK", opt.network, 1);
 #endif
 
+#ifdef HAVE_NATIVE_CRAY
+	if (opt.network && opt.shared)
+		fatal("Requesting network performance counters requires "
+		      "exclusive access.  Please add the --exclusive option "
+		      "to your request.");
+	if (opt.network)
+		setenv("SLURM_NETWORK", opt.network, 1);
+#endif
+
 	if (slurm_verify_cpu_bind(NULL, &opt.cpu_bind,
 				  &opt.cpu_bind_type))
 		exit(error_exit);
@@ -2534,35 +2586,30 @@ static bool _opt_verify(void)
 		}
 	}
 
+	if (opt.nodelist && (!opt.test_only)) {
+#ifdef HAVE_BG
+		info("\tThe nodelist option should only be used if\n"
+		     "\tthe block you are asking for can be created.\n"
+		     "\tIt should also include all the midplanes you\n"
+		     "\twant to use, partial lists will not work correctly.\n"
+		     "\tPlease consult smap before using this option\n"
+		     "\tor your job may be stuck with no way to run.");
+#endif
+	}
+
 	return verified;
 }
 
 static uint16_t _parse_pbs_mail_type(const char *arg)
 {
-	uint16_t rc;
+	uint16_t rc =  0;
 
-	if (strcasecmp(arg, "b") == 0)
-		rc = MAIL_JOB_BEGIN;
-	else if  (strcasecmp(arg, "e") == 0)
-		rc = MAIL_JOB_END;
-	else if (strcasecmp(arg, "a") == 0)
-		rc = MAIL_JOB_FAIL;
-	else if (strcasecmp(arg, "bea") == 0
-		|| strcasecmp(arg, "eba") == 0
-		|| strcasecmp(arg, "eab") == 0
-		|| strcasecmp(arg, "bae") == 0)
-		rc = MAIL_JOB_BEGIN | MAIL_JOB_END |  MAIL_JOB_FAIL;
-	else if (strcasecmp(arg, "be") == 0
-		|| strcasecmp(arg, "eb") == 0)
-		rc = MAIL_JOB_BEGIN | MAIL_JOB_END;
-	else if (strcasecmp(arg, "ba") == 0
-		|| strcasecmp(arg, "ab") == 0)
-		rc = MAIL_JOB_BEGIN | MAIL_JOB_FAIL;
-	else if (strcasecmp(arg, "ea") == 0
-		|| strcasecmp(arg, "ae") == 0)
-		rc = MAIL_JOB_END |  MAIL_JOB_FAIL;
-	else
-		rc = 0;		/* arg="n" or failure */
+	if (strchr(arg, 'b') || strchr(arg, 'B'))
+		rc |= MAIL_JOB_BEGIN;
+	if (strchr(arg, 'e') || strchr(arg, 'E'))
+		rc |= MAIL_JOB_END;
+	if (strchr(arg, 'a') || strchr(arg, 'A'))
+		rc |= MAIL_JOB_FAIL;
 
 	return rc;
 }
@@ -2860,6 +2907,7 @@ static void _opt_list(void)
 	info("switches          : %d", opt.req_switch);
 	info("wait-for-switches : %d", opt.wait4switch);
 	str = print_commandline(opt.script_argc, opt.script_argv);
+	info("core-spec         : %d", opt.core_spec);
 	info("remote command    : `%s'", str);
 	xfree(str);
 
@@ -2869,7 +2917,7 @@ static void _usage(void)
 {
  	printf(
 "Usage: sbatch [-N nnodes] [-n ntasks]\n"
-"              [-c ncpus] [-r n] [-p partition] [--hold] [-t minutes]\n"
+"              [-c ncpus] [-r n] [-p partition] [--hold] [--parsable] [-t minutes]\n"
 "              [-D path] [--immediate] [--no-kill] [--overcommit]\n"
 "              [--input file] [--output file] [--error file]\n"
 "              [--time-min=minutes] [--licenses=names] [--clusters=cluster_names]\n"
@@ -2898,6 +2946,7 @@ static void _usage(void)
 "              [--network=type] [--mem-per-cpu=MB] [--qos=qos] [--gres=list]\n"
 "              [--cpu_bind=...] [--mem_bind=...] [--reservation=name]\n"
 "              [--switches=max-switches{@max-time-to-wait}]\n"
+"              [--core-spec=cores]\n"
 "              [--array=index_values] [--profile=...] [--ignore-pbs]\n"
 "              [--export[=names]] [--export-file=file|fd] executable [args...]\n");
 }
@@ -2910,7 +2959,7 @@ static void _help(void)
 "Usage: sbatch [OPTIONS...] executable [args...]\n"
 "\n"
 "Parallel run options:\n"
-"  -a, --array=indexes        job array index values\n"
+"  -a, --array=indexes         job array index values\n"
 "  -A, --account=name          charge job to specified account\n"
 "      --begin=time            defer job until HH:MM MM/DD/YY\n"
 "  -c, --cpus-per-task=ncpus   number of cpus required per task\n"
@@ -2919,7 +2968,8 @@ static void _help(void)
 "  -D, --workdir=directory     set working directory for batch script\n"
 "  -e, --error=err             file for batch script's standard error\n"
 "      --export[=names]        specify environment variables to export\n"
-"      --export-file=file|fd   specify environment variables file or file descriptor to export\n"
+"      --export-file=file|fd   specify environment variables file or file\n"
+"                              descriptor to export\n"
 "      --get-user-env          load environment from local cluster\n"
 "      --gid=group_id          group ID to run job as (user root only)\n"
 "      --gres=list             required generic resources\n"
@@ -2946,16 +2996,21 @@ static void _help(void)
 "  -o, --output=out            file for batch script's standard output\n"
 "  -O, --overcommit            overcommit resources\n"
 "  -p, --partition=partition   partition requested\n"
+"      --parsable              outputs only the jobid and cluster name (if present),\n"
+"                              separated by semicolon, only on successful submission.\n"
+"      --priority=value        set the priority of the job to value\n"
 "      --profile=value         enable acct_gather_profile for detailed data\n"
 "                              value is all or none or any combination of\n"
 "                              energy, lustre, network or task\n"
 "      --propagate[=rlimits]   propagate all [or specific list of] rlimits\n"
 "      --qos=qos               quality of service\n"
 "  -Q, --quiet                 quiet mode (suppress informational messages)\n"
+"      --signal=[B:]num[@time] send signal when time limit within time seconds\n"
 "      --requeue               if set, permit the job to be requeued\n"
 "  -t, --time=minutes          time limit\n"
 "      --time-min=minutes      minimum time limit (if distinct)\n"
 "  -s, --share                 share nodes with other jobs\n"
+"  -S, --core-spec=cores       count of reserved cores\n"
 "      --uid=user_id           user ID to run job as (user root only)\n"
 "  -v, --verbose               verbose mode (multiple -v's increase verbosity)\n"
 "      --wrap[=command string] wrap commmand string in a sh script and submit\n"
@@ -2968,7 +3023,8 @@ static void _help(void)
 "  -C, --constraint=list       specify a list of constraints\n"
 "  -F, --nodefile=filename     request a specific list of hosts\n"
 "      --mem=MB                minimum amount of real memory\n"
-"      --mincpus=n             minimum number of logical processors (threads) per node\n"
+"      --mincpus=n             minimum number of logical processors (threads)\n"
+"                              per node\n"
 "      --reservation=name      allocate resources from named reservation\n"
 "      --tmp=MB                minimum amount of temporary disk\n"
 "  -w, --nodelist=hosts...     request a specific list of hosts\n"
@@ -3010,6 +3066,12 @@ static void _help(void)
 #ifdef HAVE_AIX				/* AIX/Federation specific options */
 "AIX related options:\n"
 "      --network=type          communication protocol to be used\n"
+"\n"
+#endif
+#ifdef HAVE_NATIVE_CRAY			/* Native Cray specific options */
+"Cray related options:\n"
+"      --network=type          Use network performace counters\n"
+"                              (system, network, or processor)\n"
 "\n"
 #endif
 #ifdef HAVE_BG				/* Blue gene specific options */

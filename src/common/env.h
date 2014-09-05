@@ -55,6 +55,7 @@ typedef struct env_options {
 	dynamic_plugin_data_t *select_jobinfo;
 	int nhosts;
 	char *nodelist;		/* nodelist in string form */
+	char *partition;	/* partition name */
 	char **env;             /* job environment */
 	uint16_t comm_port;	/* srun's communication port */
 	slurm_addr_t *cli;	/* launch node address */
@@ -72,11 +73,13 @@ typedef struct env_options {
 	pid_t task_pid;
 	char *sgtids;		/* global ranks array of integers */
 	uint16_t pty_port;	/* used to communicate window size changes */
-	uint8_t ws_col;		/* window size, columns */
-	uint8_t ws_row;		/* window size, row count */
+	uint16_t ws_col;	/* window size, columns */
+	uint16_t ws_row;	/* window size, row count */
 	char *ckpt_dir;		/* --ckpt-dir=                 */
 	uint16_t restart_cnt;	/* count of job restarts	*/
 	uint16_t batch_flag;	/* 1 if batch: queued job with script */
+	uint32_t uid;		/* user ID */
+	char *user_name;	/* user name */
 } env_t;
 
 
@@ -193,6 +196,13 @@ void env_unset_environment(void);
  * will be overwritten with the value from src_array.
  */
 void env_array_merge(char ***dest_array, const char **src_array);
+
+/*
+ * Merge the environment variables in src_array beginning with "SLURM" into the
+ * array dest_array.  Any variables already found in dest_array will be
+ * overwritten with the value from src_array.
+ */
+void env_array_merge_slurm(char ***dest_array, const char **src_array);
 
 /*
  * Copy env_array must be freed by env_array_free

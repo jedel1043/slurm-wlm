@@ -88,14 +88,12 @@ static bool _valid_job_assoc(struct job_record *job_ptr)
 	    (assoc_ptr->uid != job_ptr->user_id)) {
 		error("Invalid assoc_ptr for jobid=%u", job_ptr->job_id);
 		memset(&assoc_rec, 0, sizeof(slurmdb_association_rec_t));
-		if (job_ptr->assoc_id)
-			assoc_rec.id = job_ptr->assoc_id;
-		else {
-			assoc_rec.acct      = job_ptr->account;
-			if (job_ptr->part_ptr)
-				assoc_rec.partition = job_ptr->part_ptr->name;
-			assoc_rec.uid       = job_ptr->user_id;
-		}
+
+		assoc_rec.acct      = job_ptr->account;
+		if (job_ptr->part_ptr)
+			assoc_rec.partition = job_ptr->part_ptr->name;
+		assoc_rec.uid       = job_ptr->user_id;
+
 		if (assoc_mgr_fill_in_assoc(acct_db_conn, &assoc_rec,
 					    accounting_enforce,
 					    (slurmdb_association_rec_t **)
@@ -272,7 +270,7 @@ static void _adjust_limit_usage(int type, struct job_record *job_ptr)
 	}
 
 	assoc_ptr = (slurmdb_association_rec_t *)job_ptr->assoc_ptr;
-	while(assoc_ptr) {
+	while (assoc_ptr) {
 		switch(type) {
 		case ACCT_POLICY_ADD_SUBMIT:
 			assoc_ptr->usage->used_submit_jobs++;
@@ -378,6 +376,63 @@ extern void acct_policy_job_fini(struct job_record *job_ptr)
 	_adjust_limit_usage(ACCT_POLICY_JOB_FINI, job_ptr);
 }
 
+extern void acct_policy_alter_job(struct job_record *job_ptr,
+				  uint32_t new_time_limit)
+{
+	slurmdb_association_rec_t *assoc_ptr = NULL;
+	assoc_mgr_lock_t locks = { WRITE_LOCK, NO_LOCK,
+				   WRITE_LOCK, NO_LOCK, NO_LOCK };
+	uint64_t used_cpu_run_secs, new_used_cpu_run_secs;
+
+	if (!IS_JOB_RUNNING(job_ptr) || (job_ptr->time_limit == new_time_limit))
+		return;
+
+	if (!(accounting_enforce & ACCOUNTING_ENFORCE_LIMITS)
+	    || !_valid_job_assoc(job_ptr))
+		return;
+
+	used_cpu_run_secs = (uint64_t)job_ptr->total_cpus
+		* (uint64_t)job_ptr->time_limit * 60;
+	new_used_cpu_run_secs = (uint64_t)job_ptr->total_cpus
+		* (uint64_t)new_time_limit * 60;
+
+	assoc_mgr_lock(&locks);
+	if (job_ptr->qos_ptr) {
+		slurmdb_qos_rec_t *qos_ptr =
+			(slurmdb_qos_rec_t *)job_ptr->qos_ptr;
+
+		qos_ptr->usage->grp_used_cpu_run_secs -=
+			used_cpu_run_secs;
+		qos_ptr->usage->grp_used_cpu_run_secs +=
+			new_used_cpu_run_secs;
+		debug2("altering %u QOS %s got %"PRIu64" "
+		       "just removed %"PRIu64" and added %"PRIu64"",
+		       job_ptr->job_id,
+		       qos_ptr->name,
+		       qos_ptr->usage->grp_used_cpu_run_secs,
+		       used_cpu_run_secs,
+		       new_used_cpu_run_secs);
+	}
+
+	assoc_ptr = (slurmdb_association_rec_t *)job_ptr->assoc_ptr;
+	while (assoc_ptr) {
+		assoc_ptr->usage->grp_used_cpu_run_secs -=
+			used_cpu_run_secs;
+		assoc_ptr->usage->grp_used_cpu_run_secs +=
+			new_used_cpu_run_secs;
+		debug2("altering %u acct %s got %"PRIu64" "
+		       "just removed %"PRIu64" and added %"PRIu64"",
+		       job_ptr->job_id,
+		       assoc_ptr->acct,
+		       assoc_ptr->usage->grp_used_cpu_run_secs,
+		       used_cpu_run_secs,
+		       new_used_cpu_run_secs);
+		/* now handle all the group limits of the parents */
+		assoc_ptr = assoc_ptr->usage->parent_assoc_ptr;
+	}
+	assoc_mgr_unlock(&locks);
+}
+
 extern bool acct_policy_validate(job_desc_msg_t *job_desc,
 				 struct part_record *part_ptr,
 				 slurmdb_association_rec_t *assoc_in,
@@ -402,7 +457,7 @@ extern bool acct_policy_validate(job_desc_msg_t *job_desc,
 	xassert(acct_policy_limit_set);
 
 	if (!assoc_ptr) {
-		error("_validate_acct_policy: no assoc_ptr given for job.");
+		error("acct_policy_validate: no assoc_ptr given for job.");
 		return false;
 	}
 	user_name = assoc_ptr->user;
@@ -480,25 +535,6 @@ extern bool acct_policy_validate(job_desc_msg_t *job_desc,
 			       qos_ptr->name);
 			rc = false;
 			goto end_it;
-		} else if ((job_desc->max_cpus == NO_VAL)
-			   || (acct_policy_limit_set->max_cpus
-			       && (job_desc->max_cpus > qos_max_cpus_limit))) {
-			job_desc->max_cpus = qos_max_cpus_limit;
-			acct_policy_limit_set->max_cpus = 1;
-		} else if (strict_checking
-			   && (job_desc->max_cpus > qos_max_cpus_limit)) {
-			if (reason)
-				*reason = WAIT_QOS_RESOURCE_LIMIT;
-			info("job submit for user %s(%u): "
-			     "max cpu changed %u -> %u because "
-			     "of qos limit",
-			     user_name,
-			     job_desc->user_id,
-			     job_desc->max_cpus,
-			     qos_max_cpus_limit);
-			if (job_desc->max_cpus == NO_VAL)
-				acct_policy_limit_set->max_cpus = 1;
-			job_desc->max_cpus = qos_max_cpus_limit;
 		}
 
 		/* for validation we don't need to look at
@@ -523,6 +559,7 @@ extern bool acct_policy_validate(job_desc_msg_t *job_desc,
 
 		qos_max_nodes_limit =
 			MIN(qos_ptr->grp_nodes, qos_ptr->max_nodes_pu);
+
 		if ((acct_policy_limit_set->max_nodes == ADMIN_SET_LIMIT)
 		    || (qos_max_nodes_limit == INFINITE)
 		    || (update_call && (job_desc->max_nodes == NO_VAL))) {
@@ -555,26 +592,6 @@ extern bool acct_policy_validate(job_desc_msg_t *job_desc,
 			       qos_ptr->name);
 			rc = false;
 			goto end_it;
-		} else if ((job_desc->max_nodes == 0)
-			   || (acct_policy_limit_set->max_nodes
-			       && (job_desc->max_nodes
-				   > qos_max_nodes_limit))) {
-			job_desc->max_nodes = qos_max_nodes_limit;
-			acct_policy_limit_set->max_nodes = 1;
-		} else if (strict_checking
-			   && job_desc->max_nodes > qos_max_nodes_limit) {
-			if (reason)
-				*reason = WAIT_QOS_JOB_LIMIT;
-			info("job submit for user %s(%u): "
-			     "max node changed %u -> %u because "
-			     "of qos limit",
-			     user_name,
-			     job_desc->user_id,
-			     job_desc->max_nodes,
-			     qos_max_nodes_limit);
-			if (job_desc->max_nodes == NO_VAL)
-				acct_policy_limit_set->max_nodes = 1;
-			job_desc->max_nodes = qos_max_nodes_limit;
 		}
 
 		if ((qos_ptr->grp_submit_jobs != INFINITE) &&
@@ -628,25 +645,6 @@ extern bool acct_policy_validate(job_desc_msg_t *job_desc,
 			       qos_ptr->max_cpus_pj);
 			rc = false;
 			goto end_it;
-		} else if ((job_desc->max_cpus == NO_VAL)
-			   || (acct_policy_limit_set->max_cpus
-			       && (job_desc->max_cpus
-				   > qos_ptr->max_cpus_pj))) {
-			job_desc->max_cpus = qos_ptr->max_cpus_pj;
-			acct_policy_limit_set->max_cpus = 1;
-		} else if (reason
-			   && job_desc->max_cpus > qos_ptr->max_cpus_pj) {
-			*reason = WAIT_QOS_JOB_LIMIT;
-			info("job submit for user %s(%u): "
-			     "max cpu changed %u -> %u because "
-			     "of qos limit",
-			     user_name,
-			     job_desc->user_id,
-			     job_desc->max_cpus,
-			     qos_ptr->max_cpus_pj);
-			if (job_desc->max_cpus == NO_VAL)
-				acct_policy_limit_set->max_cpus = 1;
-			job_desc->max_cpus = qos_ptr->max_cpus_pj;
 		}
 
 		/* for validation we don't need to look at
@@ -670,26 +668,6 @@ extern bool acct_policy_validate(job_desc_msg_t *job_desc,
 			       qos_ptr->max_nodes_pj);
 			rc = false;
 			goto end_it;
-		} else if ((job_desc->max_nodes == 0)
-			   || (acct_policy_limit_set->max_nodes
-			       && (job_desc->max_nodes
-				   > qos_ptr->max_nodes_pj))) {
-			job_desc->max_nodes = qos_ptr->max_nodes_pj;
-			acct_policy_limit_set->max_nodes = 1;
-		} else if (strict_checking
-			   && job_desc->max_nodes > qos_ptr->max_nodes_pj) {
-			if (reason)
-				*reason = WAIT_QOS_JOB_LIMIT;
-			info("job submit for user %s(%u): "
-			     "max node changed %u -> %u because "
-			     "of qos limit",
-			     user_name,
-			     job_desc->user_id,
-			     job_desc->max_nodes,
-			     qos_ptr->max_nodes_pj);
-			if (job_desc->max_nodes == NO_VAL)
-				acct_policy_limit_set->max_nodes = 1;
-			job_desc->max_nodes = qos_ptr->max_nodes_pj;
 		}
 
 		if (qos_ptr->max_submit_jobs_pu != INFINITE) {
@@ -770,22 +748,6 @@ extern bool acct_policy_validate(job_desc_msg_t *job_desc,
 			       assoc_ptr->acct);
 			rc = false;
 			break;
-		} else if ((job_desc->max_cpus == NO_VAL)
-			   || (acct_policy_limit_set->max_cpus
-			       && (job_desc->max_cpus > assoc_ptr->grp_cpus))) {
-			job_desc->max_cpus = assoc_ptr->grp_cpus;
-			acct_policy_limit_set->max_cpus = 1;
-		} else if (job_desc->max_cpus > assoc_ptr->grp_cpus) {
-			info("job submit for user %s(%u): "
-			     "max cpu changed %u -> %u because "
-			     "of account limit",
-			     user_name,
-			     job_desc->user_id,
-			     job_desc->max_cpus,
-			     assoc_ptr->grp_cpus);
-			if (job_desc->max_cpus == NO_VAL)
-				acct_policy_limit_set->max_cpus = 1;
-			job_desc->max_cpus = assoc_ptr->grp_cpus;
 		}
 
 		/* for validation we don't need to look at
@@ -824,23 +786,6 @@ extern bool acct_policy_validate(job_desc_msg_t *job_desc,
 			       assoc_ptr->acct);
 			rc = false;
 			break;
-		} else if ((job_desc->max_nodes == 0)
-			   || (acct_policy_limit_set->max_nodes
-			       && (job_desc->max_nodes
-				   > assoc_ptr->grp_nodes))) {
-			job_desc->max_nodes = assoc_ptr->grp_nodes;
-			acct_policy_limit_set->max_nodes = 1;
-		} else if (job_desc->max_nodes > assoc_ptr->grp_nodes) {
-			info("job submit for user %s(%u): "
-			     "max node changed %u -> %u because "
-			     "of account limit",
-			     user_name,
-			     job_desc->user_id,
-			     job_desc->max_nodes,
-			     assoc_ptr->grp_nodes);
-			if (job_desc->max_nodes == NO_VAL)
-				acct_policy_limit_set->max_nodes = 1;
-			job_desc->max_nodes = assoc_ptr->grp_nodes;
 		}
 
 		if ((!qos_ptr ||
@@ -893,23 +838,6 @@ extern bool acct_policy_validate(job_desc_msg_t *job_desc,
 			       assoc_ptr->max_cpus_pj);
 			rc = false;
 			break;
-		} else if (job_desc->max_cpus == NO_VAL
-			   || (acct_policy_limit_set->max_cpus
-			       && (job_desc->max_cpus
-				   > assoc_ptr->max_cpus_pj))) {
-			job_desc->max_cpus = assoc_ptr->max_cpus_pj;
-			acct_policy_limit_set->max_cpus = 1;
-		} else if (job_desc->max_cpus > assoc_ptr->max_cpus_pj) {
-			info("job submit for user %s(%u): "
-			     "max cpu changed %u -> %u because "
-			     "of account limit",
-			     user_name,
-			     job_desc->user_id,
-			     job_desc->max_cpus,
-			     assoc_ptr->max_cpus_pj);
-			if (job_desc->max_cpus == NO_VAL)
-				acct_policy_limit_set->max_cpus = 1;
-			job_desc->max_cpus = assoc_ptr->max_cpus_pj;
 		}
 
 		/* for validation we don't need to look at
@@ -932,24 +860,6 @@ extern bool acct_policy_validate(job_desc_msg_t *job_desc,
 			       assoc_ptr->max_nodes_pj);
 			rc = false;
 			break;
-		} else if (((job_desc->max_nodes == NO_VAL)
-			    || (job_desc->max_nodes == 0))
-			   || (acct_policy_limit_set->max_nodes
-			       && (job_desc->max_nodes
-				   > assoc_ptr->max_nodes_pj))) {
-			job_desc->max_nodes = assoc_ptr->max_nodes_pj;
-			acct_policy_limit_set->max_nodes = 1;
-		} else if (job_desc->max_nodes > assoc_ptr->max_nodes_pj) {
-			info("job submit for user %s(%u): "
-			     "max node changed %u -> %u because "
-			     "of account limit",
-			     user_name,
-			     job_desc->user_id,
-			     job_desc->max_nodes,
-			     assoc_ptr->max_nodes_pj);
-			if (job_desc->max_nodes == NO_VAL)
-				acct_policy_limit_set->max_nodes = 1;
-			job_desc->max_nodes = assoc_ptr->max_nodes_pj;
 		}
 
 		if ((!qos_ptr ||
@@ -1038,7 +948,7 @@ extern bool acct_policy_job_runnable_pre_select(struct job_record *job_ptr)
 	uint32_t time_limit;
 	bool rc = true;
 	uint32_t wall_mins;
-	int parent = 0; /*flag to tell us if we are looking at the
+	int parent = 0; /* flag to tell us if we are looking at the
 			 * parent or not
 			 */
 	assoc_mgr_lock_t locks = { READ_LOCK, NO_LOCK,
@@ -1049,6 +959,7 @@ extern bool acct_policy_job_runnable_pre_select(struct job_record *job_ptr)
 		return true;
 
 	if (!_valid_job_assoc(job_ptr)) {
+		xfree(job_ptr->state_desc);
 		job_ptr->state_reason = FAIL_ACCOUNT;
 		return false;
 	}
@@ -1058,8 +969,10 @@ extern bool acct_policy_job_runnable_pre_select(struct job_record *job_ptr)
 		return true;
 
 	/* clear old state reason */
-	if (!acct_policy_job_runnable_state(job_ptr))
+	if (!acct_policy_job_runnable_state(job_ptr)) {
+		xfree(job_ptr->state_desc);
 		job_ptr->state_reason = WAIT_NO_REASON;
+	}
 
 	assoc_mgr_lock(&locks);
 	qos_ptr = job_ptr->qos_ptr;
@@ -1173,7 +1086,7 @@ extern bool acct_policy_job_runnable_pre_select(struct job_record *job_ptr)
 	}
 
 	assoc_ptr = job_ptr->assoc_ptr;
-	while(assoc_ptr) {
+	while (assoc_ptr) {
 		wall_mins = assoc_ptr->usage->grp_used_wall / 60;
 
 #if _DEBUG
@@ -1313,7 +1226,7 @@ extern bool acct_policy_job_runnable_post_select(
 	uint32_t job_memory = 0;
 	bool admin_set_memory_limit = false;
 	bool safe_limits = false;
-	int parent = 0; /*flag to tell us if we are looking at the
+	int parent = 0; /* flag to tell us if we are looking at the
 			 * parent or not
 			 */
 	assoc_mgr_lock_t locks = { READ_LOCK, NO_LOCK,
@@ -1340,8 +1253,10 @@ extern bool acct_policy_job_runnable_post_select(
 		safe_limits = true;
 
 	/* clear old state reason */
-	if (!acct_policy_job_runnable_state(job_ptr))
+	if (!acct_policy_job_runnable_state(job_ptr)) {
+		xfree(job_ptr->state_desc);
 		job_ptr->state_reason = WAIT_NO_REASON;
+	}
 
 	job_cpu_time_limit = (uint64_t)job_ptr->time_limit * (uint64_t)cpu_cnt;
 
@@ -1399,7 +1314,7 @@ extern bool acct_policy_job_runnable_post_select(
 				rc = false;
 				goto end_it;
 			} else if (safe_limits
-				   && ((job_cpu_time_limit + cpu_run_mins) >=
+				   && ((job_cpu_time_limit + cpu_run_mins) >
 				       (qos_ptr->grp_cpu_mins - usage_mins))) {
 				/*
 				 * If we're using safe limits start
@@ -1413,13 +1328,18 @@ extern bool acct_policy_job_runnable_post_select(
 				debug2("Job %u being held, "
 				       "the job is at or exceeds QOS %s's "
 				       "group max cpu minutes of %"PRIu64" "
-				       "with usage %"PRIu64" and running "
-				       " cpu minutes %"PRIu64"",
+				       "of which %"PRIu64" are still available "
+				       "but request is for %"PRIu64" "
+				       "(%"PRIu64" already used) cpu "
+				       "minutes (%u cpus)",
 				       job_ptr->job_id,
 				       qos_ptr->name,
 				       qos_ptr->grp_cpu_mins,
-				       usage_mins,
-				       cpu_run_mins);
+				       qos_ptr->grp_cpu_mins - usage_mins,
+				       job_cpu_time_limit + cpu_run_mins,
+				       cpu_run_mins,
+				       cpu_cnt);
+
 				rc = false;
 				goto end_it;
 			}
@@ -1744,7 +1664,7 @@ extern bool acct_policy_job_runnable_post_select(
 				rc = false;
 				goto end_it;
 			} else if (safe_limits
-				   && ((job_cpu_time_limit + cpu_run_mins) >=
+				   && ((job_cpu_time_limit + cpu_run_mins) >
 				       (assoc_ptr->grp_cpu_mins
 					- usage_mins))) {
 				/*
@@ -1758,13 +1678,16 @@ extern bool acct_policy_job_runnable_post_select(
 				job_ptr->state_reason = WAIT_ASSOC_JOB_LIMIT;
 				debug2("job %u being held, "
 				       "assoc %u is at or exceeds "
-				       "group max cpu minutes limit %"PRIu64" "
-				       "with usage %"PRIu64" and currently "
-				       "running cpu minutes "
-				       "%"PRIu64" for account %s",
+				       "group max cpu minutes of %"PRIu64" "
+				       "of which %"PRIu64" are still available "
+				       "but request is for %"PRIu64" cpu "
+				       "minutes (%u cpus)"
+				       "for account %s",
 				       job_ptr->job_id, assoc_ptr->id,
 				       assoc_ptr->grp_cpu_mins,
-				       usage_mins, cpu_run_mins,
+				       assoc_ptr->grp_cpu_mins - usage_mins,
+				       job_cpu_time_limit + cpu_run_mins,
+				       cpu_cnt,
 				       assoc_ptr->acct);
 				rc = false;
 				goto end_it;
@@ -2002,6 +1925,60 @@ end_it:
 		xfree(used_limits);
 
 	return rc;
+}
+
+extern uint32_t acct_policy_get_max_nodes(struct job_record *job_ptr)
+{
+	uint32_t max_nodes_limit = INFINITE, qos_max_p_limit = INFINITE;
+	assoc_mgr_lock_t locks = { READ_LOCK, NO_LOCK,
+				   READ_LOCK, NO_LOCK, NO_LOCK };
+	slurmdb_qos_rec_t *qos_ptr = job_ptr->qos_ptr;
+	slurmdb_association_rec_t *assoc_ptr = job_ptr->assoc_ptr;
+	bool parent = 0; /* flag to tell us if we are looking at the
+			  * parent or not
+			  */
+	bool grp_set = 0;
+
+	/* check to see if we are enforcing associations */
+	if (!(accounting_enforce & ACCOUNTING_ENFORCE_LIMITS))
+		return max_nodes_limit;
+
+	assoc_mgr_lock(&locks);
+	if (qos_ptr) {
+		qos_max_p_limit = max_nodes_limit =
+			MIN(qos_ptr->max_nodes_pj, qos_ptr->max_nodes_pu);
+		max_nodes_limit =
+			MIN(max_nodes_limit, qos_ptr->grp_nodes);
+	}
+
+	/* We have to traverse all the associations because QOS might
+	   not override a particular limit.
+	*/
+	while (assoc_ptr) {
+		if ((!qos_ptr || (qos_ptr->grp_nodes == INFINITE))
+		    && (assoc_ptr->grp_nodes != INFINITE)) {
+			max_nodes_limit = MIN(max_nodes_limit,
+					      assoc_ptr->grp_nodes);
+			grp_set = 1;
+		}
+
+		if (!parent
+		    && (qos_max_p_limit == INFINITE)
+		    && (assoc_ptr->max_nodes_pj != INFINITE))
+			max_nodes_limit = MIN(max_nodes_limit,
+					      assoc_ptr->max_nodes_pj);
+
+		/* only check the first grp set */
+		if (grp_set)
+			break;
+
+		assoc_ptr = assoc_ptr->usage->parent_assoc_ptr;
+		parent = 1;
+		continue;
+	}
+
+	assoc_mgr_unlock(&locks);
+	return max_nodes_limit;
 }
 
 /*

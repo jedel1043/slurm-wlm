@@ -360,6 +360,8 @@ static void _set_part_field_size(List sinfo_list)
 		if (!current->part_info || !current->part_info->name)
 			continue;
 		this_width = strlen(current->part_info->name);
+		if (current->part_info->flags & PART_FLAG_DEFAULT)
+			this_width++;
 		max_width = MAX(max_width, this_width);
 	}
 	list_iterator_destroy(i);
@@ -993,6 +995,7 @@ int _print_state_compact(sinfo_data_t * sinfo_data, int width,
 
 	if (sinfo_data && sinfo_data->nodes_total) {
 		my_state = sinfo_data->node_state;
+
 		upper_state = node_state_string_compact(my_state);
 		lower_state = _str_tolower(upper_state);
 		_print_str(lower_state, width, right_justify, true);
@@ -1199,6 +1202,27 @@ int _print_max_cpus_per_node(sinfo_data_t * sinfo_data, int width,
 	} else {
 		_print_str("MAX_CPUS_PER_NODE", width, right_justify, true);
 	}
-
+	if (suffix)
+		printf("%s", suffix);
 	return SLURM_SUCCESS;
+}
+
+int _print_version(sinfo_data_t * sinfo_data, int width,
+		   bool right_justify, char *suffix)
+{
+	if (sinfo_data) {
+		if (sinfo_data->version == NULL) {
+			_print_str("N/A", width, right_justify, true);
+		} else {
+			_print_str(sinfo_data->version, width,
+				   right_justify, true);
+		}
+	} else {
+		_print_str("VERSION", width, right_justify, true);
+	}
+	if (suffix) {
+		printf ("%s", suffix);
+	}
+	return SLURM_SUCCESS;
+
 }

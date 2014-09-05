@@ -141,6 +141,23 @@ extern int acct_gather_conf_destroy(void)
 	return rc;
 }
 
+extern List acct_gather_conf_values(void)
+{
+	List acct_list = list_create(destroy_config_key_pair);
+
+	/* get acct_gather.conf in each plugin */
+	acct_gather_profile_g_conf_values(&acct_list);
+	acct_gather_infiniband_g_conf_values(&acct_list);
+	acct_gather_energy_g_conf_values(&acct_list);
+	acct_gather_filesystem_g_conf_values(&acct_list);
+	/* ADD MORE HERE */
+	/******************************************/
+
+	list_sort(acct_list, (ListCmpF) sort_key_pairs);
+
+	return acct_list;
+}
+
 extern int acct_gather_parse_freq(int type, char *freq)
 {
 	int freq_int = -1;
@@ -178,6 +195,51 @@ extern int acct_gather_parse_freq(int type, char *freq)
 	}
 
 	return freq_int;
+}
+
+extern int acct_gather_check_acct_freq_task(
+	uint32_t job_mem_lim, char *acctg_freq)
+{
+	int task_freq;
+	static uint32_t acct_freq_task = NO_VAL;
+
+	if (acct_freq_task == NO_VAL) {
+		char *acct_freq = slurm_get_jobacct_gather_freq();
+		int i = acct_gather_parse_freq(PROFILE_TASK, acct_freq);
+		xfree(acct_freq);
+
+		/* If the value is -1 lets set the freq to something
+		   really high so we don't check this again.
+		*/
+		if (i == -1)
+			acct_freq_task = (uint16_t)NO_VAL;
+		else
+			acct_freq_task = i;
+	}
+
+	if (!job_mem_lim || !acct_freq_task)
+		return 0;
+
+	task_freq = acct_gather_parse_freq(PROFILE_TASK, acctg_freq);
+
+	if (task_freq == -1)
+		return 0;
+
+	if (task_freq == 0) {
+		error("Can't turn accounting frequency off.  "
+		      "We need it to monitor memory usage.");
+		slurm_seterrno(ESLURMD_INVALID_ACCT_FREQ);
+		return 1;
+	} else if (task_freq > acct_freq_task) {
+		error("Can't set frequency to %d, it is higher than %u.  "
+		      "We need it to be at least at this level to "
+		      "monitor memory usage.",
+		      task_freq, acct_freq_task);
+		slurm_seterrno(ESLURMD_INVALID_ACCT_FREQ);
+		return 1;
+	}
+
+	return 0;
 }
 
 extern void acct_gather_suspend_poll(void)

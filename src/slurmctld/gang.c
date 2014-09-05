@@ -151,7 +151,6 @@ struct gs_part {
 /* global variables */
 static uint32_t timeslicer_seconds = 0;
 static uint16_t gr_type = GS_NODE;
-static uint32_t gs_debug_flags = 0;
 static uint16_t gs_fast_schedule = 0;
 static List gs_part_list = NULL;
 static uint32_t default_job_list_size = 64;
@@ -191,7 +190,7 @@ static void _print_jobs(struct gs_part *p_ptr)
 {
 	int i;
 
-	if (gs_debug_flags & DEBUG_FLAG_GANG) {
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 		info("gang:  part %s has %u jobs, %u shadows:",
 		     p_ptr->part_name, p_ptr->num_jobs, p_ptr->num_shadows);
 		for (i = 0; i < p_ptr->num_shadows; i++) {
@@ -269,7 +268,7 @@ static void _load_phys_res_cnt(void)
 		gs_bits_per_node[bit_index++] = bit;
 	}
 
-	if (gs_debug_flags & DEBUG_FLAG_GANG) {
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 		for (i = 0; i < bit_index; i++) {
 			info("gang: _load_phys_res_cnt: bits_per_node[%d]=%u",
 			     i, gs_bits_per_node[i]);
@@ -423,7 +422,7 @@ static int _job_fits_in_active_row(struct job_record *job_ptr,
 	bit_and(job_map, p_ptr->active_resmap);
 	/* any set bits indicate contention for the same resource */
 	count = bit_set_count(job_map);
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: _job_fits_in_active_row: %d bits conflict", count);
 	FREE_NULL_BITMAP(job_map);
 	if (count == 0)
@@ -499,20 +498,20 @@ static void _add_job_to_active(struct job_record *job_ptr,
 			_fill_sockets(job_res->node_bitmap, p_ptr);
 	} else { /* GS_NODE or GS_CPU */
 		if (!p_ptr->active_resmap) {
-			if (gs_debug_flags & DEBUG_FLAG_GANG) {
+			if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 				info("gang: _add_job_to_active: job %u first",
 				     job_ptr->job_id);
 			}
 			p_ptr->active_resmap = bit_copy(job_res->node_bitmap);
 		} else if (p_ptr->jobs_active == 0) {
-			if (gs_debug_flags & DEBUG_FLAG_GANG) {
+			if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 				info("gang: _add_job_to_active: job %u copied",
 				     job_ptr->job_id);
 			}
 			bit_copybits(p_ptr->active_resmap,
 				     job_res->node_bitmap);
 		} else {
-			if (gs_debug_flags & DEBUG_FLAG_GANG) {
+			if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 				info("gang: _add_job_to_active: adding job %u",
 				     job_ptr->job_id);
 			}
@@ -565,7 +564,7 @@ static int _suspend_job(uint32_t job_id)
 	rc = job_suspend(&msg, 0, -1, false, (uint16_t)NO_VAL);
 	/* job_suspend() returns ESLURM_DISABLED if job is already suspended */
 	if (rc == SLURM_SUCCESS) {
-		if (gs_debug_flags & DEBUG_FLAG_GANG)
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 			info("gang: suspending %u", job_id);
 		else
 			debug("gang: suspending %u", job_id);
@@ -584,7 +583,7 @@ static void _resume_job(uint32_t job_id)
 	msg.op = RESUME_JOB;
 	rc = job_suspend(&msg, 0, -1, false, (uint16_t)NO_VAL);
 	if (rc == SLURM_SUCCESS) {
-		if (gs_debug_flags & DEBUG_FLAG_GANG)
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 			info("gang: resuming %u", job_id);
 		else
 			debug("gang: resuming %u", job_id);
@@ -667,7 +666,7 @@ static void _preempt_job_dequeue(void)
 				      "requeued: %s",
 				      job_ptr->job_id, slurm_strerror(rc));
 		}
-		
+
 		if (rc != SLURM_SUCCESS) {
 			rc = job_signal(job_ptr->job_id, SIGKILL, 0, 0, true);
 			if (rc == SLURM_SUCCESS)
@@ -687,8 +686,17 @@ static void _preempt_job_dequeue(void)
  *	descending order rather than ascending order */
 static int _sort_partitions(void *part1, void *part2)
 {
-	int prio1 = ((struct gs_part *) part1)->priority;
-	int prio2 = ((struct gs_part *) part2)->priority;
+	struct gs_part *g1;
+	struct gs_part *g2;
+	int prio1;
+	int prio2;
+
+	g1 = *(struct gs_part **)part1;
+	g2 = *(struct gs_part **)part2;
+
+	prio1 = g1->priority;
+	prio2 = g2->priority;
+
 	return prio2 - prio1;
 }
 
@@ -774,7 +782,7 @@ static void _update_active_row(struct gs_part *p_ptr, int add_new_jobs)
 	int i;
 	struct gs_job *j_ptr;
 
-	if (gs_debug_flags & DEBUG_FLAG_GANG) {
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 		info("gang: update_active_row: rebuilding part %s...",
 		     p_ptr->part_name);
 	}
@@ -898,7 +906,7 @@ static void _remove_job_from_part(uint32_t job_id, struct gs_part *p_ptr,
 		/* job not found */
 		return;
 
-	if (gs_debug_flags & DEBUG_FLAG_GANG) {
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 		info("gang: _remove_job_from_part: removing job %u from %s",
 		     job_id, p_ptr->part_name);
 	}
@@ -916,7 +924,7 @@ static void _remove_job_from_part(uint32_t job_id, struct gs_part *p_ptr,
 
 	/* make sure the job is not suspended, and then delete it */
 	if (!fini && (j_ptr->sig_state == GS_SUSPEND)) {
-		if (gs_debug_flags & DEBUG_FLAG_GANG) {
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 			info("gang: _remove_job_from_part: resuming "
 			     "suspended job %u", j_ptr->job_id);
 		}
@@ -944,7 +952,7 @@ static uint16_t _add_job_to_part(struct gs_part *p_ptr,
 	xassert(job_ptr->job_resrcs->node_bitmap);
 	xassert(job_ptr->job_resrcs->core_bitmap);
 
-	if (gs_debug_flags & DEBUG_FLAG_GANG) {
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 		info("gang: _add_job_to_part: adding job %u to %s",
 		     job_ptr->job_id, p_ptr->part_name);
 	}
@@ -964,7 +972,7 @@ static uint16_t _add_job_to_part(struct gs_part *p_ptr,
 		 * may have changed. In any case, remove the existing
 		 * job before adding this new one.
 		 */
-		if (gs_debug_flags & DEBUG_FLAG_GANG) {
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 			info("gang: _add_job_to_part: duplicate job %u "
 			     "detected", job_ptr->job_id);
 		}
@@ -992,7 +1000,7 @@ static uint16_t _add_job_to_part(struct gs_part *p_ptr,
 
 	/* determine the immediate fate of this job (run or suspend) */
 	if (_job_fits_in_active_row(job_ptr, p_ptr)) {
-		if (gs_debug_flags & DEBUG_FLAG_GANG) {
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 			info("gang: _add_job_to_part: job %u remains running",
 			     job_ptr->job_id);
 		}
@@ -1007,7 +1015,7 @@ static uint16_t _add_job_to_part(struct gs_part *p_ptr,
 		_cast_shadow(j_ptr, p_ptr->priority);
 
 	} else {
-		if (gs_debug_flags & DEBUG_FLAG_GANG) {
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 			info("gang: _add_job_to_part: suspending job %u",
 			     job_ptr->job_id);
 		}
@@ -1035,17 +1043,18 @@ static void _scan_slurm_job_list(void)
 	struct gs_part *p_ptr;
 	int i;
 	ListIterator job_iterator;
+	char *part_name;
 
 	if (!job_list) {	/* no jobs */
-		if (gs_debug_flags & DEBUG_FLAG_GANG)
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 			info("gang: _scan_slurm_job_list: job_list NULL");
 		return;
 	}
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: _scan_slurm_job_list: job_list exists...");
 	job_iterator = list_iterator_create(job_list);
 	while ((job_ptr = (struct job_record *) list_next(job_iterator))) {
-		if (gs_debug_flags & DEBUG_FLAG_GANG) {
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 			info("gang: _scan_slurm_job_list: checking job %u",
 			    job_ptr->job_id);
 		}
@@ -1054,10 +1063,15 @@ static void _scan_slurm_job_list(void)
 		if (IS_JOB_SUSPENDED(job_ptr) && (job_ptr->priority == 0))
 			continue;	/* not suspended by us */
 
+		if (job_ptr->part_ptr && job_ptr->part_ptr->name)
+			part_name = job_ptr->part_ptr->name;
+		else
+			part_name = job_ptr->partition;
+
 		if (IS_JOB_SUSPENDED(job_ptr) || IS_JOB_RUNNING(job_ptr)) {
 			/* are we tracking this job already? */
 			p_ptr = list_find_first(gs_part_list, _find_gs_part,
-						job_ptr->partition);
+						part_name);
 			if (!p_ptr) /* no partition */
 				continue;
 			i = _find_job_index(p_ptr, job_ptr->job_id);
@@ -1086,8 +1100,7 @@ static void _scan_slurm_job_list(void)
 		/* if the job is not pending, suspended, or running, then
 		 * it's completing or completed. Make sure we've released
 		 * this job */
-		p_ptr = list_find_first(gs_part_list, _find_gs_part,
-					job_ptr->partition);
+		p_ptr = list_find_first(gs_part_list, _find_gs_part, part_name);
 		if (!p_ptr) /* no partition */
 			continue;
 		_remove_job_from_part(job_ptr->job_id, p_ptr, false);
@@ -1149,10 +1162,9 @@ extern int gs_init(void)
 		return SLURM_SUCCESS;
 
 	/* initialize global variables */
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: entering gs_init");
 	timeslicer_seconds = slurmctld_conf.sched_time_slice;
-	gs_debug_flags = slurm_get_debug_flags();
 	gs_fast_schedule = slurm_get_fast_schedule();
 	gr_type = _get_gr_type();
 	preempt_job_list = list_create(_preempt_job_list_del);
@@ -1168,7 +1180,7 @@ extern int gs_init(void)
 
 	/* spawn the timeslicer thread */
 	_spawn_timeslicer_thread();
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: leaving gs_init");
 	return SLURM_SUCCESS;
 }
@@ -1177,7 +1189,7 @@ extern int gs_init(void)
 extern int gs_fini(void)
 {
 	/* terminate the timeslicer thread */
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: entering gs_fini");
 	pthread_mutex_lock(&thread_flag_mutex);
 	if (thread_running) {
@@ -1198,7 +1210,7 @@ extern int gs_fini(void)
 	gs_part_list = NULL;
 	xfree(gs_bits_per_node);
 	pthread_mutex_unlock(&data_mutex);
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: leaving gs_fini");
 
 	return SLURM_SUCCESS;
@@ -1209,13 +1221,17 @@ extern int gs_job_start(struct job_record *job_ptr)
 {
 	struct gs_part *p_ptr;
 	uint16_t job_state;
+	char *part_name;
 
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: entering gs_job_start for job %u", job_ptr->job_id);
 	/* add job to partition */
+	if (job_ptr->part_ptr && job_ptr->part_ptr->name)
+		part_name = job_ptr->part_ptr->name;
+	else
+		part_name = job_ptr->partition;
 	pthread_mutex_lock(&data_mutex);
-	p_ptr = list_find_first(gs_part_list, _find_gs_part,
-				job_ptr->partition);
+	p_ptr = list_find_first(gs_part_list, _find_gs_part, part_name);
 	if (p_ptr) {
 		job_state = _add_job_to_part(p_ptr, job_ptr);
 		/* if this job is running then check for preemption */
@@ -1229,11 +1245,11 @@ extern int gs_job_start(struct job_record *job_ptr)
 		 * uninterupted (what else can we do?)
 		 */
 		error("gang: could not find partition %s for job %u",
-		      job_ptr->partition, job_ptr->job_id);
+		      part_name, job_ptr->job_id);
 	}
 
 	_preempt_job_dequeue();	/* MUST BE OUTSIDE OF data_mutex lock */
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: leaving gs_job_start");
 
 	return SLURM_SUCCESS;
@@ -1243,14 +1259,14 @@ extern int gs_job_start(struct job_record *job_ptr)
  *	to remove */
 extern int gs_job_scan(void)
 {
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: entering gs_job_scan");
 	pthread_mutex_lock(&data_mutex);
 	_scan_slurm_job_list();
 	pthread_mutex_unlock(&data_mutex);
 
 	_preempt_job_dequeue();	/* MUST BE OUTSIDE OF data_mutex lock */
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: leaving gs_job_scan");
 
 	return SLURM_SUCCESS;
@@ -1280,15 +1296,19 @@ extern void gs_wake_jobs(void)
 extern int gs_job_fini(struct job_record *job_ptr)
 {
 	struct gs_part *p_ptr;
+	char *part_name;
 
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: entering gs_job_fini for job %u", job_ptr->job_id);
+	if (job_ptr->part_ptr && job_ptr->part_ptr->name)
+		part_name = job_ptr->part_ptr->name;
+	else
+		part_name = job_ptr->partition;
 	pthread_mutex_lock(&data_mutex);
-	p_ptr = list_find_first(gs_part_list, _find_gs_part,
-				job_ptr->partition);
+	p_ptr = list_find_first(gs_part_list, _find_gs_part, part_name);
 	if (!p_ptr) {
 		pthread_mutex_unlock(&data_mutex);
-		if (gs_debug_flags & DEBUG_FLAG_GANG)
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 			info("gang: leaving gs_job_fini");
 		return SLURM_SUCCESS;
 	}
@@ -1299,7 +1319,7 @@ extern int gs_job_fini(struct job_record *job_ptr)
 	 * check by updating all active rows */
 	_update_all_active_rows();
 	pthread_mutex_unlock(&data_mutex);
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: leaving gs_job_fini");
 
 	return SLURM_SUCCESS;
@@ -1340,7 +1360,7 @@ extern int gs_reconfig(void)
 		return SLURM_SUCCESS;
 	}
 
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: entering gs_reconfig");
 	pthread_mutex_lock(&data_mutex);
 
@@ -1348,7 +1368,6 @@ extern int gs_reconfig(void)
 	gs_part_list = NULL;
 
 	/* reset global data */
-	gs_debug_flags = slurm_get_debug_flags();
 	gs_fast_schedule = slurm_get_fast_schedule();
 	gr_type = _get_gr_type();
 	_load_phys_res_cnt();
@@ -1398,7 +1417,7 @@ extern int gs_reconfig(void)
 			/* resume any job that is suspended by us */
 			if (IS_JOB_SUSPENDED(job_ptr) &&
 			    (job_ptr->priority != 0)) {
-				if (gs_debug_flags & DEBUG_FLAG_GANG) {
+				if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 					info("resuming job %u apparently "
 					     "suspended by gang",
 					     job_ptr->job_id);
@@ -1423,7 +1442,7 @@ extern int gs_reconfig(void)
 	pthread_mutex_unlock(&data_mutex);
 
 	_preempt_job_dequeue();	/* MUST BE OUTSIDE OF data_mutex lock */
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: leaving gs_reconfig");
 
 	return SLURM_SUCCESS;
@@ -1439,7 +1458,7 @@ static void _build_active_row(struct gs_part *p_ptr)
 {
 	int i;
 
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: entering _build_active_row");
 	p_ptr->jobs_active = 0;
 	if (p_ptr->num_jobs == 0)
@@ -1458,7 +1477,7 @@ static void _build_active_row(struct gs_part *p_ptr)
 			p_ptr->job_list[i]->row_state = GS_ACTIVE;
 		}
 	}
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: leaving _build_active_row");
 }
 
@@ -1481,7 +1500,7 @@ static void _cycle_job_list(struct gs_part *p_ptr)
 	int i, j;
 	struct gs_job *j_ptr;
 
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: entering _cycle_job_list");
 	/* re-prioritize the job_list and set all row_states to GS_NO_ACTIVE */
 	for (i = 0; i < p_ptr->num_jobs; i++) {
@@ -1498,11 +1517,11 @@ static void _cycle_job_list(struct gs_part *p_ptr)
 			p_ptr->job_list[i]->row_state = GS_NO_ACTIVE;
 
 	}
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: _cycle_job_list reordered job list:");
 	/* Rebuild the active row. */
 	_build_active_row(p_ptr);
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: _cycle_job_list new active job list:");
 	_print_jobs(p_ptr);
 
@@ -1511,7 +1530,7 @@ static void _cycle_job_list(struct gs_part *p_ptr)
 		j_ptr = p_ptr->job_list[i];
 		if ((j_ptr->row_state == GS_NO_ACTIVE) &&
 		     (j_ptr->sig_state == GS_RESUME)) {
-			if (gs_debug_flags & DEBUG_FLAG_GANG) {
+			if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 		    		info("gang: _cycle_job_list: suspending job %u",
 				     j_ptr->job_id);
 			}
@@ -1531,7 +1550,7 @@ static void _cycle_job_list(struct gs_part *p_ptr)
 		j_ptr = p_ptr->job_list[i];
 		if (j_ptr->row_state == GS_ACTIVE &&
 		    j_ptr->sig_state == GS_SUSPEND) {
-			if (gs_debug_flags & DEBUG_FLAG_GANG) {
+			if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 		    		info("gang: _cycle_job_list: resuming job %u",
 				     j_ptr->job_id);
 			}
@@ -1540,7 +1559,7 @@ static void _cycle_job_list(struct gs_part *p_ptr)
 			_cast_shadow(j_ptr, p_ptr->priority);
 		}
 	}
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: leaving _cycle_job_list");
 }
 
@@ -1564,7 +1583,7 @@ static void *_timeslicer_thread(void *arg)
 	ListIterator part_iterator;
 	struct gs_part *p_ptr;
 
-	if (gs_debug_flags & DEBUG_FLAG_GANG)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 		info("gang: starting timeslicer loop");
 	while (!thread_shutdown) {
 		_slice_sleep();
@@ -1576,11 +1595,11 @@ static void *_timeslicer_thread(void *arg)
 		list_sort(gs_part_list, _sort_partitions);
 
 		/* scan each partition... */
-		if (gs_debug_flags & DEBUG_FLAG_GANG)
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG)
 			info("gang: _timeslicer_thread: scanning partitions");
 		part_iterator = list_iterator_create(gs_part_list);
 		while ((p_ptr = (struct gs_part *) list_next(part_iterator))) {
-			if (gs_debug_flags & DEBUG_FLAG_GANG) {
+			if (slurmctld_conf.debug_flags & DEBUG_FLAG_GANG) {
 				info("gang: _timeslicer_thread: part %s: "
 				     "run %u total %u", p_ptr->part_name,
 				     p_ptr->jobs_active, p_ptr->num_jobs);

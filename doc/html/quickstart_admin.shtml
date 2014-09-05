@@ -12,7 +12,7 @@ computer platforms.</p>
 <ol>
 <li>Make sure that you have synchronized clocks plus consistent users and groups
 (UIDs and GIDs) across the cluster.</li>
-<li>Install <a href="http://munge.googlecode.com/">MUNGE</a> for
+<li>Install <a href="https://code.google.com/p/munge/">MUNGE</a> for
 authentication. Make sure that all nodes in your cluster have the
 same <i>munge.key</i>. Make sure the MUNGE daemon, <i>munged</i>
 is started before you start the SLURM daemons.</li>
@@ -88,7 +88,7 @@ and commands are denoted below.
 		  library is installed. MUNGE is used as the default
 		  authentication mechanism.</li>
 <li> <b>Authd</b> The auth/authd plugin will be built and installed if
-		  the libauth library and its dependency libe are installed.
+		  the libauth library and its dependency libs are installed.
 		  </li>
 <li> <b>sview</b> The sview command will be built only if and <i>gtk+-2.0</i>
 		  is installed</li>
@@ -110,7 +110,7 @@ Some macro definitions that may be used in building SLURM include:
 <dd>Specify if debugging logic within SLURM is to be enabled
 <dt>_prefix
 <dd>Pathname of directory to contain the SLURM files
-<dt>slurm_sysconfdir
+<dt>_sysconfdir  (or _slurm_sysconfdir)
 <dd>Pathname of directory containing the slurm.conf configuration file
 <dt>with_munge
 <dd>Specifies the MUNGE (authentication library) installation location
@@ -128,12 +128,40 @@ Some macro definitions that may be used in building SLURM include:
 #
 %_enable_debug     "--with-debug"
 %_prefix           /admin/llnl
-%slurm_sysconfdir  %{_prefix}/etc/slurm
+%_sysconfdir       %{_prefix}/etc/slurm
 %_defaultdocdir    %{_prefix}/doc
 %with_munge        "--with-munge=/opt/freeware"
 %with_proctrack    "--with-proctrack=/admin/llnl/include"
 %with_ssl          "--with-ssl=/opt/freeware"
 </pre></p>
+
+<h3>RPMs Installed</h3>
+
+<p>The RPMs needed on the head node, compute nodes, and slurmdbd node can vary
+by configuration, but here is a suggested starting point:
+<ul>
+<li>Head Node (where the slurmctld daemon runs),<br>
+    Compute and Login Nodes</li>
+	<ul>
+	<li>slurm</li>
+	<li>slurm-devel</li>
+	<li>slurm-munge</li>
+	<li>slurm-perlapi</li>
+	<li>slurm-plugins</li>
+	<li>slurm-sjobexit</li>
+	<li>slurm-sjstat</li>
+	<li>slurm-torque</li>
+	</ul>
+<li>Slurmdbd Node</li>
+	<ul>
+	<li>slurm</li>
+	<li>slurm-devel</li>
+	<li>slurm-munge</li>
+	<li>slurm-plugins</li>
+	<li>slurm-slurmdbd</li>
+	<li>slurm-sql</li>
+	</ul>
+</ul>
 
 <p class="footer"><a href="#top">top</a></p>
 
@@ -211,7 +239,7 @@ authentication infrastructure is provided by a dynamically loaded
 plugin chosen at runtime via the <b>AuthType</b> keyword in the SLURM
 configuration file.  Currently available authentication types include
 <a href="http://www.theether.org/authd/">authd</a>,
-<a href="http://munge.googlecode.com/">munge</a>, and none.
+<a href="https://code.google.com/p/munge/">munge</a>, and none.
 The default authentication infrastructure is "munge", but this does
 require the installation of the MUNGE package.
 An authentication type of "none" requires no infrastructure, but permits
@@ -291,7 +319,7 @@ is operational. </p>
 
 <h3>Accounting</h3>
 <p>SLURM supports accounting records being written to a simple text file,
-directly to a database (MySQL or PostgreSQL), or to a daemon securely
+directly to a database (MySQL or MariaDB), or to a daemon securely
 managing accounting data for multiple clusters. For more information
 see <a href="accounting.html">Accounting</a>. </p>
 
@@ -498,7 +526,7 @@ Currently, only three authentication plugins are supported:
 <b>auth/none</b>, <b>auth/authd</b>, and <b>auth/munge</b>.
 The auth/none plugin is built by default, but either
 Brent Chun's <a href="http://www.theether.org/authd/">authd</a>,
-or LLNL's <a href="http://munge.googlecode.com/">MUNGE</a>
+or LLNL's <a href="https://code.google.com/p/munge/">MUNGE</a>
 should be installed in order to get properly authenticated communications.
 Unless you are experience with authd, we recommend the use of MUNGE.
 The configure script in the top-level directory of this distribution will
@@ -663,7 +691,13 @@ but may also include very minor enhancements.</p>
 release number as the Slurmctld daemons.
 In other words, when changing the version to a higher release number (e.g
 from 2.4 to 2.5) <b>always upgrade the SlurmDBD daemon first</b>.
-The slurmctld daemon must also be upgraded before or at the same time as
+Database table changes may be required for the upgrade, for example
+adding new fields to existing tables.
+If the database contains a large number of entries, <b>the SlurmDBD daemon
+may require tens of minutes to update the database and be unresponsive
+during this time interval</b>.</p>
+
+<p>The slurmctld daemon must also be upgraded before or at the same time as
 the slurmd daemons on the compute nodes.
 Generally upgrading Slurm on all of the login and compute nodes is recommended,
 although rolling upgrades are also possible (i.e. upgrading the head node(s)
@@ -690,7 +724,12 @@ versions (e.g. 2.5.0-pre1 to 2.5.0-pre2).
 We'll try to note these cases in the NEWS file.
 Contents of major releases are also described in the RELEASE_NOTES file.</p>
 
-<p>Be mindful of your configured SlurmdTimeout and SlurmctldTimeout values.
+<p>The libslurm.so version is increasaed every major release.
+So things like MPI libraries with Slurm integration should be recompiled.
+Sometimes it works to just symlink the old so name(s) to the new one, but this
+has no guarantee of working.</p>
+
+<p><b>Be mindful of your configured SlurmdTimeout and SlurmctldTimeout values</b>.
 If your Slurm daemon down time associated with an upgrade take longer than
 the timeout value, nodes may be marked DOWN and their jobs killed.
 You can either increase timeout values during an upgrade or insure that your
@@ -733,10 +772,10 @@ cd /usr/ports/sysutils/slurm-hpc && make install
 
 <p>The binary package installs a minimal slurm configuration suitable for
 typical compute nodes.  Installing from source allows the user to enable
-options such as mysql, postgresql, and gui tools via a configuration menu.</p>
+options such as mysql and gui tools via a configuration menu.</p>
 
 </pre> <p class="footer"><a href="#top">top</a></p>
 
-<p style="text-align:center;">Last modified 11 December 2013</p>
+<p style="text-align:center;">Last modified 11 June 2014</p>
 
 <!--#include virtual="footer.txt"-->

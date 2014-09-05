@@ -102,7 +102,7 @@ List of partitions with nodes to never place in power saving mode.
 Multiple partitions may be specified using a comma separator.
 By default, no nodes are excluded.</li>
 
-<li><b>BatchStartTime</b>:
+<li><b>BatchStartTimeout</b>:
 Specifies how long to wait after a batch job start request is issued
 before we expect the batch job to be running on the compute node.
 Depending upon how nodes are returned to service, this value may need to
@@ -212,8 +212,17 @@ for use.</p>
 <p>The <i>salloc</i> and <i>srun</i> commands which create a resource
 allocation automatically wait for the nodes to power up in SLURM version 2.2.
 When using earlier versions of SLURM, <i>salloc</i> will return immediately
-after a resource allocation is made and one can execute "<i>srun /bin/true</i>"
-to insure that all nodes are booted and ready for use.</p>
+after a resource allocation is made, and one can execute "<i>srun /bin/true</i>"
+to ensure that all nodes are booted and ready for use.</p>
+
+<p>Execution of the <i>salloc</i> command also triggers execution of the <i>Prolog</i>
+script if the <i>Alloc</i> flag is set in <i>PrologFlags</i>. In this case <i>salloc</i>
+waits for script termination before returning control to the user.
+  To not wait on the salloc side set the <i>NoHold</i> flag
+  in <i>PrologFlags</i>.  This will automatically set
+  the <i>Alloc</i> flag and use the slurmd to wait for the prolog to
+  finish instead of salloc.  This flag should be used when srun is
+  used to launch a step.</p>
 
 <h2>Fault Tolerance</h2>
 
@@ -254,6 +263,6 @@ and perform the following actions:
 <li>Boot the appropriate image for each node</li>
 </ol>
 
-<p style="text-align:center;">Last modified 10 December 2012</p>
+<p style="text-align:center;">Last modified 12 August 2014</p>
 
 <!--#include virtual="footer.txt"-->

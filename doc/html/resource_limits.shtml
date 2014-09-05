@@ -9,13 +9,21 @@ is strongly recommended before use of this document.</p>
 Maui and Moab are not integrated with SLURM's resource limits,
 but should use their own resource limits mechanisms.</p>
 
+<h2>Hierachy</h2>
+
+<ol>
+<li>QOS (Quality of Service) limits override all other limits.</li>
+<li>Association limits override partition limits.</li>
+<li>Partition limits (from the slurm.conf file) are also available.</li>
+</ol>
+
 <h2>Configuration</h2>
 
 <p>Scheduling policy information must be stored in a database
 as specified by the <b>AccountingStorageType</b> configuration parameter
 in the <b>slurm.conf</b> configuration file.
-Information can be recorded in either <a href="http://www.mysql.com/">MySQL</a>
-or <a href="http://www.postgresql.org/">PostgreSQL</a>.
+Information can be recorded in a <a href="http://www.mysql.com/">MySQL</a> or
+<a href="https://mariadb.org/">MariaDB</a></li> database.
 For security and performance reasons, the use of
 SlurmDBD (SLURM Database Daemon) as a front-end to the
 database is strongly recommended.
@@ -213,6 +221,6 @@ data maintained in the SLURM database.  More information can be found
 in the <a href="priority_multifactor.html">priority/multifactor</a>
 plugin description.</p>
 
-<p style="text-align: center;">Last modified 12 August 2013</p>
+<p style="text-align: center;">Last modified 13 May 2014</p>
 
 </ul></body></html>

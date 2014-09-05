@@ -48,29 +48,8 @@ if { [test_launch_poe] } {
 #
 # Test if memory affinity support is supported.
 #
-set affinity 0
-set fast_sched 0
-log_user 0
-spawn $scontrol show config
-expect {
-	-re "FastSchedule *= ($number)" {
-		set fast_sched $expect_out(1,string)
-		exp_continue
-	}
-	-re "TaskPlugin *= task/($alpha)" {
-		if {![string compare $expect_out(1,string) "affinity"] || ![string compare $expect_out(1,string) "cgroup"]} {
-			set affinity 1
-		}
-		exp_continue
-	}
-	eof {
-		wait
-	}
-}
-if {$fast_sched > 1} {
-	send_user "\nWARNING: FastSchedule > 1 not compatable with this test\n"
-	exit 0
-}
+set affinity [test_affinity]
+
 spawn ls /usr/include/numa.h
 expect {
 	-nocase "no such file" {
@@ -357,7 +336,7 @@ set cpu_cnt 0
 while {$cpu_cnt < $task_cnt} {
 	set mask_sum 0
 	set mask [ expr 1 << $cpu_cnt ]
-	set mstr [ dec2hex $mask]
+	set mstr [ uint2hex $mask ]
 	send "$srun -n $task_cnt --mem_bind=mask_mem:$mstr ./$file_prog\r"
 	expect {
 		 -re "TASK_ID:($number),CPU_MASK:($number),MEM_MASK:($number)" {
@@ -398,7 +377,7 @@ set full_mask [ expr (1 << $task_cnt) - 1 ]
 while {$cpu_cnt < $task_cnt} {
 	set mask_sum 0
 	set mask [ expr 1 << $cpu_cnt ]
-	set mstr [ dec2hex  $mask]
+	set mstr [ uint2hex  $mask ]
 	set fwd_mask "$fwd_mask,$mstr"
 	set fwd_map  "$fwd_map,$cpu_cnt"
 	set rev_mask "$mstr,$rev_mask"

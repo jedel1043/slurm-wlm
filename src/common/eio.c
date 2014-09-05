@@ -40,6 +40,8 @@
 #endif
 
 #include <sys/poll.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -54,7 +56,7 @@
 
 /* How many seconds to wait after eio_signal_shutdown() is called before
  * terminating the job and abandoning any I/O remaining to be processed */
-#define EIO_SHUTDOWN_WAIT 60
+#define EIO_SHUTDOWN_WAIT 180
 
 /*
  * outside threads can stick new objects on the new_objs List and
@@ -278,7 +280,8 @@ int eio_handle_mainloop(eio_handle_t *eio)
 		debug4("eio: handling events for %d objects",
 		       list_count(eio->obj_list));
 		nfds = _poll_setup_pollfds(pollfds, map, eio->obj_list);
-		if (nfds <= 0)
+		if ((nfds <= 0) ||
+		    (pollfds == NULL))	/* Fix for CLANG false positive */
 			goto done;
 
 		/*

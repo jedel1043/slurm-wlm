@@ -334,7 +334,7 @@ expect {
 			set sockets_per_node $expect_out(1,string)
 		}
 		exp_continue
-	}	
+	}
 	eof {
 		wait
 	}
@@ -359,22 +359,15 @@ expect {
 
 set cons_res_actived 0
 if {$def_share_force == 0} {
-	spawn $scontrol show config
-	expect {
-		-re "select/cons_res" {
-			set cons_res_actived 1
-		}
-		timeout {
-			send_user "\nFAILURE: scontrol not responding\n"
-			set exit_code 1
-		}
-		eof {
-			wait
-		}
+	set select_type [test_select_type]
+	if {![string compare $select_type "cons_res"]} {
+		set cons_res_actived 1
 	}
 }
 
-inc3_11_1
+if {$cons_res_actived == 1} {
+	inc3_11_1
+}
 inc3_11_2
 inc3_11_3
 inc3_11_4
@@ -387,6 +380,7 @@ if {$cons_res_actived == 1} {
 }
 
 if {$exit_code == 0} {
+	exec $bin_rm -f $file_in
 	send_user "\nSUCCESS\n"
 } else {
 	send_user "\nFAILURE\n"

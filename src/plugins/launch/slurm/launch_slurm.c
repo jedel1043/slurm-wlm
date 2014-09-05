@@ -349,7 +349,7 @@ static void _task_finish(task_exit_msg_t *msg)
 				msg_printed = 1;
 			}
 		}
-		if (*local_global_rc == 0)
+		if (*local_global_rc == NO_VAL)
 			*local_global_rc = msg->return_code;
 	}
 
@@ -453,7 +453,8 @@ extern int launch_p_handle_multi_prog_verify(int command_pos)
 			exit(error_exit);
 		}
 		_load_multi(&opt.argc, opt.argv);
-		if (verify_multi_name(opt.argv[command_pos], opt.ntasks))
+		if (verify_multi_name(opt.argv[command_pos], &opt.ntasks,
+				      &opt.ntasks_set))
 			exit(error_exit);
 		return 1;
 	} else
@@ -489,6 +490,7 @@ extern int launch_p_step_launch(
 		task_state = task_state_create(job->ntasks);
 		local_srun_job = job;
 		local_global_rc = global_rc;
+		*local_global_rc = NO_VAL;
 		first_launch = 1;
 	} else
 		task_state_alter(task_state, job->ntasks);
@@ -505,6 +507,7 @@ extern int launch_p_step_launch(
 	launch_params.remote_output_filename =fname_remote_string(job->ofname);
 	launch_params.remote_input_filename = fname_remote_string(job->ifname);
 	launch_params.remote_error_filename = fname_remote_string(job->efname);
+	launch_params.partition = job->partition;
 	launch_params.profile = opt.profile;
 	launch_params.task_prolog = opt.task_prolog;
 	launch_params.task_epilog = opt.task_epilog;

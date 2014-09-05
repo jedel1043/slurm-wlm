@@ -1,4 +1,4 @@
-.TH "sbatch" "1" "SLURM 2.6" "January 2013" "SLURM Commands"
+.TH "sbatch" "1" "SLURM 14.03" "August 2014" "SLURM Commands"
 
 .SH "NAME"
 sbatch \- Submit a batch script to SLURM.
@@ -11,6 +11,9 @@ sbatch submits a batch script to SLURM.  The batch script may be given to
 sbatch through a file name on the command line, or if no file name is specified,
 sbatch will read in a script from standard input. The batch script may contain
 options preceded with "#SBATCH" before any executable commands in the script.
+After the first line of the batch script, which typically identifies the
+shell to be used, sbatch will stop processing options at the first line which
+does NOT begin with "#SBATCH".
 
 sbatch exits immediately after the script is successfully transferred to the
 SLURM controller and assigned a SLURM job ID.  The batch script is not
@@ -19,7 +22,8 @@ jobs for some time before its required resources become available.
 
 By default both standard output and standard error are directed to a file of
 the name "slurm\-%j.out", where the "%j" is replaced with the job allocation
-number.
+number. The file will be generated on the first node of the job allocation.
+Other than the batch script itself, Slurm does no movement of user files.
 
 When the job allocation is finally granted for the batch script, SLURM
 runs a single copy of the batch script on the first node in the set of
@@ -73,6 +77,9 @@ may be specified. Supported datatypes are as follows:
 where \fI<interval>\fR is the task sampling interval in seconds
 for the jobacct_gather plugins and for task
 profiling by the acct_gather_profile plugin.
+NOTE: This frequency is used to monitor memory usage. If memory limits
+are enforced the highest frequency a user can request is what is configured in
+the slurm.conf file.  They can not turn it off (=0) either.
 .TP
 \fBenergy=\fI<interval>\fR
 where \fI<interval>\fR is the sampling interval in seconds
@@ -206,7 +213,7 @@ Users can specify which of these \fBfeatures\fR are required by their job
 using the constraint option.
 Only nodes having features matching the job constraints will be used to
 satisfy the request.
-Multiple constraints may be specified with AND, OR, exclusive OR,
+Multiple constraints may be specified with AND, OR, matching OR,
 resource counts, etc.
 Supported \fbconstraint\fR options include:
 .PD 1
@@ -233,7 +240,7 @@ If only nodes with at least one of specified features will be used.
 The vertical bar is used for an OR operator.
 For example, \fB\-\-constraint="intel|amd"\fR
 .TP
-\fBExclusive OR\fR
+\fBMatching OR\fR
 If only one of a set of possible options should be used for all allocated
 nodes, then use the OR operator and enclose the options within square brackets.
 For example: "\fB\-\-constraint=[rack1|rack2|rack3|rack4]"\fR might
@@ -298,7 +305,7 @@ To ensure that distinct CPUs are allocated to each job step, use the
 If the job step allocation includes an allocation with a number of
 sockets, cores, or threads equal to the number of tasks to be started
 then the tasks will by default be bound to the appropriate resources.
-Disable this mode of operation by explicitly setting "-\-cpu\-bind=none".
+Disable this mode of operation by explicitly setting "-\-cpu_bind=none".
 
 Note that a job step can be allocated different numbers of CPUs on each node
 or be allocated CPUs not starting at location zero. Therefore one of the
@@ -326,12 +333,15 @@ Do not bind tasks to CPUs (default)
 .TP
 .B rank
 Automatically bind by task rank.
-Task zero is bound to socket (or core or thread) zero, etc.
+The lowest numbered task on each node is bound to socket (or core or thread) zero, etc.
 Not supported unless the entire node is allocated to the job.
 .TP
 .B map_cpu:<list>
 Bind by mapping CPU IDs to tasks as specified
 where <list> is <cpuid1>,<cpuid2>,...<cpuidN>.
+The mapping is specified for a node and identical mapping is applied to the
+tasks on every node (i.e. the lowest task ID on each node is mapped to the
+first CPU ID specified in the list, etc.).
 CPU IDs are interpreted as decimal values unless they are preceded
 with '0x' in which case they are interpreted as hexadecimal values.
 Not supported unless the entire node is allocated to the job.
@@ -339,8 +349,12 @@ Not supported unless the entire node is allocated to the job.
 .B mask_cpu:<list>
 Bind by setting CPU masks on tasks as specified
 where <list> is <mask1>,<mask2>,...<maskN>.
+The mapping is specified for a node and identical mapping is applied to the
+tasks on every node (i.e. the lowest task ID on each node is mapped to the
+first mask specified in the list, etc.).
 CPU masks are \fBalways\fR interpreted as hexadecimal values but can be
-preceded with an optional '0x'.
+preceded with an optional '0x'. Not supported unless the entire node is
+allocated to the job.
 .TP
 .B sockets
 Automatically generate masks binding tasks to sockets.
@@ -362,6 +376,12 @@ this can result in sub\-optimal binding.
 Automatically generate masks binding tasks to NUMA locality domains.
 If the number of tasks differs from the number of allocated locality domains
 this can result in sub\-optimal binding.
+.TP
+.B boards
+Automatically generate masks binding tasks to boards.
+If the number of tasks differs from the number of allocated boards
+this can result in sub\-optimal binding. This option is supported by the
+task/cgroup plugin only.
 .TP
 .B help
 Show this help message
@@ -421,7 +441,8 @@ sharing the same job name and user have terminated.
 .TP
 \fB\-D\fR, \fB\-\-workdir\fR=<\fIdirectory\fR>
 Set the working directory of the batch script to \fIdirectory\fR before
-it is executed.
+it is executed. The path can be specified as full path or relative path
+to the directory where the command is executed.
 
 .TP
 \fB\-e\fR, \fB\-\-error\fR=<\fIfilename pattern\fR>
@@ -606,7 +627,7 @@ NOTE: Only valid for user root.
 
 .TP
 \fB\-k\fR, \fB\-\-no\-kill\fR
-Do not automatically terminate a job of one of the nodes it has been
+Do not automatically terminate a job if one of the nodes it has been
 allocated fails.  The user will assume the responsibilities for fault\-tolerance
 should a node fail.  When there is a node failure, any active job steps (usually
 MPI jobs) on that node will almost certainly suffer a fatal error, but with
@@ -765,6 +786,9 @@ value will equal the original \fB\-\-mem\-per\-cpu\fR value specified by
 the user.
 This parameter would generally be used if individual processors
 are allocated to jobs (\fBSelectType=select/cons_res\fR).
+If resources are allocated by the core, socket or whole nodes; the number
+of CPUs allocated to a job may be higher than the task count and the value
+of \fB\-\-mem\-per\-cpu\fR should be adjusted accordingly.
 Also see \fB\-\-mem\fR.
 \fB\-\-mem\fR and \fB\-\-mem\-per\-cpu\fR are mutually exclusive.
 
@@ -874,9 +898,45 @@ that the \fB\-\-cpus\-per\-task\fR option will change this default.
 
 .TP
 \fB\-\-network\fR=<\fItype\fR>
-Specify the communication protocol to be used.
+Specify information pertaining to the switch or network.
 The interpretation of \fItype\fR is system dependent.
-This option is current supported on systems with IBM's Parallel Environment (PE).
+This option is supported when running Slurm on a Cray natively.  It is
+used to request using Network Performace Counters.
+Only one value per request is valid.
+All options are case in\-sensitive.
+In this configuration supported values include:
+.RS
+.TP 6
+\fBsystem\fR
+Use the system\-wide network performance counters. Only nodes requested
+will be marked in use for the job allocation.  If the job does not
+fill up the entire system the rest of the nodes are not
+able to be used by other jobs using NPC, if idle their state will appear as
+PerfCnts.  These nodes are still available for other jobs not using NPC.
+.TP
+\fBblade\fR
+Use the blade network performance counters. Only nodes requested
+will be marked in use for the job allocation.  If the job does not
+fill up the entire blade(s) allocated to the job those blade(s) are not
+able to be used by other jobs using NPC, if idle their state will appear as
+PerfCnts.  These nodes are still available for other jobs not using NPC.
+.TP
+.RE
+
+.br
+.br
+In all cases the job allocation request \fBmust specify the
+\-\-exclusive option\fR.  Otherwise the request will be denied.
+
+.br
+.br
+Also with any of these options steps are not allowed to share blades,
+so resources would remain idle inside an allocation if the step
+running on a blade does not take up all the nodes on the blade.
+
+.br
+.br
+The \fBnetwork\fR option is also supported on systems with IBM's Parallel Environment (PE).
 See IBM's LoadLeveler job command keyword documentation about the keyword
 "network" for more information.
 Multiple values may be specified in a comma separated list.
@@ -1024,7 +1084,10 @@ NOTE: This option is not supported unless
 
 .TP
 \fB\-\-ntasks\-per\-node\fR=<\fIntasks\fR>
-Request the maximum \fIntasks\fR be invoked on each node.
+Request that \fIntasks\fR be invoked on each node.
+If used with the \fB\-\-ntasks\fR option, the \fB\-\-ntasks\fR option will take
+precedence and the \fB\-\-ntasks\-per\-node\fR will be treated as a
+\fImaximum\fR count of tasks per node.
 Meant to be used with the \fB\-\-nodes\fR option.
 This is related to \fB\-\-cpus\-per\-task\fR=\fIncpus\fR,
 but does not require knowledge of the actual number of cpus on
@@ -1076,7 +1139,15 @@ Request a specific partition for the resource allocation.  If not specified,
 the default behavior is to allow the slurm controller to select the default
 partition as designated by the system administrator. If the job can use more
 than one partition, specify their names in a comma separate list and the one
-offering earliest initiation will be used.
+offering earliest initiation will be used with no regard given to the partition
+name ordering (although higher priority partitions will be considered first).
+When the job is initiated, the name of the partition used will be placed first
+in the job record partition string.
+
+.TP
+\fB\-\-priority\fR=<value>
+Request a specific job priority.
+May be subject to configuration specific constraints.
 
 .TP
 \fB\-\-profile\fR=<all|none|[energy[,|task[,|lustre[,|network]]]]>
@@ -1110,6 +1181,11 @@ Lustre data is collected.
 \fBNetwork\fR
 Network (InfiniBand) data is collected.
 .RE
+
+.TP
+\fB\-\-parsable\fR
+Outputs only the job id number and the cluster name if present.
+The values are separated by a semicolon. Errors will still be displayed.
 
 .TP
 \fB\-\-propagate\fR[=\fIrlimitfR]
@@ -1193,7 +1269,14 @@ option was not set and allow higher system utilization, but application
 performance will likely suffer due to competition for resources within a node.
 
 .TP
-\fB\-\-signal\fR=<\fIsig_num\fR>[@<\fIsig_time\fR>]
+\fB\-S\fR, \fB\-\-core\-spec\fR=<\fInum\fR>
+Count of specialized cores per node reserved by the job for system operations
+and not used by the application. The application will not use these cores,
+but will be charged for their allocation. Default value is zero.
+
+
+.TP
+\fB\-\-signal\fR=[B:]<\fIsig_num\fR>[@<\fIsig_time\fR>]
 When a job is within \fIsig_time\fR seconds of its end time,
 send it the signal \fIsig_num\fR.
 Due to the resolution of event handling by SLURM, the signal may
@@ -1203,6 +1286,9 @@ be sent up to 60 seconds earlier than specified.
 By default, no signal is sent before the job's end time.
 If a \fIsig_num\fR is specified without any \fIsig_time\fR,
 the default time will be 60 seconds.
+Use the "B:" option to signal only the batch shell, none of the other
+processes will be signaled. By default all job steps will be signalled,
+but not the batch shell itself.
 
 .TP
 \fB\-\-sockets\-per\-node\fR=<\fIsockets\fR>
@@ -1243,6 +1329,12 @@ limit be imposed.  Acceptable time formats include "minutes",
 \fB\-\-tasks\-per\-node\fR=<\fIn\fR>
 Specify the number of tasks to be launched per node.
 Equivalent to \fB\-\-ntasks\-per\-node\fR.
+
+.TP
+\fB\-\-test\-only\fR
+Validate the batch script and return an estimate of when a job would be
+scheduled to run given the current job queue and all the other arguments
+specifying the job requirements. No job is actually submitted.
 
 .TP
 \fB\-\-threads\-per\-core\fR=<\fIthreads\fR>
@@ -1295,9 +1387,18 @@ errors will be displayed.
 
 .TP
 \fB\-w\fR, \fB\-\-nodelist\fR=<\fInode name list\fR>
-Request a specific list of node names.  The list may be specified as a
-comma\-separated list of node names, or a range of node names
-(e.g. mynode[1\-5,7,...]).  Duplicate node names in the list will be ignored.
+Request a specific list of hosts.
+Unless constrained by the maximum node count, the job will contain
+\fIall\fR of these hosts.
+The list may be specified as a comma\-separated list of hosts, a range of hosts
+(host[1\-5,7,...] for example), or a filename.
+The host list will be assumed to be a filename if it contains a "/" character.
+If you specify a maximum node count and the host list contains more nodes, the
+extra node names will be silently ignored.
+If you specify a minimum node or processor count larger than can be satisfied
+by the supplied host list, additional resources will be allocated on other
+nodes as needed.
+Duplicate node names in the list will be ignored.
 The order of the node names in the list is not important; the node names
 will be sorted by SLURM.
 
@@ -1420,10 +1521,10 @@ Same as \fB\-a, \-\-array\fR
 \fBSBATCH_BLRTS_IMAGE\fR
 Same as \fB\-\-blrts\-image\fR
 .TP
-\fBSLURM_CHECKPOINT\fR
+\fBSBATCH_CHECKPOINT\fR
 Same as \fB\-\-checkpoint\fR
 .TP
-\fBSLURM_CHECKPOINT_DIR\fR
+\fBSBATCH_CHECKPOINT_DIR\fR
 Same as \fB\-\-checkpoint\-dir\fR
 .TP
 \fBSBATCH_CLUSTERS\fR or \fBSLURM_CLUSTERS\fR
@@ -1434,6 +1535,9 @@ Same as \fB\-\-cnload\-image\fR
 .TP
 \fBSBATCH_CONN_TYPE\fR
 Same as \fB\-\-conn\-type\fR
+.TP
+\fBSBATCH_CORE_SPEC\fR
+Same as \fB\-\-core\-spec\fR
 .TP
 \fBSBATCH_CPU_BIND\fR
 Same as \fB\-\-cpu_bind\fR
@@ -1565,6 +1669,7 @@ Job array ID (index) number.
 .TP
 \fBSLURM_ARRAY_JOB_ID\fR
 Job array's master job ID number.
+.TP
 \fBSLURM_CHECKPOINT_IMAGE_DIR\fR
 Directory into which checkpoint images should  be written if specified
 on the execute line.
@@ -1609,6 +1714,9 @@ List of nodes allocated to the job.
 .TP
 \fBSLURM_JOB_NUM_NODES\fR (and \fBSLURM_NNODES\fR for backwards compatibility)
 Total number of nodes in the job's resource allocation.
+.TP
+\fBSLURM_JOB_PARTITION\fR
+Name of the partition in which the job is running.
 .TP
 \fBSLURM_LOCALID\fR
 Node local task ID for the process within a job.

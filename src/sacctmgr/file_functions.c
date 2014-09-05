@@ -287,7 +287,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				fprintf(stderr, " Bad format on %s: "
 					"End your option with "
 					"an '=' sign\n", sub);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 			file_opts->name = xstrdup(option);
@@ -320,12 +319,12 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				g_qos_list, option);
 
 			if (file_opts->def_qos_id == NO_VAL) {
+				exit_code=1;
 				fprintf(stderr,
 					"You gave a bad qos '%s'.  "
 					"Use 'list qos' to get "
 					"complete list.\n",
 					option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "DefaultWCKey",
@@ -347,7 +346,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad FairShare value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "GrpCPUMins",
@@ -357,7 +355,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad GrpCPUMins value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "GrpCPUs", MAX(command_len, 7))) {
@@ -366,7 +363,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad GrpCPUs value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "GrpJobs", MAX(command_len, 4))) {
@@ -375,7 +371,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad GrpJobs value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "GrpMemory",
@@ -385,7 +380,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad GrpMemory value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "GrpNodes",
@@ -395,7 +389,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad GrpNodes value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "GrpSubmitJobs",
@@ -405,7 +398,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad GrpJobs value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "GrpWall", MAX(command_len, 4))) {
@@ -420,7 +412,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				fprintf(stderr,
 					" Bad GrpWall time format: %s\n",
 					option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "MaxCPUMinsPerJob",
@@ -432,7 +423,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad MaxCPUMins value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "MaxCPUsPerJob",
@@ -442,7 +432,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad MaxCPUs value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "MaxJobs", MAX(command_len, 4))) {
@@ -451,7 +440,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad MaxJobs value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "MaxNodesPerJob",
@@ -461,7 +449,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad MaxNodes value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "MaxSubmitJobs",
@@ -471,7 +458,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				exit_code=1;
 				fprintf(stderr,
 					" Bad MaxJobs value: %s\n", option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "MaxWallDurationPerJob",
@@ -487,7 +473,6 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 				fprintf(stderr,
 					" Bad MaxWall time format: %s\n",
 					option);
-				_destroy_sacctmgr_file_opts(file_opts);
 				break;
 			}
 		} else if (!strncasecmp (sub, "Organization",
@@ -521,6 +506,7 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 		} else {
 			exit_code=1;
 			fprintf(stderr, " Unknown option: %s\n", sub);
+			break;
 		}
 
 		xfree(sub);
@@ -539,9 +525,9 @@ static sacctmgr_file_opts_t *_parse_options(char *options)
 	if (!file_opts->name) {
 		exit_code=1;
 		fprintf(stderr, " No name given\n");
-		_destroy_sacctmgr_file_opts(file_opts);
-		file_opts = NULL;
-	} else if (exit_code) {
+	}
+
+	if (exit_code) {
 		_destroy_sacctmgr_file_opts(file_opts);
 		file_opts = NULL;
 	}
@@ -1598,7 +1584,7 @@ static slurmdb_association_rec_t *_set_assoc_up(sacctmgr_file_opts_t *file_opts,
 	return assoc;
 }
 
-static int _print_file_slurmdb_hierarchical_rec_childern(
+static int _print_file_slurmdb_hierarchical_rec_children(
 	FILE *fd, List slurmdb_hierarchical_rec_list,
 	List user_list, List acct_list)
 {
@@ -1615,7 +1601,7 @@ static int _print_file_slurmdb_hierarchical_rec_childern(
 				user_list,
 				slurmdb_hierarchical_rec->assoc->user);
 			line = xstrdup_printf(
-				"User - %s",
+				"User - '%s'",
 				slurmdb_hierarchical_rec->sort_name);
 			if (slurmdb_hierarchical_rec->assoc->partition)
 				xstrfmtcat(line, ":Partition='%s'",
@@ -1702,7 +1688,7 @@ static int _print_file_slurmdb_hierarchical_rec_childern(
 				acct_list,
 				slurmdb_hierarchical_rec->assoc->acct);
 			line = xstrdup_printf(
-				"Account - %s",
+				"Account - '%s'",
 				slurmdb_hierarchical_rec->sort_name);
 			if (acct_rec) {
 				xstrfmtcat(line, ":Description='%s'",
@@ -1817,23 +1803,23 @@ extern int print_file_slurmdb_hierarchical_rec_list(
 	itr = list_iterator_create(slurmdb_hierarchical_rec_list);
 	while ((slurmdb_hierarchical_rec = list_next(itr))) {
 /* 		info("got here %d with %d from %s %s",  */
-/* 		     depth, list_count(slurmdb_hierarchical_rec->childern), */
+/* 		     depth, list_count(slurmdb_hierarchical_rec->children), */
 /* 		     slurmdb_hierarchical_rec->assoc->acct,
 		     slurmdb_hierarchical_rec->assoc->user); */
-		if (!list_count(slurmdb_hierarchical_rec->childern))
+		if (!list_count(slurmdb_hierarchical_rec->children))
 			continue;
-		if (fprintf(fd, "Parent - %s\n",
+		if (fprintf(fd, "Parent - '%s'\n",
 			    slurmdb_hierarchical_rec->assoc->acct) < 0) {
 			error("Can't write to file");
 			return SLURM_ERROR;
 		}
-		info("%s - %s", "Parent",
+		info("%s - '%s'", "Parent",
 		     slurmdb_hierarchical_rec->assoc->acct);
 /* 		info("sending %d from %s", */
-/* 		     list_count(slurmdb_hierarchical_rec->childern), */
+/* 		     list_count(slurmdb_hierarchical_rec->children), */
 /* 		     slurmdb_hierarchical_rec->assoc->acct); */
-		_print_file_slurmdb_hierarchical_rec_childern(
-			fd, slurmdb_hierarchical_rec->childern,
+		_print_file_slurmdb_hierarchical_rec_children(
+			fd, slurmdb_hierarchical_rec->children,
 			user_list, acct_list);
 	}
 	list_iterator_destroy(itr);
@@ -2200,21 +2186,17 @@ extern void load_sacctmgr_cfg_file (int argc, char *argv[])
 		}
 
 		if (!strcasecmp("Parent", object)) {
+			file_opts = _parse_options(line+start);
 			xfree(parent);
 
-			i = start;
-			while (line[i] != '\n' && i<len)
-				i++;
-
-			if (i >= len) {
+			if (!file_opts) {
 				exit_code=1;
-				fprintf(stderr, " No parent name "
-					"given line(%d)\n",
-					lc);
+				fprintf(stderr, " Problem with line(%d)\n", lc);
 				rc = SLURM_ERROR;
 				break;
 			}
-			parent = xstrndup(line+start, i-start);
+
+			parent = xstrdup(file_opts->name);
 			//info("got parent %s", parent);
 			if (!sacctmgr_find_account_base_assoc_from_list(
 				    curr_assoc_list, parent, cluster_name)
@@ -2223,16 +2205,17 @@ extern void load_sacctmgr_cfg_file (int argc, char *argv[])
 				exit_code=1;
 				fprintf(stderr, " line(%d) You need to add "
 					"this parent (%s) as a child before "
-					"you can add childern to it.\n",
+					"you can add children to it.\n",
 					lc, parent);
 				break;
 			}
+			_destroy_sacctmgr_file_opts(file_opts);
 			continue;
 		} else if (!parent) {
 			parent = xstrdup("root");
 			printf(" No parent given creating off root, "
 			       "If incorrect specify 'Parent - name' "
-			       "before any childern in your file\n");
+			       "before any children in your file\n");
 		}
 
 		if (!strcasecmp("Project", object)
