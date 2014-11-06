@@ -55,6 +55,7 @@ Depends:
  ucf
 Replaces: slurm-llnl (<< 14.03)
 Breaks: slurm-llnl (<< 14.03)
+Conflicts: sinfo
 Description: SLURM client side commands
  SLURM stands for Simple Linux Utility for Resource Management, it
  is an open-source cluster resource management and job scheduling system
