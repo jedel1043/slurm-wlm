@@ -13,5 +13,6 @@ usr/bin/strigger
 usr/bin/sinfo
 usr/bin/salloc
 usr/bin/sacct
+usr/bin/sacctmgr
 usr/bin/scontrol
 usr/bin/sstat
