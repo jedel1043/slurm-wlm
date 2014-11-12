@@ -1,3 +1,10 @@
+slurm-llnl (14.03.9-5) unstable; urgency=medium
+
+  [ Roland Fehrenbacher ]
+  * sacctmgr moved to the slurm-client package (Closes: #768938)
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 12 Nov 2014 12:07:04 +0100
+
 slurm-llnl (14.03.9-4) unstable; urgency=medium
 
   * Declaring slurm-client conflict with sinfo (Closes: #768112)
