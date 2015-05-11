@@ -891,7 +891,10 @@ static void _dump_job_state(struct job_record *dump_job_ptr, Buf buffer)
 	pack32(dump_job_ptr->priority, buffer);
 	pack32(dump_job_ptr->alloc_sid, buffer);
 	pack32(dump_job_ptr->total_cpus, buffer);
-	pack32(dump_job_ptr->total_nodes, buffer);
+	if (dump_job_ptr->total_nodes)
+		pack32(dump_job_ptr->total_nodes, buffer);
+	else
+		pack32(dump_job_ptr->node_cnt_wag, buffer);
 	pack32(dump_job_ptr->cpu_cnt, buffer);
 	pack32(dump_job_ptr->exit_code, buffer);
 	pack32(dump_job_ptr->derived_ec, buffer);
@@ -1648,7 +1651,12 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 	job_ptr->time_limit   = time_limit;
 	job_ptr->time_min     = time_min;
 	job_ptr->total_cpus   = total_cpus;
-	job_ptr->total_nodes  = total_nodes;
+
+	if (IS_JOB_PENDING(job_ptr))
+		job_ptr->node_cnt_wag = total_nodes;
+	else
+		job_ptr->total_nodes  = total_nodes;
+
 	job_ptr->cpu_cnt      = cpu_cnt;
 	job_ptr->tot_sus_time = tot_sus_time;
 	job_ptr->preempt_time = preempt_time;
@@ -4988,6 +4996,8 @@ static bool _parse_array_tok(char *tok, bitstr_t *array_bitmap, uint32_t max)
 	int i, first, last, step = 1;
 
 	first = strtol(tok, &end_ptr, 10);
+	if (first < 0)
+		return false;
 	if (end_ptr[0] == '-') {
 		last = strtol(end_ptr + 1, &end_ptr, 10);
 		if (end_ptr[0] == ':') {
@@ -5368,12 +5378,12 @@ static int _write_data_to_file(char *file_name, char *data)
  */
 char **get_job_env(struct job_record *job_ptr, uint32_t * env_size)
 {
-	char job_dir[30], *file_name, **environment = NULL;
+	char *file_name, **environment = NULL;
 	int cc;
 
 	file_name = slurm_get_state_save_location();
-	sprintf(job_dir, "/job.%u/environment", job_ptr->job_id);
-	xstrcat(file_name, job_dir);
+	xstrfmtcat(file_name, "/job.%u/environment",
+		   job_ptr->job_id);
 
 	cc = _read_data_array_from_file(file_name,
 					&environment,
@@ -7182,6 +7192,15 @@ static void _pack_default_job_details(struct job_record *job_ptr,
 			} else if (job_ptr->total_nodes) {
 				pack32(job_ptr->total_nodes, buffer);
 				pack32((uint32_t) 0, buffer);
+			} else if (job_ptr->node_cnt_wag) {
+				/* This should catch everything else, but
+				 * just incase this is 0 (startup or
+				 * whatever) we will keep the rest of
+				 * this if statement around.
+				 */
+				pack32(job_ptr->node_cnt_wag, buffer);
+				pack32((uint32_t) detail_ptr->max_nodes,
+				       buffer);
 			} else if (detail_ptr->ntasks_per_node) {
 				/* min_nodes based upon task count and ntasks
 				 * per node */
@@ -7205,7 +7224,9 @@ static void _pack_default_job_details(struct job_record *job_ptr,
 				pack32(min_nodes, buffer);
 				pack32(detail_ptr->max_nodes, buffer);
 			} else if (detail_ptr->mc_ptr &&
-				   detail_ptr->mc_ptr->ntasks_per_core) {
+				   detail_ptr->mc_ptr->ntasks_per_core &&
+				   (detail_ptr->mc_ptr->ntasks_per_core
+				    != (uint16_t)INFINITE)) {
 				/* min_nodes based upon task count and ntasks
 				 * per core */
 				uint32_t min_cores, min_nodes;
@@ -9936,8 +9957,8 @@ static void _purge_missing_jobs(int node_inx, time_t now)
 			if ((job_ptr->start_time < node_ptr->boot_time) &&
 			    (job_ptr->details && job_ptr->details->requeue))
 				requeue = true;
-			info("Batch JobId=%u missing from node 0",
-			     job_ptr->job_id);
+			info("Batch JobId=%u missing from node 0 (not found "
+			     "BatchStartTime after startup)", job_ptr->job_id);
 			job_ptr->exit_code = 1;
 			job_complete(job_ptr->job_id, 0, requeue, true, NO_VAL);
 		} else {
@@ -10447,6 +10468,10 @@ void batch_requeue_fini(struct job_record  *job_ptr)
 #ifdef HAVE_BG
 	select_g_select_jobinfo_set(job_ptr->select_jobinfo,
 				    SELECT_JOBDATA_BLOCK_ID, "unassigned");
+	/* If on a bluegene system we want to remove the job_resrcs so
+	 * we don't get an error message about them already existing
+	 * when the job goes to run again. */
+	free_job_resources(&job_ptr->job_resrcs);
 #endif
 	xfree(job_ptr->nodes);
 	xfree(job_ptr->nodes_completing);
@@ -10496,13 +10521,6 @@ extern void job_completion_logger(struct job_record  *job_ptr, bool requeue)
 
 	xassert(job_ptr);
 
-#ifdef HAVE_BG
-	/* If on a bluegene system we want to remove the job_resrcs so
-	 * we don't get an error message about them already existing
-	 * when the job goes to run again. */
-	if (requeue)
-		free_job_resources(&job_ptr->job_resrcs);
-#endif
 	acct_policy_remove_job_submit(job_ptr);
 
 	if (!IS_JOB_RESIZING(job_ptr)) {

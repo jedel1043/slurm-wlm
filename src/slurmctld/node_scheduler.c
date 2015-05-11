@@ -1692,6 +1692,11 @@ extern int select_nodes(struct job_record *job_ptr, bool test_only,
 #else
 		node_cnt = bit_set_count(select_bitmap);
 #endif
+		/* Set this guess here to give the user tools an idea
+		 * of how many nodes Slurm is planning on giving the job.
+		 */
+		job_ptr->node_cnt_wag = node_cnt;
+
 		if (!acct_policy_job_runnable_post_select(
 			    job_ptr, node_cnt, job_ptr->total_cpus,
 			    job_ptr->details->pn_min_memory)) {
@@ -1824,6 +1829,8 @@ extern int select_nodes(struct job_record *job_ptr, bool test_only,
 	if (configuring
 	    || bit_overlap(job_ptr->node_bitmap, power_node_bitmap))
 		job_ptr->job_state |= JOB_CONFIGURING;
+	/* Clear any vestigial GRES in case job was requeued */
+	gres_plugin_job_clear(job_ptr->gres_list);
 	if (select_g_select_nodeinfo_set(job_ptr) != SLURM_SUCCESS) {
 		error("select_g_select_nodeinfo_set(%u): %m", job_ptr->job_id);
 		/* not critical ... by now */
