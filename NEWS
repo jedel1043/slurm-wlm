@@ -1,8 +1,35 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and admins.
 
+* Changes in Slurm 14.03.11
+===========================
+
 * Changes in Slurm 14.03.10
 ===========================
+ -- Fix a few sacctmgr error messages.
+ -- Treat non-zero SlurmSchedLogLevel without SlurmSchedLogFile as a fatal
+    error.
+ -- Correct sched_config.html documentation SchedulingParameters
+    should be SchedulerParameters.
+ -- When using gres and cgroup ConstrainDevices set correct access
+    permission for the batch step.
+ -- Fix minor memory leak in jobcomp/mysql on slurmctld reconfig.
+ -- Fix bug that prevented preservation of a job's GRES bitmap on slurmctld
+    restart or reconfigure (bug was introduced in 14.03.5 "Clear record of a
+    job's gres when requeued" and only applies when GRES mapped to specific
+    files).
+ -- BGQ: Fix race condition when job fails due to hardware failure and is
+    requeued. Previous code could result in slurmctld abort with NULL pointer.
+ -- Prevent negative job array index, which could cause slurmctld to crash.
+ -- Fix issue with squeue/scontrol showing correct node_cnt when only tasks
+    are specified.
+ -- Check the status of the database connection before using it.
+ -- ALPS - If an allocation requests -n set the BASIL -N option to the
+    amount of tasks / number of node.
+ -- ALPS - Don't set the env var APRUN_DEFAULT_MEMORY, it is not needed anymore.
+ -- Fix potential buffer overflow.
+ -- Give better estimates on pending node count if no node count is requested.
+ -- BLUEGENE - Fix issue where requeuing jobs could cause an assert.
 
 * Changes in Slurm 14.03.9
 ==========================
