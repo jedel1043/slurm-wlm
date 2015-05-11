@@ -761,7 +761,7 @@ extern int schedule(uint32_t job_limit)
 	ListIterator job_iterator = NULL, part_iterator = NULL;
 	List job_queue = NULL;
 	int failed_part_cnt = 0, failed_resv_cnt = 0, job_cnt = 0;
-	int error_code, i, j, part_cnt, time_limit;
+	int error_code, i, j, part_cnt, time_limit, pend_time;
 	uint32_t job_depth = 0;
 	job_queue_rec_t *job_queue_rec;
 	struct job_record *job_ptr = NULL;
@@ -785,6 +785,8 @@ extern int schedule(uint32_t job_limit)
 	static bool wiki_sched = false;
 	static bool fifo_sched = false;
 	static int sched_timeout = 0;
+	static int sched_max_job_start = 0;
+	static int bf_min_age_reserve = 0;
 	static int def_job_limit = 100;
 	static int max_jobs_per_part = 0;
 	static int defer_rpc_cnt = 0;
@@ -852,6 +854,15 @@ extern int schedule(uint32_t job_limit)
 		}
 
 		if (sched_params &&
+		    (tmp_ptr = strstr(sched_params, "bf_min_age_reserve="))) {
+			bf_min_age_reserve = atoi(tmp_ptr + 19);
+			if (bf_min_age_reserve < 0)
+				bf_min_age_reserve = 0;
+		} else {
+			bf_min_age_reserve = 0;
+		}
+
+		if (sched_params &&
 		    (tmp_ptr=strstr(sched_params, "build_queue_timeout=")))
 		/*                                 01234567890123456789 */
 			build_queue_timeout = atoi(tmp_ptr + 20);
@@ -916,12 +927,22 @@ extern int schedule(uint32_t job_limit)
 			sched_interval = 60;
 		}
 
+		if (sched_params &&
+		    (tmp_ptr=strstr(sched_params, "sched_max_job_start=")))
+			sched_max_job_start = atoi(tmp_ptr + 20);
+		if (sched_interval < 0) {
+			error("Invalid sched_max_job_start: %d",
+			      sched_max_job_start);
+			sched_max_job_start = 0;
+		}
+
 		xfree(sched_params);
 		sched_update = slurmctld_conf.last_update;
 		info("SchedulerParameters=default_queue_depth=%d,"
-		     "max_rpc_cnt=%d,max_sched_time=%d,partition_job_depth=%d",
+		     "max_rpc_cnt=%d,max_sched_time=%d,partition_job_depth=%d,"
+		     "sched_max_job_start=%d",
 		     def_job_limit, defer_rpc_cnt, sched_timeout,
-		     max_jobs_per_part);
+		     max_jobs_per_part, sched_max_job_start);
 	}
 
 	if ((defer_rpc_cnt > 0) &&
@@ -971,7 +992,7 @@ extern int schedule(uint32_t job_limit)
 	 * by the node health checker).
 	 * This relies on the above write lock for the node state.
 	 */
-	if (select_g_reconfigure()) {
+	if (select_g_update_block(NULL)) {
 		unlock_slurmctld(job_write_lock);
 		debug4("sched: not scheduling due to ALPS");
 		goto out;
@@ -1078,6 +1099,10 @@ next_part:			part_ptr = (struct part_record *)
 next_task:
 		if ((time(NULL) - sched_start) >= sched_timeout) {
 			debug("sched: loop taking too long, breaking out");
+			break;
+		}
+		if (sched_max_job_start && (job_cnt >= sched_max_job_start)) {
+			debug("sched: sched_max_job_start reached, breaking out");
 			break;
 		}
 
@@ -1202,10 +1227,11 @@ next_task:
 		if (job_ptr->qos_id) {
 			slurmdb_association_rec_t *assoc_ptr;
 			assoc_ptr = (slurmdb_association_rec_t *)job_ptr->assoc_ptr;
-			if (assoc_ptr &&
-			    !bit_test(assoc_ptr->usage->valid_qos,
-				      job_ptr->qos_id) &&
-			    !job_ptr->limit_set_qos) {
+			if (assoc_ptr
+			    && (accounting_enforce & ACCOUNTING_ENFORCE_QOS)
+			    && !bit_test(assoc_ptr->usage->valid_qos,
+					 job_ptr->qos_id)
+			    && !job_ptr->limit_set_qos) {
 				debug("sched: JobId=%u has invalid QOS",
 				      job_ptr->job_id);
 				xfree(job_ptr->state_desc);
@@ -1321,6 +1347,20 @@ next_task:
 				if (failed_resv_cnt < MAX_FAILED_RESV) {
 					failed_resv[failed_resv_cnt++] =
 						job_ptr->resv_ptr;
+				}
+			}
+
+			if (fail_by_part && bf_min_age_reserve) {
+				/* Consider other jobs in this partition if
+				 * job has been waiting for less than
+				 * bf_min_age_reserve time */
+				if (job_ptr->details->begin_time == 0) {
+					fail_by_part = false;
+				} else {
+					pend_time = difftime(now,
+						job_ptr->details->begin_time);
+					if (pend_time < bf_min_age_reserve)
+						fail_by_part = false;
 				}
 			}
 

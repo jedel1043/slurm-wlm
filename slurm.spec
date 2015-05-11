@@ -16,7 +16,7 @@
 # --with cray        %_with_cray        1    build for a Cray system without ALPS
 # --with cray_alps   %_with_cray_alps   1    build for a Cray system with ALPS
 # --with cray_network %_with_cray_network 1  build for a non-Cray system with a Cray network
-# --with debug       %_with_debug       1    enable extra debugging within Slurm
+# --without debug    %_without_debug    1    don't compile with debugging symbols
 # --with lua         %_with_lua         1    build Slurm lua bindings (proctrack only for now)
 # --without munge    %_without_munge    1    don't build auth-munge RPM
 # --with mysql       %_with_mysql       1    require mysql support
@@ -45,7 +45,6 @@
 %slurm_without_opt cray
 %slurm_without_opt cray_alps
 %slurm_without_opt cray_network
-%slurm_without_opt debug
 %slurm_without_opt sun_const
 %slurm_without_opt salloc_background
 %slurm_without_opt multiple_slurmd
@@ -64,6 +63,9 @@
 
 # Use readline by default on all systems
 %slurm_with_opt readline
+
+# Use debug by default on all systems
+%slurm_with_opt debug
 
 # Build with PAM by default on linux
 %ifos linux
@@ -414,7 +416,7 @@ Gives the ability for Slurm to use Berkeley Lab Checkpoint/Restart
 
 %build
 %configure \
-	%{?slurm_with_debug:--enable-debug} \
+	%{!?slurm_with_debug:--disable-debug} \
 	%{?slurm_with_partial_attach:--enable-partial-attach} \
 	%{?slurm_with_sun_const:--enable-sun-const} \
 	%{?with_db2_dir:--with-db2-dir=%{?with_db2_dir}} \
@@ -581,10 +583,10 @@ test -f $RPM_BUILD_ROOT/etc/init.d/slurm			&&
   echo /etc/init.d/slurm				>> $LIST
 test -f $RPM_BUILD_ROOT/usr/sbin/rcslurm			&&
   echo /usr/sbin/rcslurm				>> $LIST
-test -f $RPM_BUILD_ROOT/lib/systemd/system/slurmctld.service	&&
-  echo /lib/systemd/system/slurmctld.service		>> $LIST
-test -f $RPM_BUILD_ROOT/lib/systemd/system/slurmd.service	&&
-  echo /lib/systemd/system/slurmd.service		>> $LIST
+test -f $RPM_BUILD_ROOT/usr/lib/systemd/system/slurmctld.service	&&
+  echo /usr/lib/systemd/system/slurmctld.service		>> $LIST
+test -f $RPM_BUILD_ROOT/usr/lib/systemd/system/slurmd.service	&&
+  echo /usr/lib/systemd/system/slurmd.service		>> $LIST
 
 test -f $RPM_BUILD_ROOT/opt/modulefiles/slurm/%{version}-%{release} &&
   echo /opt/modulefiles/slurm/%{version}-%{release} >> $LIST
@@ -656,8 +658,8 @@ test -f $RPM_BUILD_ROOT/etc/init.d/slurmdbd			&&
   echo /etc/init.d/slurmdbd				>> $LIST
 test -f $RPM_BUILD_ROOT/usr/sbin/rcslurmdbd			&&
   echo /usr/sbin/rcslurmdbd				>> $LIST
-test -f $RPM_BUILD_ROOT/lib/systemd/system/slurmdbd.service	&&
-  echo /lib/systemd/system/slurmdbd.service		>> $LIST
+test -f $RPM_BUILD_ROOT/usr/lib/systemd/system/slurmdbd.service	&&
+  echo /usr/lib/systemd/system/slurmdbd.service		>> $LIST
 
 LIST=./sql.files
 touch $LIST
