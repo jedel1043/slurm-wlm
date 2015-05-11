@@ -47,6 +47,7 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>	/* for PATH_MAX */
 #include <netdb.h>
 #include <netinet/in.h>
 #include <pthread.h>
@@ -284,6 +285,7 @@ static int copy_hostent(const struct hostent *src, char *buf, int len)
 		return(-1);
 
 	assert(validate_hostent_copy(src, dst) >= 0);
+	assert(buf != NULL);	/* Used only to eliminate CLANG error */
 	return(0);
 }
 
@@ -394,7 +396,12 @@ extern char *make_full_path(char *rpath)
 	char *cwd2;
 	int len;
 
-	cwd =  get_current_dir_name();
+#ifdef HAVE_GET_CURRENT_DIR_NAME
+	cwd = get_current_dir_name();
+#else
+	cwd = xmalloc(PATH_MAX);
+	cwd = getcwd(cwd, PATH_MAX);
+#endif
 	/* 2 = / + 0
 	 */
 	len = strlen(cwd) + strlen(rpath) + 2;

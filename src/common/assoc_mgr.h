@@ -107,7 +107,6 @@ typedef struct {
 struct assoc_mgr_association_usage {
 	List children_list;     /* list of children associations
 				 * (DON'T PACK) */
-
 	uint32_t grp_used_cpus; /* count of active jobs in the group
 				 * (DON'T PACK) */
 	uint32_t grp_used_mem; /* count of active memory in the group
@@ -118,13 +117,21 @@ struct assoc_mgr_association_usage {
 				 * running jobs (DON'T PACK) */
 	uint64_t grp_used_cpu_run_secs; /* count of running cpu secs
 					 * (DON'T PACK) */
-
+	double fs_factor;	/* Fairshare factor. Not used by all algorithms
+				 * (DON'T PACK) */
 	uint32_t level_shares;  /* number of shares on this level of
 				 * the tree (DON'T PACK) */
 
-	slurmdb_association_rec_t *parent_assoc_ptr; /* ptr to parent acct
+	slurmdb_association_rec_t *parent_assoc_ptr; /* ptr to direct
+						      * parent assoc
 						      * set in slurmctld
 						      * (DON'T PACK) */
+
+	slurmdb_association_rec_t *fs_assoc_ptr;    /* ptr to fairshare parent
+						     * assoc if fairshare
+						     * == SLURMDB_FS_USE_PARENT
+						     * set in slurmctld
+						     * (DON'T PACK) */
 
 	double shares_norm;     /* normalized shares (DON'T PACK) */
 
@@ -136,10 +143,20 @@ struct assoc_mgr_association_usage {
 	uint32_t used_submit_jobs; /* count of jobs pending or running
 				    * (DON'T PACK) */
 
+	/* Currently FAIR_TREE and TICKET_BASED systems are defining data on
+	 * this struct but instead we could keep a void pointer to system
+	 * specific data. This would allow subsystems to define whatever data
+	 * they need without having to modify this struct; it would also save
+	 * space.
+	 */
 	uint32_t tickets;       /* Number of tickets (for multifactor2
 				 * plugin). (DON'T PACK) */
 	unsigned active_seqno;  /* Sequence number for identifying
 				 * active associations (DON'T PACK) */
+
+	long double level_fs;	/* (FAIR_TREE) Result of fairshare equation
+				 * compared to the association's siblings (DON'T
+				 * PACK) */
 
 	bitstr_t *valid_qos;    /* qos available for this association
 				 * derived from the qos_list.
@@ -179,6 +196,7 @@ extern slurmdb_association_rec_t *assoc_mgr_root_assoc;
 
 extern uint32_t g_qos_max_priority; /* max priority in all qos's */
 extern uint32_t g_qos_count; /* count used for generating qos bitstr's */
+extern uint32_t g_user_assoc_count; /* Number of assocations which are users */
 
 
 extern int assoc_mgr_init(void *db_conn, assoc_init_args_t *args,
@@ -258,11 +276,16 @@ extern int assoc_mgr_fill_in_user(void *db_conn, slurmdb_user_rec_t *user,
  * IN/OUT:  qos_pptr - if non-NULL then return a pointer to the
  *		       slurmdb_qos record in cache on success
  *                     DO NOT FREE.
+ * IN: locked - If you plan on using qos_pptr, or g_qos_count outside
+ *              this function you need to have an assoc_mgr_lock_t
+ *              READ_LOCK for QOS while you use it before and after the
+ *              return.  This is not required if using the assoc for
+ *              non-pointer portions.
  * RET: SLURM_SUCCESS on success SLURM_ERROR else
  */
 extern int assoc_mgr_fill_in_qos(void *db_conn, slurmdb_qos_rec_t *qos,
 				 int enforce,
-				 slurmdb_qos_rec_t **qos_pptr);
+				 slurmdb_qos_rec_t **qos_pptr, bool locked);
 /*
  * get info from the storage
  * IN/OUT:  wckey - slurmdb_wckey_rec_t with the name, cluster and user
@@ -412,5 +435,10 @@ extern int assoc_mgr_refresh_lists(void *db_conn);
  * calling program.
  */
 extern int assoc_mgr_set_missing_uids();
+
+/* Normalize shares for an association. External so a priority plugin
+ * can call it if needed.
+ */
+extern void assoc_mgr_normalize_assoc_shares(slurmdb_association_rec_t *assoc);
 
 #endif /* _SLURM_ASSOC_MGR_H */

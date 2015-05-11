@@ -132,11 +132,11 @@ MaxRSSNode      MaxRSSTask     MaxVMSize        MaxVMSizeNode
 MaxVMSizeTask   MinCPU         MinCPUNode       MinCPUTask
 NCPUS           NNodes         NodeList         NTasks
 Priority        Partition      QOSRAW           ReqCPUFreq
-ReqCPUs         ReqMem         Reserved         ResvCPU
-ResvCPURAW      Start          State            Submit
-Suspended       SystemCPU      Timelimit        TotalCPU
-UID             User           UserCPU          WCKey
-WCKeyID
+ReqCPUs         ReqMem         Reservation      ReservationId
+Reserved        ResvCPU	       ResvCPURAW       Start
+State           Submit         Suspended        SystemCPU
+Timelimit       TotalCPU       UID              User
+UserCPU         WCKey          WCKeyID
 
 .ft 1
 .fi
@@ -213,7 +213,8 @@ Equivalent to specifying:
 avevmsize,maxrss,maxrssnode,maxrsstask,averss,maxpages,maxpagesnode,
 maxpagestask,avepages,mincpu,mincpunode,mincputask,avecpu,ntasks,
 alloccpus,elapsed,state,exitcode,maxdiskread,maxdiskreadnode,maxdiskreadtask,
-avediskread,maxdiskwrite,maxdiskwritenode,maxdiskwritetask,avediskwrite
+avediskread,maxdiskwrite,maxdiskwritenode,maxdiskwritetask,avediskwrite,
+allocgres,reqgres
 .ad
 
 .TP
@@ -417,6 +418,10 @@ Print all fields listed below.
 .TP
 \f3AllocCPUs\fP
 Count of allocated CPUs. Equivalant to \f3NCPUs\fP.
+
+.TP
+\f3AllocGRES\fP
+Names and counts of generic resources allocated.
 
 .TP
 \f3account\fP
@@ -680,10 +685,22 @@ Note: This value applies only to a job step. No value is reported for the job.
 Required CPUs.
 
 .TP
+\f3ReqGRES\fP
+Names and counts of generic resources requested.
+
+.TP
 \f3ReqMem\fP
 Minimum required memory for the job, in MB. A 'c' at the end of
 number represents Memory Per CPU, a 'n' represents Memory Per Node.
 Note: This value is only from the job allocation, not the step.
+
+.TP
+\f3reservation\fP
+Reservation Name.
+
+.TP
+\f3reservation\fP
+Reservation Id.
 
 .TP
 \f3reserved\fP

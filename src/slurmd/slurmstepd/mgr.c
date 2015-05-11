@@ -110,6 +110,7 @@
 #include "src/slurmd/common/job_container_plugin.h"
 #include "src/slurmd/common/setproctitle.h"
 #include "src/slurmd/common/proctrack.h"
+#include "src/slurmd/common/slurmd_cgroup.h"
 #include "src/slurmd/common/task_plugin.h"
 #include "src/slurmd/common/run_script.h"
 #include "src/slurmd/common/reverse_tree.h"
@@ -259,6 +260,10 @@ _send_srun_resp_msg(slurm_msg_t *resp_msg, uint32_t nnodes)
 	int rc, retry = 0, max_retry = 0;
 	unsigned long delay = 100000;
 
+	/* NOTE: Wait until suspended job step is resumed or the RPC
+	 * authentication credential from Munge may expire by the time
+	 * it is resumed */
+	wait_for_resumed(resp_msg->msg_type);
 	while (1) {
 		rc = slurm_send_only_node_msg(resp_msg);
 		if ((rc == SLURM_SUCCESS) || (errno != ETIMEDOUT))
@@ -270,12 +275,12 @@ _send_srun_resp_msg(slurm_msg_t *resp_msg, uint32_t nnodes)
 		if (retry > max_retry)
 			break;
 
-		debug3("_send_srun_resp_msg: failed to send msg type %u: %m",
-			resp_msg->msg_type);
+		debug3("%s: failed to send msg type %u: %m",
+			__func__, resp_msg->msg_type);
 		usleep(delay);
 		if (delay < 800000)
 			delay *= 2;
-		retry ++;
+		retry++;
 	}
 	return rc;
 }
@@ -780,6 +785,12 @@ _one_step_complete_msg(stepd_step_rec_t *job, int first, int last)
 	memset(&msg, 0, sizeof(step_complete_msg_t));
 	msg.job_id = job->jobid;
 	msg.job_step_id = job->stepid;
+	if (job->batch) {	/* Nested batch step anomalies */
+		if (first == -1)
+			first = 0;
+		if (last == -1)
+			last = 0;
+	}
 	msg.range_first = first;
 	msg.range_last = last;
 	msg.step_rc = step_complete.step_rc;
@@ -897,7 +908,7 @@ static void
 _send_step_complete_msgs(stepd_step_rec_t *job)
 {
 	int start, size;
-	int first=-1, last=-1;
+	int first = -1, last = -1;
 	bool sent_own_comp_msg = false;
 
 	pthread_mutex_lock(&step_complete.lock);
@@ -912,9 +923,9 @@ _send_step_complete_msgs(stepd_step_rec_t *job)
 		return;
 	}
 
-	while(_bit_getrange(start, size, &first, &last)) {
+	while (_bit_getrange(start, size, &first, &last)) {
 		/* THIS node is not in the bit string, so we need to prepend
-		   the local rank */
+		 * the local rank */
 		if (start == 0 && first == 0) {
 			sent_own_comp_msg = true;
 			first = -1;
@@ -925,9 +936,10 @@ _send_step_complete_msgs(stepd_step_rec_t *job)
 		start = last + 1;
 	}
 
-	if (!sent_own_comp_msg)
+	if (!sent_own_comp_msg) {
 		_one_step_complete_msg(job, step_complete.rank,
 				       step_complete.rank);
+	}
 
 	pthread_mutex_unlock(&step_complete.lock);
 }
@@ -1085,6 +1097,9 @@ job_manager(stepd_step_rec_t *job)
 
 	job->state = SLURMSTEPD_STEP_RUNNING;
 
+	/* Attach slurmstepd to system cgroups, if configured */
+	attach_system_cgroup_pid(getpid());
+
 	/* if we are not polling then we need to make sure we get some
 	 * information here
 	 */
@@ -1136,17 +1151,16 @@ fail2:
 		_wait_for_io(job);
 
 	/*
-	 * Reset cpu frequency if it was changed
+	 * Warn task plugin that the user's step have terminated
 	 */
+	task_g_post_step(job);
 
 	if (job->cpu_freq != NO_VAL)
 		cpu_freq_reset(job);
 
-	/*
-	 * Warn task plugin that the user's step have terminated
-	 */
-
-	task_g_post_step(job);
+	/* Notify srun of completion AFTER frequency reset to avoid race
+	 * condition starting another job on these CPUs. */
+	while (_send_pending_exit_msgs(job)) {;}
 
 	/*
 	 * This just cleans up all of the PAM state in case rc == 0
@@ -1180,7 +1194,7 @@ fail1:
 		_send_step_complete_msgs(job);
 	}
 
-	if (core_spec_g_clear(job->cont_id))
+	if (!job->batch && core_spec_g_clear(job->cont_id))
 		error("core_spec_g_clear: %m");
 
 	xfree(ckpt_type);
@@ -1538,6 +1552,9 @@ _fork_all_tasks(stepd_step_rec_t *job, bool *io_initialized)
 			 */
 			prepare_stdio (job, job->task[i]);
 
+			/* Close profiling file descriptors */
+			acct_gather_profile_g_child_forked();
+
 			/*
 			 *  Block until parent notifies us that it is ok to
 			 *   proceed. This allows the parent to place all
@@ -1633,7 +1650,7 @@ _fork_all_tasks(stepd_step_rec_t *job, bool *io_initialized)
 //	jobacct_gather_set_proctrack_container_id(job->cont_id);
 	if (container_g_add_cont(job->jobid, job->cont_id) != SLURM_SUCCESS)
 		error("container_g_add_cont(%u): %m", job->jobid);
-	if (core_spec_g_set(job->cont_id, job->job_core_spec))
+	if (!job->batch && core_spec_g_set(job->cont_id, job->job_core_spec))
 		error("core_spec_g_set: %m");
 
 	/*
@@ -1887,7 +1904,12 @@ _wait_for_all_tasks(stepd_step_rec_t *job)
 			}
 		}
 
-		while (_send_pending_exit_msgs(job)) {;}
+		if (i < tasks_left) {
+			/* Send partial completion message only.
+			 * The full completion message can only be sent
+			 * after resetting CPU frequencies */
+			while (_send_pending_exit_msgs(job)) {;}
+		}
 	}
 }
 

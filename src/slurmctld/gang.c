@@ -40,14 +40,8 @@
  * gang scheduler plugin for SLURM
  */
 
-#if defined(__NetBSD__)
-#include <sys/types.h> /* for pid_t */
-#include <sys/signal.h> /* for SIGKILL */
-#endif
-#if defined(__FreeBSD__)
-#include <signal.h>
-#endif
 #include <pthread.h>
+#include <signal.h>
 #include <unistd.h>
 
 #include "./gang.h"
@@ -560,6 +554,7 @@ static int _suspend_job(uint32_t job_id)
 	suspend_msg_t msg;
 
 	msg.job_id = job_id;
+	msg.job_id_str = NULL;
 	msg.op = SUSPEND_JOB;
 	rc = job_suspend(&msg, 0, -1, false, (uint16_t)NO_VAL);
 	/* job_suspend() returns ESLURM_DISABLED if job is already suspended */
@@ -580,6 +575,7 @@ static void _resume_job(uint32_t job_id)
 	suspend_msg_t msg;
 
 	msg.job_id = job_id;
+	msg.job_id_str = NULL;
 	msg.op = RESUME_JOB;
 	rc = job_suspend(&msg, 0, -1, false, (uint16_t)NO_VAL);
 	if (rc == SLURM_SUCCESS) {
@@ -657,7 +653,7 @@ static void _preempt_job_dequeue(void)
 			   job_ptr->batch_flag && job_ptr->details &&
 			   (job_ptr->details->requeue > 0)) {
 			rc = job_requeue(0, job_ptr->job_id, -1,
-					 (uint16_t)NO_VAL, true);
+					 (uint16_t)NO_VAL, true, 0);
 			if (rc == SLURM_SUCCESS) {
 				info("preempted job %u has been requeued",
 				     job_ptr->job_id);
@@ -1566,8 +1562,11 @@ static void _cycle_job_list(struct gs_part *p_ptr)
 static void _slice_sleep(void)
 {
 	struct timespec ts = {0, 0};
+	struct timeval now;
 
-	ts.tv_sec = time(NULL) + timeslicer_seconds;
+	gettimeofday(&now, NULL);
+	ts.tv_sec = now.tv_sec + timeslicer_seconds;
+	ts.tv_nsec = now.tv_usec * 1000;
 	pthread_mutex_lock(&term_lock);
 	if (!thread_shutdown)
 		pthread_cond_timedwait(&term_cond, &term_lock, &ts);

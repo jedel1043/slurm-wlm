@@ -42,8 +42,6 @@ source ./inc3.11.7
 source ./inc3.11.8
 source ./inc3.11.9
 
-
-
 set test_id		"3.11"
 set file_in		"test$test_id.input"
 set exit_code		0
@@ -59,9 +57,9 @@ set def_node_name	""
 set def_node_inx_min	-1
 set def_node_inx_max	-1
 set ii			0
+set log_cpu_cnt		0
 
 print_header $test_id
-
 
 #
 # Procedure to create a new reservation and validate it.
@@ -76,6 +74,7 @@ proc create_res { res_params failure_expected } {
 	global res_nodecnt
 	global res_corecnt
 	global res_thread_cnt
+	global log_cpu_cnt
 
 	set ret_code 0
 	set res_name ""
@@ -170,8 +169,23 @@ proc create_res { res_params failure_expected } {
 		}
 	}
 
+	set cores_per_socket 1
+	set cpu_tot 1
+	set sockets 1
 	spawn $scontrol show node $res_nodes
 	expect {
+		-re "CoresPerSocket=($number)" {
+			set cores_per_socket $expect_out(1,string)
+			exp_continue
+		}
+		-re "CPUTot=($number)" {
+			set cpu_tot $expect_out(1,string)
+			exp_continue
+		}
+		-re "Sockets=($number)" {
+			set sockets $expect_out(1,string)
+			exp_continue
+		}
 		-re "ThreadsPerCore=($number)" {
 			set res_thread_cnt $expect_out(1,string)
 			exp_continue
@@ -183,6 +197,15 @@ proc create_res { res_params failure_expected } {
 		eof {
 			wait
 		}
+	}
+	set core_cnt [expr $sockets * $cores_per_socket]
+	set thread_cnt [expr $core_cnt * $res_thread_cnt]
+	if {$cpu_tot != $thread_cnt && $cpu_tot == $core_cnt} {
+		if {$log_cpu_cnt == 0} {
+			send_user "\nNOTE: Cores rather than threads are being allocated\n"
+			set log_cpu_cnt 1
+		}
+		set res_thread_cnt 1
 	}
 	#exp_internal 0
 
@@ -264,10 +287,34 @@ proc delete_res { res_name } {
 			set ret_code 1
 			exp_continue
 		}
+		eof {
+			wait
+		}
 	}
 	return $ret_code
 }
 
+if {[is_super_user] == 0} {
+	send_user "\nWARNING: This test can't be run except as SlurmUser\n"
+	exit 0
+}
+
+set have_resv 0
+spawn $scontrol show res $res_name
+expect {
+	-re "ReservationName=($alpha_numeric_under)" {
+		incr have_resv
+		exp_continue
+	}
+	eof {
+		wait
+	}
+}
+if {$have_resv != 0} {
+	send_user "*****************************************************************************************\n"
+	send_user "WARNING: $have_resv reservations exist at start of test which may interfere with the test\n"
+	send_user "*****************************************************************************************\n"
+}
 
 #
 # Identify usable nodes in default partition
@@ -298,6 +345,11 @@ expect {
 		wait
 	}
 }
+if {[string compare $def_node ""] == 0} {
+	send_user "\nFAILURE:default partition seems to have no nodes\n"
+	exit 1
+}
+
 spawn $sinfo -h -o "=%N=" -p $def_partition
 expect {
 	-re "=($alpha_numeric).($number)-($number).=" {
@@ -310,14 +362,18 @@ expect {
 		wait
 	}
 }
-if {[string compare $def_node ""] == 0} {
-	send_user "\nFAILURE:default partition seems to have no nodes\n"
-	exit 1
+
+# Some tests do not support names of this form "rack[0-3]_blade[0-63]"
+set irregular_node_name 0
+if {[string compare $def_node_name ""] == 0} {
+	send_user "\nWARNING: Node name format not supported for all test\n"
+	set irregular_node_name 1
 }
 
 #
 # Determine system size
 #
+set core_spec 0
 set cores_per_socket 0
 set sockets_per_node 0
 log_user 0
@@ -335,13 +391,23 @@ expect {
 		}
 		exp_continue
 	}
+	-re "CoreSpecCount=($number)" {
+		if {$expect_out(1,string) > 0} {
+			set core_spec 1
+		}
+		exp_continue
+	}
+	-re "CPUSpecList=($number)" {
+		set core_spec 1
+		exp_continue
+	}
 	eof {
 		wait
 	}
 }
 log_user 1
 set cores_per_node [expr $cores_per_socket * $sockets_per_node]
-set node_count [available_nodes $def_partition]
+set node_count [available_nodes $def_partition ""]
 set cluster_cpus [expr $cores_per_node * $node_count]
 
 #
@@ -364,7 +430,7 @@ if {$def_share_force == 0} {
 		set cons_res_actived 1
 	}
 }
-
+set exclusive [default_part_exclusive]
 if {$cons_res_actived == 1} {
 	inc3_11_1
 }
@@ -373,9 +439,11 @@ inc3_11_3
 inc3_11_4
 inc3_11_5
 inc3_11_6
-if {$cons_res_actived == 1} {
+if {$cons_res_actived == 1 && $core_spec == 0 && $exclusive == 0} {
 	inc3_11_7
 	inc3_11_8
+}
+if {$cons_res_actived == 1 && $core_spec == 0 && $exclusive == 0 && $irregular_node_name == 0} {
 	inc3_11_9
 }
 

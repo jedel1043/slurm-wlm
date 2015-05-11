@@ -106,13 +106,13 @@ static int pty_sigarray[] = { SIGWINCH, 0 };
 /*
  * Prototypes:
  */
-static inline int _estimate_nports(int nclients, int cli_per_port);
 static int        _compute_task_count(allocation_info_t *info);
 static void       _set_ntasks(allocation_info_t *info);
 static srun_job_t *_job_create_structure(allocation_info_t *info);
 static char *     _normalize_hostlist(const char *hostlist);
 static int _become_user(void);
-static int _call_spank_local_user(srun_job_t *job);
+static void _call_spank_fini(void);
+static int  _call_spank_local_user(srun_job_t *job);
 static void _default_sigaction(int sig);
 static long _diff_tv_str(struct timeval *tv1, struct timeval *tv2);
 static void _handle_intr(srun_job_t *job);
@@ -355,7 +355,7 @@ job_step_create_allocation(resource_allocation_response_msg_t *resp)
 
 	if ((opt.distribution == SLURM_DIST_ARBITRARY) &&
 	    (count != opt.ntasks)) {
-		error("You asked for %d tasks but specified %d nodes",
+		error("You asked for %d tasks but hostlist specified %d nodes",
 		      opt.ntasks, count);
 		goto error;
 	}
@@ -432,7 +432,7 @@ extern void init_srun(int ac, char **av,
 
 	/* Be sure to call spank_fini when srun exits.
 	 */
-	if (atexit((void (*) (void)) spank_fini) < 0)
+	if (atexit(_call_spank_fini) < 0)
 		error("Failed to register atexit handler for plugins: %m");
 
 	/* set default options, process commandline arguments, and
@@ -587,12 +587,19 @@ extern void create_srun_job(srun_job_t **p_job, bool *got_alloc,
 		}
 		job = job_create_allocation(resp);
 
-		opt.exclusive = false;	/* not applicable for this step */
 		opt.time_limit = NO_VAL;/* not applicable for step, only job */
 		xfree(opt.constraints);	/* not applicable for this step */
 		if (!opt.job_name_set_cmd && opt.job_name_set_env) {
 			/* use SLURM_JOB_NAME env var */
 			opt.job_name_set_cmd = true;
+		}
+		if ((opt.core_spec_set || opt.exclusive) && opt.cpus_set) {
+			/* Step gets specified CPU count, which may only part
+			 * of the job allocation. */
+			opt.exclusive = true;
+		} else {
+			/* Step gets all CPUs in the job allocation. */
+			opt.exclusive = false;
 		}
 
 		/*
@@ -738,14 +745,6 @@ job_force_termination(srun_job_t *job)
 		}
 	}
 	kill_sent++;
-}
-
-static inline int
-_estimate_nports(int nclients, int cli_per_port)
-{
-	div_t d;
-	d = div(nclients, cli_per_port);
-	return d.rem > 0 ? d.quot + 1 : d.quot;
 }
 
 static int
@@ -1253,11 +1252,19 @@ static int _set_rlimit_env(void)
 	return rc;
 }
 
-/* Set SLURM_SUBMIT_DIR and SLURM_SUBMIT_HOST environment variables within
- * current state */
+/* Set SLURM_CLUSTER_NAME< SLURM_SUBMIT_DIR and SLURM_SUBMIT_HOST environment 
+ * variables within current state */
 static void _set_submit_dir_env(void)
 {
 	char buf[MAXPATHLEN + 1], host[256];
+	char *cluster_name;
+
+	cluster_name = slurm_get_cluster_name();
+	if (cluster_name) {
+		if (setenvf(NULL, "SLURM_CLUSTER_NAME", "%s", cluster_name) < 0)
+			error("unable to set SLURM_CLUSTER_NAME in environment");
+		xfree(cluster_name);
+	}
 
 	if ((getcwd(buf, MAXPATHLEN)) == NULL)
 		error("getcwd failed: %m");
@@ -1449,3 +1456,8 @@ static int _validate_relative(resource_allocation_response_msg_t *resp)
 	return 0;
 }
 
+static void _call_spank_fini(void)
+{
+	if (-1 != shepard_fd)
+		spank_fini(NULL);
+}

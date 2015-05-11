@@ -61,6 +61,7 @@
 #include "src/common/assoc_mgr.h"
 #include "src/common/gres.h"
 #include "src/common/hostlist.h"
+#include "src/common/layouts_mgr.h"
 #include "src/common/list.h"
 #include "src/common/macros.h"
 #include "src/common/node_select.h"
@@ -69,6 +70,7 @@
 #include "src/common/slurm_jobcomp.h"
 #include "src/common/slurm_topology.h"
 #include "src/common/slurm_rlimits_info.h"
+#include "src/common/slurm_route.h"
 #include "src/common/switch.h"
 #include "src/common/xstring.h"
 #include "src/common/strnatcmp.h"
@@ -362,7 +364,7 @@ static int _build_bitmaps(void)
 	 * their configuration, resync DRAINED vs. DRAINING state */
 	for (i=0, node_ptr=node_record_table_ptr;
 	     i<node_record_count; i++, node_ptr++) {
-		uint16_t drain_flag, job_cnt;
+		uint32_t drain_flag, job_cnt;
 
 		if (node_ptr->name[0] == '\0')
 			continue;	/* defunct */
@@ -581,6 +583,9 @@ extern void qos_list_build(char *qos, bitstr_t **qos_bits)
 	char *tmp_qos, *one_qos_name, *name_ptr = NULL;
 	slurmdb_qos_rec_t qos_rec, *qos_ptr = NULL;
 	bitstr_t *tmp_qos_bitstr;
+	int rc;
+	assoc_mgr_lock_t locks = { NO_LOCK, NO_LOCK,
+				   READ_LOCK, NO_LOCK, NO_LOCK, NO_LOCK };
 
 	if (!qos) {
 		FREE_NULL_BITMAP(*qos_bits);
@@ -588,22 +593,26 @@ extern void qos_list_build(char *qos, bitstr_t **qos_bits)
 		return;
 	}
 
+	/* Lock here to avoid g_qos_count changing under us */
+	assoc_mgr_lock(&locks);
 	tmp_qos_bitstr = bit_alloc(g_qos_count);
 	tmp_qos = xstrdup(qos);
 	one_qos_name = strtok_r(tmp_qos, ",", &name_ptr);
 	while (one_qos_name) {
 		memset(&qos_rec, 0, sizeof(slurmdb_qos_rec_t));
 		qos_rec.name = one_qos_name;
-		if (assoc_mgr_fill_in_qos(acct_db_conn, &qos_rec,
-					  accounting_enforce,
-					  &qos_ptr) == SLURM_SUCCESS) {
-			bit_set(tmp_qos_bitstr, qos_rec.id);
-		} else {
-			error("Ignoring invalid Allow/DenyQOS value %s",
+		rc = assoc_mgr_fill_in_qos(acct_db_conn, &qos_rec,
+					   accounting_enforce,
+					   &qos_ptr, 1);
+		if ((rc != SLURM_SUCCESS) || (qos_rec.id >= g_qos_count)) {
+			error("Ignoring invalid Allow/DenyQOS value: %s",
 			      one_qos_name);
+		} else {
+			bit_set(tmp_qos_bitstr, qos_rec.id);
 		}
 		one_qos_name = strtok_r(NULL, ",", &name_ptr);
 	}
+	assoc_mgr_unlock(&locks);
 	xfree(tmp_qos);
 	FREE_NULL_BITMAP(*qos_bits);
 	*qos_bits = tmp_qos_bitstr;
@@ -882,6 +891,8 @@ int read_slurm_conf(int recover, bool reconfig)
 		}
 		node_record_table_ptr = NULL;
 		node_record_count = 0;
+		xhash_free (node_hash_table);
+		node_hash_table = NULL;
 		old_part_list = part_list;
 		part_list = NULL;
 		old_def_part_name = default_part_name;
@@ -895,6 +906,9 @@ int read_slurm_conf(int recover, bool reconfig)
 		default_part_name = old_def_part_name;
 		return error_code;
 	}
+
+	if (slurm_layouts_init() != SLURM_SUCCESS)
+		fatal("Failed to initialize the layouts framework");
 
 	if (slurm_topo_init() != SLURM_SUCCESS)
 		fatal("Failed to initialize topology plugin");
@@ -949,13 +963,24 @@ int read_slurm_conf(int recover, bool reconfig)
 		_reorder_nodes_by_rank();
 	else
 		_reorder_nodes_by_name();
-	slurm_topo_build_config();
 
 	rehash_node();
+	slurm_topo_build_config();
+	route_g_reconfigure();
+
 	rehash_jobs();
 	set_slurmd_addr();
 
 	_stat_slurm_dirs();
+
+	/*
+	 * Load the layouts configuration.
+	 * Only load it at init time, not during reconfiguration stages.
+	 * It requires a full restart to switch to a new configuration for now.
+	 */
+	if (!reconfig && (slurm_layouts_load_config() != SLURM_SUCCESS))
+		fatal("Failed to load the layouts framework configuration");
+
 	if (reconfig) {		/* Preserve state from memory */
 		if (old_node_table_ptr) {
 			info("restoring original state of nodes");
@@ -1025,6 +1050,8 @@ int read_slurm_conf(int recover, bool reconfig)
 
 	if (license_update(slurmctld_conf.licenses) != SLURM_SUCCESS)
 		fatal("Invalid Licenses value: %s", slurmctld_conf.licenses);
+
+	init_requeue_policy();
 
 	/* NOTE: Run restore_node_features before _restore_job_dependencies */
 	restore_node_features(recover);
@@ -1135,7 +1162,7 @@ static int _restore_node_state(int recover,
 
 	for (i=0, old_node_ptr=old_node_table_ptr; i<old_node_record_count;
 	     i++, old_node_ptr++) {
-		uint16_t drain_flag = false, down_flag = false;
+		uint32_t drain_flag = false, down_flag = false;
 		dynamic_plugin_data_t *tmp_select_nodeinfo;
 
 		node_ptr  = find_node_record(old_node_ptr->name);
@@ -1199,11 +1226,16 @@ static int _restore_node_state(int recover,
 		node_ptr->boot_time     = old_node_ptr->boot_time;
 		node_ptr->cpus          = old_node_ptr->cpus;
 		node_ptr->cores         = old_node_ptr->cores;
+		xfree(node_ptr->cpu_spec_list);
+		node_ptr->cpu_spec_list = old_node_ptr->cpu_spec_list;
+		old_node_ptr->cpu_spec_list = NULL;
+		node_ptr->core_spec_cnt = old_node_ptr->core_spec_cnt;
 		node_ptr->last_idle     = old_node_ptr->last_idle;
 		node_ptr->boards        = old_node_ptr->boards;
 		node_ptr->sockets       = old_node_ptr->sockets;
 		node_ptr->threads       = old_node_ptr->threads;
 		node_ptr->real_memory   = old_node_ptr->real_memory;
+		node_ptr->mem_spec_limit = old_node_ptr->mem_spec_limit;
 		node_ptr->slurmd_start_time = old_node_ptr->slurmd_start_time;
 		node_ptr->tmp_disk      = old_node_ptr->tmp_disk;
 		node_ptr->weight        = old_node_ptr->weight;
@@ -1241,6 +1273,12 @@ static int _restore_node_state(int recover,
 			xfree(node_ptr->os);
 			node_ptr->os = old_node_ptr->os;
 			old_node_ptr->os = NULL;
+		}
+		if (old_node_ptr->node_spec_bitmap) {
+			FREE_NULL_BITMAP(node_ptr->node_spec_bitmap);
+			node_ptr->node_spec_bitmap =
+				old_node_ptr->node_spec_bitmap;
+			old_node_ptr->node_spec_bitmap = NULL;
 		}
 	}
 
@@ -1779,7 +1817,7 @@ static int _sync_nodes_to_comp_job(void)
 static int _sync_nodes_to_active_job(struct job_record *job_ptr)
 {
 	int i, cnt = 0;
-	uint16_t node_flags;
+	uint32_t node_flags;
 	struct node_record *node_ptr = node_record_table_ptr;
 
 	if (job_ptr->node_bitmap_cg) /* job completing */
@@ -1906,7 +1944,7 @@ static void _validate_node_proc_count(void)
 
 /*
  * _restore_job_dependencies - Build depend_list and license_list for every job
- *	also reset the runing job count for scheduling policy
+ *	also reset the running job count for scheduling policy
  */
 static int _restore_job_dependencies(void)
 {
@@ -1920,7 +1958,16 @@ static int _restore_job_dependencies(void)
 	assoc_mgr_clear_used_info();
 	job_iterator = list_iterator_create(job_list);
 	while ((job_ptr = (struct job_record *) list_next(job_iterator))) {
+		if (job_ptr->array_recs)
+			job_ptr->array_recs->tot_run_tasks = 0;
+	}
+
+	list_iterator_reset(job_iterator);
+	while ((job_ptr = (struct job_record *) list_next(job_iterator))) {
 		(void) build_feature_list(job_ptr);
+
+		if (IS_JOB_RUNNING(job_ptr) || IS_JOB_SUSPENDED(job_ptr))
+			job_array_start(job_ptr);
 
 		if (accounting_enforce & ACCOUNTING_ENFORCE_LIMITS) {
 			if (!IS_JOB_FINISHED(job_ptr))

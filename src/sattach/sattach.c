@@ -23,7 +23,7 @@
  *
  *  You should have received a copy of the GNU General Public License along
  *  with SLURM; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
 
 #if HAVE_CONFIG_H
@@ -158,6 +158,9 @@ int sattach(int argc, char *argv[])
 
 	totalview_jobid = NULL;
 	xstrfmtcat(totalview_jobid, "%u", opt.jobid);
+	totalview_stepid = NULL;
+	xstrfmtcat(totalview_stepid, "%u", opt.stepid);
+
 	_mpir_init(layout->task_cnt);
 	if (opt.input_filter_set) {
 		opt.fds.in.nodeid =
@@ -445,7 +448,7 @@ _estimate_nports(int nclients, int cli_per_port)
 static message_thread_state_t *_msg_thr_create(int num_nodes, int num_tasks)
 {
 	int sock = -1;
-	short port = -1;
+	uint16_t port;
 	eio_obj_t *obj;
 	int i;
 	message_thread_state_t *mts;
@@ -564,7 +567,6 @@ _exit_handler(message_thread_state_t *mts, slurm_msg_t *exit_msg)
 				msg->task_id_list[i],
 				WTERMSIG(msg->return_code));
 		}
-		rc = 1;
 	}
 
 	pthread_cond_signal(&mts->cond);

@@ -1,4 +1,4 @@
-.TH SCONTROL "1" "April 2014" "scontrol 14.03" "Slurm components"
+.TH SCONTROL "1" "September 2014" "scontrol 14.11" "Slurm components"
 
 .SH "NAME"
 scontrol \- Used view and modify Slurm configuration and state.
@@ -19,7 +19,11 @@ line, \fBscontrol\fR will execute that command and terminate. All commands
 and options are case\-insensitive, although node names, partition names, and
 reservation names are case\-sensitive (node names "LX" and "lx" are distinct).
 All commands and options can be abbreviated to the extent that the
-specification is unique.
+specification is unique.  A modified Slurm configuration can be written to
+a file using the \fIscontrol write config\fR command. The resulting file
+will be named using the convention "slurm.conf.<datetime>" and located in the
+same directory as the original "slurm.conf" file. The directory containing
+the original slurm.conf must be writable for this to occur.
 
 .SH "OPTIONS"
 .TP
@@ -187,7 +191,7 @@ This is the default behavior.
 \fBhold\fP \fIjob_list\fP
 Prevent a pending job from beginning started (sets it's priority to 0).
 Use the \fIrelease\fP command to permit the job to be scheduled.
-The job_list argument is a space separated list of job IDs or job names.
+The job_list argument is a comma separated list of job IDs or job names.
 Note that when a job is held by a system administrator using the \fBhold\fP
 command, only a system administrator may release the job for execution (also
 see the \fBuhold\fP command). When the job is held by its owner, it may also
@@ -250,6 +254,8 @@ being rebooted. You can alternately create an advanced reservation to
 prevent additional jobs from being initiated on nodes to be rebooted.
 NOTE: Nodes will be placed in a state of "MAINT" until rebooted and returned
 to service with a normal state.
+Alternately the node's state "MAINT" may be cleared by using the scontrol
+command to set the node state to "RESUME", which clears the "MAINT" flag.
 
 .TP
 \fBreconfigure\fP
@@ -269,19 +275,21 @@ or removed from the cluster.
 .TP
 \fBrelease\fP \fIjob_list\fP
 Release a previously held job to begin execution.
-The job_list argument is a space separated list of job IDs or job names.
+The job_list argument is a comma separated list of job IDs or job names.
 Also see \fBhold\fR.
 
 .TP
-\fBrequeue\fP \fIjob_id\fP
+\fBrequeue\fP \fIjob_list\fP
 Requeue a running, suspended or finished SLURM batch job into pending state.
+The job_list argument is a comma separated list of job IDs.
 
 .TP
-\fBrequeuehold\fP \fIjob_id\fP
+\fBrequeuehold\fP \fIjob_list\fP
 Requeue a running, suspended or finished SLURM batch job into pending state,
-moreover the job is put in held state (priority zero). A held job can be
-release using scontrol to reset its priority (e.g. "scontrol release <job_id>").
-The command accepts the following option:
+moreover the job is put in held state (priority zero).
+The job_list argument is a comma separated list of job IDs.
+A held job can be release using scontrol to reset its priority (e.g.
+"scontrol release <job_id>"). The command accepts the following option:
 .RS
 .TP 12
 \fIState=SpecialExit\fP
@@ -291,9 +299,9 @@ The "scontrol show job" command will display the JobState as
 \fBSPECIAL_EXIT\fP, while the "squeue" command as \fBSE\fP.
 .RE
 
-\fBresume\fP \fIjob_id_list\fP
+\fBresume\fP \fIjob_list\fP
 Resume a previously suspended job.
-Multiple job ID values may be specified separated by spaces.
+The job_list argument is a comma separated list of job IDs.
 Also see \fBsuspend\fR.
 
 .TP
@@ -388,9 +396,9 @@ only the slurmctld daemon being shutdown and the slurmd daemons
 remaining active.
 
 .TP
-\fBsuspend\fP \fIjob_id_list\fP
+\fBsuspend\fP \fIjob_list\fP
 Suspend a running job.
-Multiple job ID values may be specified separated by spaces.
+The job_list argument is a comma separated list of job IDs.
 Use the \fIresume\fP command to resume its execution.
 User processes must stop on receipt of SIGSTOP signal and resume
 upon receipt of SIGCONT for this operation to be effective.
@@ -447,6 +455,12 @@ Wait until a job andall of its nodes are ready for use or the job has entered
 some termination state. This option is particularly useful in the SLURM Prolog
 or in the batch script itself if nodes are powered down and restarted
 automatically as needed.
+
+.TP
+\fBwrite config\fP
+Write the current configuration to a file with the naming convention of
+"slurm.conf.<datetime>" in the same directory as the original slurm.conf
+file.
 
 .TP
 \fB!!\fP
@@ -553,8 +567,10 @@ command will exit if the option argument is "help".
 Examples of use include "Gres=gpus:2*cpu,disk=40G" and "Gres=help".
 
 .TP
-\fIJobId\fP=<id>
-Identify the job to be updated. This specification is required.
+\fIJobId\fP=<job_list>
+Identify the job(s) to be updated.
+The job_list may be a comma separated list of job IDs.
+Either \fIJobId\fP or \fIJobName\fP is required.
 .TP
 \fILicenses\fP=<name>
 Specification of licenses (or other resources available on all nodes
@@ -578,8 +594,12 @@ Only the Slurm administrator or root can change this parameter.
 Set the job's minimum temporary disk space required per node to the specified value.
 Only the Slurm administrator or root can change this parameter.
 .TP
-\fIName\fP=<name>
-Set the job's name to the specified value.
+\fIJobName\fP=<name>
+Identify the name of jobs to be modified or set the job's name to the
+specified value.
+When used to identify jobs to be modified, all jobs belonging to all users
+are modified unless the \fIUserID\fP option is used to identify a specific user.
+Either \fIJobId\fP or \fIJobName\fP is required.
 .TP
 \fINice\fP[=delta]
 Adjust job's priority by the specified value. Default value is 100.
@@ -718,18 +738,12 @@ time limit (e.g. "TimeLimit=+30"). In order to increment or decrement the
 current time limit, the \fIJobId\fP specification must precede the
 \fITimeLimit\fP specification.
 Only the Slurm administrator or root can increase job's TimeLimit.
+
 .TP
-\fIwait\-for\-switch\fP=<max\-time\-to\-wait>
-When a tree topology is used, this defines the  maximum time to wait for the
-desired count of switches. If SLURM finds an allocation containing more
-switches than the count specified, the job remain pending until it either finds
-an allocation with desired switch count or the time limit expires. By default
-there is no switch count limit and there is not time delay. Set the time
-to zero in order to clean any previously set time limit (disabling the limit).
-The job's maximum time delay may be limited by the system administrator using
-the \fBSchedulerParameters\fR configuration parameter with the
-\fBmax_switch_wait parameter\fR option.
-Also see \fISwitches\fP.
+\fIUserID\fP=<UID or name>
+Used with the \fIJobName\fP option to identify jobs to be modified.
+Either a user name or numeric ID (UID), may be specified.
+
 .TP
 \fIWCKey\fP=<key>
 Set the job's workload characterization key to the specified value.
@@ -928,8 +942,9 @@ seek to relinquish those nodes before the job completes.
 node are in use, rendering this node as not usable for any other jobs.
 "RESERVED" indicates the node is in an advanced reservation and not generally
 available.
-"RESUME" is not an actual node state, but will return a "DRAINED", "DRAINING",
-or "DOWN" node to service, either "IDLE" or "ALLOCATED" state as appropriate.
+"RESUME" is not an actual node state, but will change a node state from
+"DRAINED", "DRAINING", "DOWN" or "MAINT" to either "IDLE" or "ALLOCATED"
+state as appropriate.
 "UNDRAIN" clears the node from being drained (like "RESUME"), but will
 not change the node's base state (e.g. "DOWN").
 Setting a node "DOWN" will cause all running and suspended jobs on that
@@ -948,6 +963,9 @@ the node is presently in a power saving mode (typically
 running at reduced frequency).
 If the node state code is followed by "#", this indicates
 the node is presently being powered up or configured.
+If the node state code is followed by "$", this indicates
+the node is currently in a reservation with a flag value of "maintenance"
+or is scheduled to be rebooted.
 Generally only "DRAIN", "FAIL" and "RESUME" should be used.
 NOTE: The scontrol command should not be used to change node state on Cray
 systems. Use Cray tools such as \fIxtprocadmin\fR instead.
@@ -1284,8 +1302,16 @@ Flags\-=DAILY (NOTE: this shortcut is not supported for all flags).
 Currently supported flags include:
 .RS
 .TP 14
+\fIDAILY\fR
+Repeat the reservation at the same time every day
+.TP
 \fIFIRST_CORES\fR
 Use the lowest numbered cores on a node only.
+.TP
+\fIIGNORE_JOBS\fR
+Ignore currently running jobs when creating the reservation.
+This can be especially useful when reserving all nodes in the system
+for maintenance.
 .TP
 \fILICENSE_ONLY\fR
 This is a reservation for licenses only and not compute nodes.
@@ -1303,21 +1329,10 @@ reservation.
 This reservation can be allocated resources that are already in another
 reservation.
 .TP
-\fIIGNORE_JOBS\fR
-Ignore currently running jobs when creating the reservation.
-This can be especially useful when reserving all nodes in the system
-for maintenance.
-.TP
 \fIPART_NODES\fR
 This flag can be used to reserve all nodes within the specified
 partition.  PartitionName and Nodes=ALL must be specified or
 this option is ignored.
-.TP
-\fIDAILY\fR
-Repeat the reservation at the same time every day
-.TP
-\fIWEEKLY\fR
-Repeat the reservation at the same time every week
 .TP
 \fISPEC_NODES\fR
 Reservation is for specific nodes (output only)
@@ -1326,6 +1341,14 @@ Reservation is for specific nodes (output only)
 Make it so after the nodes are selected for a reservation they don't
 change.  Without this option when nodes are selected for a reservation
 and one goes down the reservation will select a new node to fill the spot.
+.TP
+\fITIME_FLOAT\fR
+The reservation start time is relative to the current time and moves forward
+through time (e.g. a StartTime=now+10minutes will always be 10 minutes in the
+future).
+.TP
+\fIWEEKLY\fR
+Repeat the reservation at the same time every week
 .RE
 
 .TP
@@ -1441,6 +1464,20 @@ node sample, in celsius.
 If the reported value is "n/s" (not supported), the node does not support the
 configured \fBExtSensorsType\fR plugin.
 
+.TP
+The meaning of the resource specialization information is as follows:
+
+.TP
+\fICPUSpecList\fP
+The list of Slurm abstract CPU IDs on this node reserved for
+exclusive use by the Slurm compute node daemons (slurmd, slurmstepd).
+
+.TP
+\fIMemSpecLimit\fP
+The combined memory limit, in megabytes, on this node for the Slurm compute 
+node daemons (slurmd, slurmstepd). 
+
+
 .SH "ENVIRONMENT VARIABLES"
 .PP
 Some \fBscontrol\fR options may
@@ -1450,6 +1487,13 @@ Commandline options will always override these settings.)
 .TP 20
 \fBSCONTROL_ALL\fR
 \fB\-a, \-\-all\fR
+.TP
+\fBSLURM_BITSTR_LEN\fR
+Specifies the string length to be used for holding a job array's task ID
+expression.
+The default value is 64 bytes.
+A value of 0 will print the full expression with any length required.
+Larger values may adversely impact the application performance.
 .TP
 \fBSLURM_CLUSTERS\fR
 Same as \fB\-\-clusters\fR

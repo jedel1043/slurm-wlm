@@ -45,15 +45,6 @@
 #include <inttypes.h>
 #endif
 
-#if defined(__NetBSD__)
-#include <sys/types.h> /* for pid_t */
-#include <sys/signal.h> /* for SIGKILL */
-#endif
-
-#if defined(__FreeBSD__)
-#include <signal.h>
-#endif
-
 #include "slurm/slurm.h"
 #include "slurm/slurm_errno.h"
 #include "src/common/log.h"
@@ -61,14 +52,15 @@
 
 #include "src/slurmd/slurmstepd/slurmstepd_job.h"
 
-#include "src/common/xcgroup_read_config.h"
-#include "src/common/xcgroup.h"
+#include "src/slurmd/common/xcgroup_read_config.h"
+#include "src/slurmd/common/xcgroup.h"
+
 #include "src/common/xstring.h"
-#include "src/common/xcpuinfo.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdlib.h>
 
 /*
@@ -285,7 +277,7 @@ int _slurm_cgroup_destroy(void)
 
 	if (jobstep_cgroup_path[0] != '\0') {
 		if (xcgroup_delete(&step_freezer_cg) != XCGROUP_SUCCESS) {
-			error("_slurm_cgroup_destroy: problem deleting step "
+			debug("_slurm_cgroup_destroy: problem deleting step "
 			      "cgroup path %s: %m", step_freezer_cg.path);
 			xcgroup_unlock(&freezer_cg);
 			return SLURM_ERROR;

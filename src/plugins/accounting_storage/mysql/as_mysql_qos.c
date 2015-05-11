@@ -56,7 +56,7 @@ static int _preemption_loop(mysql_conn_t *mysql_conn, int begin_qosid,
 		qos_rec.id = i;
 		assoc_mgr_fill_in_qos(mysql_conn, &qos_rec,
 				      ACCOUNTING_ENFORCE_QOS,
-				      NULL);
+				      NULL, 0);
 		/* check if the begin_qosid is preempted by this qos
 		 * if so we have a loop */
 		if (qos_rec.preempt_bitstr
@@ -128,6 +128,8 @@ static int _setup_qos_limits(slurmdb_qos_rec_t *qos,
 			qos->max_submit_jobs_pu = INFINITE;
 		if (qos->max_wall_pj == NO_VAL)
 			qos->max_wall_pj = INFINITE;
+		if (qos->min_cpus_pj == NO_VAL)
+			qos->min_cpus_pj = 1;
 		if (qos->preempt_mode == (uint16_t)NO_VAL)
 			qos->preempt_mode = 0;
 		if (qos->priority == NO_VAL)
@@ -377,6 +379,17 @@ static int _setup_qos_limits(slurmdb_qos_rec_t *qos,
 		xstrcat(*extra, ", max_wall_duration_per_job=NULL");
 	}
 
+	if (qos->min_cpus_pj == INFINITE) {
+		xstrcat(*cols, ", min_cpus_per_job");
+		xstrcat(*vals, ", 1");
+		xstrcat(*extra, ", min_cpus_per_job=1");
+	} else if ((qos->min_cpus_pj != NO_VAL)
+		   && ((int32_t)qos->min_cpus_pj >= 0)) {
+		xstrcat(*cols, ", min_cpus_per_job");
+		xstrfmtcat(*vals, ", %u", qos->min_cpus_pj);
+		xstrfmtcat(*extra, ", min_cpus_per_job=%u", qos->min_cpus_pj);
+	}
+
 	if (qos->preempt_list && list_count(qos->preempt_list)) {
 		char *preempt_val = NULL;
 		char *tmp_char = NULL, *last_preempt = NULL;
@@ -424,7 +437,7 @@ static int _setup_qos_limits(slurmdb_qos_rec_t *qos,
 		if (adding_straight) {
 			xstrfmtcat(*vals, ", \'%s,\'", preempt_val);
 			xstrfmtcat(*extra, ", preempt=\'%s,\'", preempt_val);
-		} else if (preempt_val[0]) {
+		} else if (preempt_val && preempt_val[0]) {
 			xstrfmtcat(*vals, ", %s", preempt_val);
 			xstrfmtcat(*extra, ", preempt=if(%s=',', '', %s)",
 				   preempt_val, preempt_val);
@@ -525,8 +538,8 @@ extern int as_mysql_add_qos(mysql_conn_t *mysql_conn, uint32_t uid,
 			   qos_table, cols, vals, extra);
 
 
-		debug3("%d(%s:%d) query\n%s",
-		       mysql_conn->conn, THIS_FILE, __LINE__, query);
+		if (debug_flags & DEBUG_FLAG_DB_QOS)
+			DB_DEBUG(mysql_conn->conn, "query\n%s", query);
 		object->id = mysql_db_insert_ret_id(mysql_conn, query);
 		xfree(query);
 		if (!object->id) {
@@ -728,6 +741,8 @@ extern List as_mysql_modify_qos(mysql_conn_t *mysql_conn, uint32_t uid,
 		qos_rec->max_submit_jobs_pu  = qos->max_submit_jobs_pu;
 		qos_rec->max_wall_pj = qos->max_wall_pj;
 
+		qos_rec->min_cpus_pj = qos->min_cpus_pj;
+
 		qos_rec->preempt_mode = qos->preempt_mode;
 		qos_rec->priority = qos->priority;
 
@@ -788,7 +803,9 @@ extern List as_mysql_modify_qos(mysql_conn_t *mysql_conn, uint32_t uid,
 
 	if (!list_count(ret_list)) {
 		errno = SLURM_NO_CHANGE_IN_DATA;
-		debug3("didn't effect anything\n%s", query);
+		if (debug_flags & DEBUG_FLAG_DB_QOS)
+			DB_DEBUG(mysql_conn->conn,
+				 "didn't effect anything\n%s", query);
 		xfree(vals);
 		xfree(query);
 		return ret_list;
@@ -929,7 +946,8 @@ extern List as_mysql_remove_qos(mysql_conn_t *mysql_conn, uint32_t uid,
 
 	if (!list_count(ret_list)) {
 		errno = SLURM_NO_CHANGE_IN_DATA;
-		debug3("didn't effect anything\n%s", query);
+		if (debug_flags & DEBUG_FLAG_DB_QOS)
+			DB_DEBUG(mysql_conn->conn, "didn't effect anything\n%s", query);
 		xfree(query);
 		return ret_list;
 	}
@@ -939,8 +957,8 @@ extern List as_mysql_remove_qos(mysql_conn_t *mysql_conn, uint32_t uid,
 	query = xstrdup_printf("update %s set mod_time=%ld %s where deleted=0;",
 			       assoc_table, now, extra);
 	xfree(extra);
-	debug3("%d(%s:%d) query\n%s",
-	       mysql_conn->conn, THIS_FILE, __LINE__, query);
+	if (debug_flags & DEBUG_FLAG_DB_QOS)
+		DB_DEBUG(mysql_conn->conn, "query\n%s", query);
 	rc = mysql_db_query(mysql_conn, query);
 	xfree(query);
 	if (rc != SLURM_SUCCESS) {
@@ -1019,6 +1037,7 @@ extern List as_mysql_get_qos(mysql_conn_t *mysql_conn, uid_t uid,
 		"priority",
 		"usage_factor",
 		"usage_thres",
+		"min_cpus_per_job",
 	};
 	enum {
 		QOS_REQ_NAME,
@@ -1048,6 +1067,7 @@ extern List as_mysql_get_qos(mysql_conn_t *mysql_conn, uid_t uid,
 		QOS_REQ_PRIO,
 		QOS_REQ_UF,
 		QOS_REQ_UT,
+		QOS_REQ_MICPJ,
 		QOS_REQ_COUNT
 	};
 
@@ -1122,8 +1142,8 @@ empty:
 	xfree(tmp);
 	xfree(extra);
 
-	debug3("%d(%s:%d) query\n%s",
-	       mysql_conn->conn, THIS_FILE, __LINE__, query);
+	if (debug_flags & DEBUG_FLAG_DB_QOS)
+		DB_DEBUG(mysql_conn->conn, "query\n%s", query);
 	if (!(result = mysql_db_query_ret(
 		      mysql_conn, query, 0))) {
 		xfree(query);
@@ -1239,6 +1259,9 @@ empty:
 			qos->usage_thres = atof(row[QOS_REQ_UT]);
 		else
 			qos->usage_thres = (double)INFINITE;
+
+		if (row[QOS_REQ_MICPJ])
+			qos->min_cpus_pj = slurm_atoul(row[QOS_REQ_MICPJ]);
 
 	}
 	mysql_free_result(result);

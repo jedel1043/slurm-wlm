@@ -61,6 +61,8 @@
 #include "src/common/slurm_protocol_api.h"
 #include "src/common/slurm_cred.h"
 
+#include "src/slurmd/common/xcpuinfo.h"
+
 #ifndef __USE_XOPEN_EXTENDED
 extern pid_t getsid(pid_t pid);		/* missing from <unistd.h> */
 extern pid_t getpgid(pid_t pid);
@@ -75,13 +77,17 @@ typedef struct slurmd_config {
 	char         *prog;		/* Program basename		   */
 	char         ***argv;           /* pointer to argument vector      */
 	int          *argc;             /* pointer to argument count       */
+	char         *chos_loc;		/* Chroot OS wrapper path          */
 	char         *cluster_name; 	/* conf ClusterName		   */
 	char         *hostname;	 	/* local hostname		   */
 	uint16_t     cpus;              /* lowest-level logical processors */
 	uint16_t     boards;            /* total boards count              */
 	uint16_t     sockets;           /* total sockets count             */
-	uint16_t     cores;             /* core per socket  count          */
 	uint16_t     threads;           /* thread per core count           */
+	char         *cpu_spec_list;    /* cpu specialization list         */
+	uint16_t     core_spec_cnt;     /* core specialization count       */
+	uint32_t     mem_spec_limit;    /* memory specialization limit     */
+	uint16_t     cores;             /* core per socket  count          */
 	uint16_t     conf_cpus;         /* conf file logical processors    */
 	uint16_t     conf_boards;       /* conf file boards count          */
 	uint16_t     conf_sockets;      /* conf file sockets count         */
@@ -101,6 +107,7 @@ typedef struct slurmd_config {
 	uint16_t      cr_type;		/* Consumable Resource Type:       *
 					 * CR_SOCKET, CR_CORE, CR_MEMORY,  *
 					 * CR_DEFAULT, etc.                */
+	uint16_t      mem_limit_enforce; /* enforce mem limit on running job */
 	int           nice;		/* command line nice value spec    */
 	char         *node_name;	/* node name                       */
 	char         *node_addr;	/* node's address                  */
@@ -126,7 +133,7 @@ typedef struct slurmd_config {
 	uint16_t      log_fmt;          /* Log file timestamp format flag  */
 	int           debug_level;	/* logging detail level            */
 	uint16_t      debug_level_set;	/* debug_level set on command line */
-	uint32_t      debug_flags;	/* DebugFlags configured           */
+	uint64_t      debug_flags;	/* DebugFlags configured           */
 	int           daemonize:1;	/* daemonize flag		   */
 	int	      cleanstart:1;     /* clean start requested (-c)      */
 	int           mlock_pages:1;	/* mlock() slurmd  */

@@ -130,7 +130,7 @@ const char plugin_name[]        = "switch generic plugin";
 const char plugin_type[]        = "switch/generic";
 const uint32_t plugin_version   = 110;
 
-uint32_t	debug_flags = 0;
+uint64_t debug_flags = 0;
 pthread_mutex_t	global_lock = PTHREAD_MUTEX_INITIALIZER;
 sw_gen_libstate_t *libstate = NULL;
 
@@ -326,7 +326,7 @@ static void _cache_node_info(sw_gen_node_info_t *new_node_info)
  */
 int init(void)
 {
-	verbose("%s loaded", plugin_name);
+	debug("%s loaded", plugin_name);
 	debug_flags = slurm_get_debug_flags();
 	return SLURM_SUCCESS;
 }
@@ -763,10 +763,10 @@ extern int switch_p_get_jobinfo(switch_jobinfo_t *switch_job,
 			xrealloc(buf, bufsize);
 		}
 		s += snprintf(buf+s, bufsize-s, ",(%s,%s,%s)",
-					  ifa_ptr->ifa_name, ifa_ptr->ifa_family,
-					  ifa_ptr->ifa_addr);
+			      ifa_ptr->ifa_name, ifa_ptr->ifa_family,
+			      ifa_ptr->ifa_addr);
 	}
-	s += snprintf(buf+s, bufsize-s, ")");
+	snprintf(buf+s, bufsize-s, ")");
 
 	*(char **)resulting_data = buf; /* return x-alloc'ed data */
 
@@ -1034,5 +1034,33 @@ extern int switch_p_slurmd_step_init(void)
 {
 	if (debug_flags & DEBUG_FLAG_SWITCH)
 		info("switch_p_slurmd_step_init() starting");
+	return SLURM_SUCCESS;
+}
+
+extern int switch_p_job_step_pre_suspend(stepd_step_rec_t *job)
+{
+	if (debug_flags & DEBUG_FLAG_SWITCH)
+		info("switch_p_job_step_pre_suspend() starting");
+	return SLURM_SUCCESS;
+}
+
+extern int switch_p_job_step_post_suspend(stepd_step_rec_t *job)
+{
+	if (debug_flags & DEBUG_FLAG_SWITCH)
+		info("switch_p_job_step_post_suspend() starting");
+	return SLURM_SUCCESS;
+}
+
+extern int switch_p_job_step_pre_resume(stepd_step_rec_t *job)
+{
+	if (debug_flags & DEBUG_FLAG_SWITCH)
+		info("switch_p_job_step_pre_resume() starting");
+	return SLURM_SUCCESS;
+}
+
+extern int switch_p_job_step_post_resume(stepd_step_rec_t *job)
+{
+	if (debug_flags & DEBUG_FLAG_SWITCH)
+		info("switch_p_job_step_post_resume() starting");
 	return SLURM_SUCCESS;
 }

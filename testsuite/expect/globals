@@ -520,6 +520,18 @@ proc wait_for_file { file_name } {
 			return 0
 		}
 		exec $bin_sleep 1
+#
+#		Expect may fail to load current NFS info.
+#		Use the ls command to load current info.
+#
+		set slash_pos [string last $file_name "/"]
+		if {$slash_pos < 1} {
+			set dir_name "."
+		} else {
+			decr slash_pos
+			set dir_name [string $file_name 0 $slash_pos]
+		}
+		exec /bin/ls $dir_name
 	}
 	send_user "\nFAILURE: Timeout waiting for file $file_name\n"
 	return 1
@@ -540,6 +552,7 @@ proc wait_for_file { file_name } {
 #        desired_state -- The state you want the job to attain before
 #                         returning.  Currently supports:
 #                            DONE any terminated state
+#                            PENDING job is pending
 #                            RUNNING job is running
 #
 # NOTE: We sleep for two seconds before replying that a job is
@@ -553,11 +566,17 @@ proc wait_for_job { job_id desired_state } {
 	# First verify that desired_state is supported
 	switch $desired_state {
 		"DONE" {}
+		"PENDING" {}
 		"RUNNING" {}
 		default {
-			send_user "Unsupported desired state: $desired_state\n"
+			send_user "FAILURE: wait_for_job with invalid state: $desired_state\n"
 			return 1
 		}
+	}
+
+	if {$job_id == 0} {
+		send_user "FAILURE: wait_for_job with invalid job ID: $job_id\n"
+		return 1
 	}
 
 	set sleep_time  1
@@ -576,9 +595,10 @@ proc wait_for_job { job_id desired_state } {
 			"FAILED" -
 			"TIMEOUT" -
 			"NODE_FAIL" -
+			"PREEMPTED" -
 			"COMPLETED" {
 				if {[string compare $desired_state "DONE"] == 0} {
-					send_user "Job $job_id is DONE\n"
+					send_user "Job $job_id is DONE ($state)\n"
 					sleep 2
 					return 0
 				}
@@ -587,6 +607,14 @@ proc wait_for_job { job_id desired_state } {
 					send_user "but we wanted RUNNING\n"
 				}
 				return 1
+			}
+			"PENDING" {
+				if {[string compare $desired_state "PENDING"] == 0} {
+					send_user "Job $job_id is PENDING\n"
+					return 0
+				}
+				send_user "Job $job_id is in state $state, "
+				send_user "desire $desired_state\n"
 			}
 			"RUNNING" {
 				if {[string compare $desired_state "RUNNING"] == 0} {
@@ -961,30 +989,85 @@ proc test_topology { } {
 
 ################################################################
 #
-# Proc: test_affinity
+# Proc: test_cpu_affinity
 #
-# Purpose: Determine if system is enforcing affinity
+# Purpose: Determine if system is using the task/affinity plugin
 #
 # Returns 1 if enforcing, 0 if none
 #
 ################################################################
-proc test_affinity { } {
+proc test_cpu_affinity { } {
 	global scontrol alpha
 
 	log_user 0
 	set affinity 0
 	spawn $scontrol show config
 	expect {
-		-re "TaskPlugin *= task/($alpha)" {
+		-re "task/($alpha)" {
+			if {![string compare $expect_out(1,string) "affinity"]} {
+				set affinity 1
+			}
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+
+	log_user 1
+	return $affinity
+}
+
+################################################################
+#
+# Proc: test_cpu_affinity_or_cgroup
+#
+# Purpose: Determine if system is enforcing CPU affinity (using
+# either the task/affinity and/or task/cgroup plugin)
+#
+# Returns 1 if enforcing, 0 if none
+#
+################################################################
+proc test_cpu_affinity_or_cgroup { } {
+	global scontrol alpha
+
+	log_user 0
+	set affinity 0
+	spawn $scontrol show config
+	expect {
+		-re "task/($alpha)" {
 			if {![string compare $expect_out(1,string) "affinity"] || ![string compare $expect_out(1,string) "cgroup"]} {
 				set affinity 1
 			}
 			exp_continue
 		}
-		-re "TaskPlugin *= ($alpha)" {
-			if {![string compare $expect_out(1,string) "affinity"] || ![string compare $expect_out(1,string) "cgroup"]} {
-				set affinity 1
-			}
+		eof {
+			wait
+		}
+	}
+
+	log_user 1
+	return $affinity
+}
+
+################################################################
+#
+# Proc: test_mem_affinity
+#
+# Purpose: Determine if system is enforcing memory affinity
+#
+# Returns 1 if enforcing, 0 if none
+#
+################################################################
+proc test_mem_affinity { } {
+	global scontrol alpha
+
+	log_user 0
+	set affinity 0
+	spawn $scontrol show config
+	expect {
+		-re "task/affinity" {
+			set affinity 1
 			exp_continue
 		}
 		eof {
@@ -1142,6 +1225,39 @@ proc test_enforce_safe_set { } {
 	expect {
 		-re "AccountingStorageEnforce *= ($alpha_numeric_comma)" {
 			if {[string first "safe" $expect_out(1,string)] != -1 } {
+				set enforce_limits 1
+			}
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+
+	return $enforce_limits
+}
+
+
+################################################################
+#
+# Proc: test_enforce_qos_set
+#
+# Purpose: Determine if AccountingStorageEnforce=qos is set in the slurm.conf.
+#
+# Returns 1 if the system is running with safe limits, 0 otherwise
+#
+################################################################
+
+proc test_enforce_qos_set { } {
+	global alpha_numeric_comma scontrol
+
+	log_user 0
+	set enforce_limits 0
+	spawn $scontrol show config
+	expect {
+		-re "AccountingStorageEnforce *= ($alpha_numeric_comma)" {
+			if {[string first "qos" $expect_out(1,string)] != -1 } {
 				set enforce_limits 1
 			}
 			exp_continue
@@ -1822,7 +1938,7 @@ proc dec2hex {value} {
 # Proc: uint2hex
 #
 # Purpose: Create a 32 bit hex number from an unsigned decimal
-# number. 
+# number.
 #
 # Returns: 32 bit hex version of input 'value'
 #
@@ -1860,12 +1976,20 @@ proc uint2hex {value} {
 #
 ################################################################
 
-proc available_nodes { partition } {
+proc available_nodes { partition state } {
 	global sinfo
 
+	if {[string length $partition] == 0} {
+		set partition [default_partition]
+	}
+
+	if {[string length $state] == 0} {
+		set state "idle,alloc,comp"
+	}
+
 	set available -1
-	#send_user "$sinfo --noheader --partition $partition --state idle,alloc,comp --format %D\n"
-	set fd [open "|$sinfo --noheader --partition $partition --state idle,alloc,comp --format %D"]
+	#send_user "$sinfo --noheader --partition $partition --state $state --format %D\n"
+	set fd [open "|$sinfo --noheader --partition $partition --state $state --format %D"]
 	gets $fd line
 	catch {close $fd}
 	regexp {\d+} $line available
@@ -1934,6 +2058,27 @@ proc default_partition {} {
 	}
 
 	return $name
+}
+
+################################################################
+#
+# Proc: default_part_exclusive
+#
+# Purpose: Use scontrol to determine if the default partition
+#          allocates whole nodes to jobs
+#
+# Returns: Name of the current default partition
+#
+################################################################
+
+proc default_part_exclusive {} {
+	set def_part [default_partition]
+	set shared [partition_shared $def_part]
+	if {[string compare $shared "EXCLUSIVE"] == 0} {
+		return 1
+	} else {
+		return 0
+	}
 }
 
 ################################################################
@@ -2581,22 +2726,37 @@ proc get_node_cnt_in_part { partition } {
 ################################################################
 
 proc get_idle_node_in_part { partition } {
-	global sinfo alpha_numeric_under
+	global scontrol sinfo alpha_numeric_nodelist alpha_numeric_under
 
 	log_user 0
-	set node_name ""
-	set scon_pid [spawn -noecho $sinfo -oNAME=%n -h -p$partition --state=idle]
+	set host_list ""
+	spawn $sinfo -oNAME=%N -h -p$partition --state=idle
 	expect {
 		-re "not found" {
 			send_user "\nFAILURE: partition $partition doesn't exist\n"
 		}
-		-re "NAME=($alpha_numeric_under)" {
+		-re "NAME=($alpha_numeric_nodelist)" {
+			set host_list $expect_out(1,string)
+		}
+		timeout {
+			send_user "\nFAILURE: sinfo not responding\n"
+		}
+		eof {
+			wait
+		}
+	}
+
+	set node_name ""
+	spawn $scontrol show hostname $host_list
+	expect {
+		-re "($alpha_numeric_under)" {
 			set node_name $expect_out(1,string)
 		}
 		timeout {
 			send_user "\nFAILURE: scontrol not responding\n"
 		}
 		eof {
+			wait
 		}
 	}
 	log_user 1
@@ -2604,6 +2764,21 @@ proc get_idle_node_in_part { partition } {
 	return $node_name
 }
 
+################################################################
+#
+# Proc: print_failure
+#
+# Purpose:  Print failure with test ID
+#
+# Input: test_id   -- The SLURM regression test ID.
+#
+################################################################
+
+proc print_failure { test_id } {
+
+	send_user "\n"
+	send_user "FAILURE: test$test_id\n"
+}
 
 ################################################################
 #
@@ -2907,4 +3082,209 @@ proc slurmctld_plug_stack_nonstop { } {
 	}
 	log_user 1
 	return $nonstop_enforce
+}
+
+################################################################
+#
+# Proc: job_submit_all_partitions
+#
+# Purpose: Use scontrol to determine if the JobSubmitPlugins
+#          includes "all_partitions".
+#
+# Returns: 1 if the value is set to nonstop.
+#
+################################################################
+
+proc job_submit_all_partitions { } {
+	global scontrol alpha_numeric_comma
+
+	log_user 0
+	set all_partitions 0
+	set scon_pid [spawn -noecho $scontrol show config]
+	expect {
+		-re "JobSubmitPlugins *= ($alpha_numeric_comma)" {
+			if {[string first $expect_out(1,string) "all_partitions"] != -1} {
+				set all_partitions 1
+			}
+			exp_continue
+		}
+		timeout {
+			send_user "\nFAILURE: scontrol not responding\n"
+			slow_kill $scon_pid
+			set exit_code 1
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	return $all_partitions
+}
+
+################################################################
+#
+# Proc: wait_for_node
+#
+# Purpose: Wait for a certain number of nodes in a partition to
+#          reach a certain state.
+#
+# Returns: 1 on failure.
+#
+################################################################
+proc wait_for_node {partition state num_nodes} {
+	set wait_time 0
+	set done      0
+	set cnt       0
+	set rt        0
+
+	global sinfo number
+
+	while {$done != 1 && $wait_time < 3} {
+
+		log_user 0
+		spawn $sinfo --noheader --partition $partition --state $state --format %D
+		expect {
+			-re "($number)" {
+				set cnt $expect_out(1,string)
+				exp_continue
+			}
+			timeout {
+				send_user "\nFAILURE: sinfo is not responding\n"
+				set rt 1
+			}
+			eof {
+				wait
+			}
+		}
+		log_user 1
+
+		if {$num_nodes <= $cnt} {
+			set done 1
+		} else {
+			send_user "partition $partition has $cnt nodes idle and we want $num_nodes\n"
+			sleep 3
+			incr wait_time 1
+		}
+	}
+	if {$done != 1} {
+		set rt 1
+	}
+
+	return $rt
+}
+
+#####################################################################
+#
+# Proc: test_preempttype_part
+#
+# Purpose: Determine if preempt mode partition_prio is configured
+#
+# Returns: 0 if none
+#
+#####################################################################
+proc test_preempttype_part { } {
+
+	global scontrol
+	log_user 0
+	set part_prio 0
+	spawn $scontrol show config
+	expect {
+		-re "PreemptType *= preempt/partition_prio" {
+			set part_prio 1
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	return $part_prio
+}
+
+#####################################################################
+#
+# Proc: test_preempttype_qos
+#
+# Purpose: Determine if preempt mode qos is configured
+#
+# Returns: 0 if none
+#
+#####################################################################
+proc test_preempttype_qos { } {
+
+	global scontrol
+	log_user 0
+	set qos 0
+	spawn $scontrol show config
+	expect {
+		-re "PreemptType *= preempt/qos" {
+			set qos 1
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	return $qos
+}
+
+#####################################################################
+#
+# Proc: test_proctrack
+#
+# Purpose: Determine the ProctrackType
+#
+# Returns: the proctrack type
+#
+#####################################################################
+
+proc test_proctrack { } {
+
+	global scontrol alpha_numeric_under
+	log_user 0
+	set proctype ""
+	spawn $scontrol show config
+	expect {
+		-re "ProctrackType *=* proctrack/($alpha_numeric_under)" {
+			set proctype $expect_out(1,string)
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+
+	return $proctype
+}
+
+#####################################################################
+#
+# Proc: get_srun_ports
+#
+# Purpose: Determine the SrunPortRange
+#
+# Returns: the SrunPortRange
+#
+#####################################################################
+
+proc get_srun_ports { } {
+
+	global scontrol alpha_numeric_under bin_grep bin_bash number
+	log_user 0
+	set ports 0
+	spawn -noecho $bin_bash -c "exec $scontrol show config | $bin_grep SrunPortRange"
+	expect {
+		-re "SrunPortRange *=* ($alpha_numeric_under)" {
+			set ports $expect_out(1,string)
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+
+	return $ports
 }

@@ -92,8 +92,10 @@ extern char *default_plugstack;
 #define DEFAULT_JOB_COMP_LOC        "/var/log/slurm_jobcomp.log"
 #define DEFAULT_JOB_COMP_DB         "slurm_jobcomp_db"
 #if defined HAVE_NATIVE_CRAY
+#  define DEFAULT_ALLOW_SPEC_RESOURCE_USAGE 1
 #  define DEFAULT_JOB_CONTAINER_PLUGIN  "job_container/cncu"
 #else
+#  define DEFAULT_ALLOW_SPEC_RESOURCE_USAGE 0
 #  define DEFAULT_JOB_CONTAINER_PLUGIN "job_container/none"
 #endif
 #define DEFAULT_KEEP_ALIVE_TIME     ((uint16_t) NO_VAL)
@@ -140,6 +142,7 @@ extern char *default_plugstack;
 #define DEFAULT_RETURN_TO_SERVICE   0
 #define DEFAULT_RESUME_RATE         300
 #define DEFAULT_RESUME_TIMEOUT      60
+#define DEFAULT_ROUTE_PLUGIN   	    "route/default"
 #define DEFAULT_SAVE_STATE_LOC      "/var/spool"
 #define DEFAULT_SCHEDROOTFILTER     1
 #define DEFAULT_SCHEDULER_PORT      7321
@@ -183,7 +186,10 @@ extern char *default_plugstack;
 #define DEFAULT_WAIT_TIME           0
 #  define DEFAULT_TREE_WIDTH        50
 #define DEFAULT_UNKILLABLE_TIMEOUT  60 /* seconds */
-#define DEFAULT_MAX_TASKS_PER_NODE  128
+
+/* MAX_TASKS_PER_NODE is defined in slurm.h
+ */
+#define DEFAULT_MAX_TASKS_PER_NODE  MAX_TASKS_PER_NODE
 
 typedef struct slurm_conf_frontend {
 	char *allow_groups;		/* allowed group string */
@@ -207,11 +213,14 @@ typedef struct slurm_conf_node {
 	char *feature;		/* arbitrary list of node's features */
 	char *port_str;
 	uint16_t cpus;		/* count of cpus running on the node */
+	char *cpu_spec_list;	/* arbitrary list of specialized cpus */
 	uint16_t boards; 	/* number of boards per node */
 	uint16_t sockets;       /* number of sockets per node */
 	uint16_t cores;         /* number of cores per CPU */
+	uint16_t core_spec_cnt;	/* number of specialized cores */
 	uint16_t threads;       /* number of threads per core */
 	uint32_t real_memory;	/* MB real memory on the node */
+	uint32_t mem_spec_limit; /* MB real memory for memory specialization */
 	char *reason;
 	char *state;
 	uint32_t tmp_disk;	/* MB total storage in TMP_FS file system */
@@ -457,6 +466,18 @@ extern int slurm_conf_get_cpus_bsct(const char *node_name,
 				    uint16_t *threads);
 
 /*
+ * slurm_conf_get_res_spec_info - Return resource specialization info
+ * for a given NodeName
+ * Returns SLURM_SUCCESS on success, SLURM_FAILURE on failure.
+ *
+ * NOTE: Caller must NOT be holding slurm_conf_lock().
+ */
+extern int slurm_conf_get_res_spec_info(const char *node_name,
+					char **cpu_spec_list,
+					uint16_t *core_spec_cnt,
+					uint32_t *mem_spec_limit);
+
+/*
  * init_slurm_conf - initialize or re-initialize the slurm configuration
  *	values defaults (NULL or NO_VAL). Note that the configuration
  *	file pathname (slurm_conf) is not changed.
@@ -506,16 +527,16 @@ extern char *prolog_flags2str(uint16_t prolog_flags);
 extern uint16_t prolog_str2flags(char *prolog_flags);
 
 /*
- * debug_flags2str - convert a DebugFlags uint32_t to the equivalent string
+ * debug_flags2str - convert a DebugFlags uint64_t to the equivalent string
  * Returns an xmalloc()ed string which the caller must free with xfree().
  */
-extern char *debug_flags2str(uint32_t debug_flags);
+extern char *debug_flags2str(uint64_t debug_flags);
 
 /*
- * debug_str2flags - Convert a DebugFlags string to the equivalent uint32_t
- * Returns NO_VAL if invalid
+ * debug_str2flags - Convert a DebugFlags string to the equivalent uint64_t
+ * Returns SLURM_ERROR if invalid
  */
-extern uint32_t debug_str2flags(char *debug_flags);
+extern int debug_str2flags(char *debug_flags, uint64_t *flags_out);
 
 /*
  * reconfig_flags2str - convert a ReconfigFlags uint16_t to the equivalent string

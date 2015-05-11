@@ -678,14 +678,20 @@ cleanup_hostfile:
 static listen_t *_create_allocation_response_socket(char *interface_hostname)
 {
 	listen_t *listen = NULL;
+	uint16_t *ports;
 
 	listen = xmalloc(sizeof(listen_t));
 
-	/* port "0" lets the operating system pick any port */
-	if ((listen->fd = slurm_init_msg_engine_port(0)) < 0) {
+	if ((ports = slurm_get_srun_port_range()))
+		listen->fd = slurm_init_msg_engine_ports(ports);
+	else
+		listen->fd = slurm_init_msg_engine_port(0);
+
+	if (listen->fd < 0) {
 		error("slurm_init_msg_engine_port error %m");
 		return NULL;
 	}
+
 	if (slurm_get_stream_addr(listen->fd, &listen->address) < 0) {
 		error("slurm_get_stream_addr error %m");
 		slurm_shutdown_msg_engine(listen->fd);
@@ -805,6 +811,12 @@ _wait_for_alloc_rpc(const listen_t *listen, int sleep_time,
 	struct pollfd fds[1];
 	int rc;
 	int timeout_ms;
+
+	if (listen == NULL) {
+		error("Listening port not found");
+		sleep(MAX(sleep_time, 1));
+		return SLURM_ERROR;
+	}
 
 	fds[0].fd = listen->fd;
 	fds[0].events = POLLIN;

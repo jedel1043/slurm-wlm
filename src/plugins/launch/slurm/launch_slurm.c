@@ -102,6 +102,7 @@ static bool retry_step_begin = false;
 static int  retry_step_cnt = 0;
 
 extern int launch_p_step_terminate();
+extern char **environ;
 
 static char *_hostset_to_string(hostset_t hs)
 {
@@ -316,7 +317,7 @@ static void _task_finish(task_exit_msg_t *msg)
 			_handle_openmpi_port_error(tasks, hosts,
 						   local_srun_job->step_ctx);
 		} else {
-			if (reduce_task_exit_msg == 0 || 
+			if (reduce_task_exit_msg == 0 ||
 			    msg_printed == 0 ||
 			    msg->return_code != last_task_exit_rc) {
 				error("%s: %s %s: Exited with exit code %d",
@@ -339,7 +340,6 @@ static void _task_finish(task_exit_msg_t *msg)
 			verbose("%s: %s %s: %s%s",
 				hosts, task_str, tasks, signal_str, core_str);
 		} else {
-			rc = msg->return_code;
 			if (reduce_task_exit_msg == 0 ||
 			    msg_printed == 0 ||
 			    msg->return_code != last_task_exit_rc) {
@@ -361,7 +361,7 @@ static void _task_finish(task_exit_msg_t *msg)
 
 	if (task_state_first_abnormal_exit(task_state)
 	    && _kill_on_bad_exit())
-  		launch_p_step_terminate();
+		launch_p_step_terminate();
 
 	if (task_state_first_exit(task_state) && (opt.max_wait > 0))
 		_setup_max_wait_timer();
@@ -454,7 +454,7 @@ extern int launch_p_handle_multi_prog_verify(int command_pos)
 		}
 		_load_multi(&opt.argc, opt.argv);
 		if (verify_multi_name(opt.argv[command_pos], &opt.ntasks,
-				      &opt.ntasks_set))
+				      &opt.ntasks_set, &opt.multi_prog_cmds))
 			exit(error_exit);
 		return 1;
 	} else
@@ -468,10 +468,40 @@ extern int launch_p_create_job_step(srun_job_t *job, bool use_all_cpus,
 	/* set the jobid for totalview */
 	totalview_jobid = NULL;
 	xstrfmtcat(totalview_jobid, "%u", job->jobid);
+	totalview_stepid = NULL;
+	xstrfmtcat(totalview_stepid, "%u", job->stepid);
 
 	return launch_common_create_job_step(job, use_all_cpus,
 					     signal_function,
 					     destroy_job);
+}
+
+static char **_build_user_env(void)
+{
+	char **dest_array = NULL;
+	char *tmp_env, *tok, *save_ptr = NULL, *eq_ptr, *value;
+
+	env_array_merge_slurm(&dest_array, (const char **)environ);
+	tmp_env = xstrdup(opt.export_env);
+	tok = strtok_r(tmp_env, ",", &save_ptr);
+	while (tok) {
+		if (!strcasecmp(tok, "NONE"))
+			break;
+		eq_ptr = strchr(tok, '=');
+		if (eq_ptr) {
+			eq_ptr[0] = '\0';
+			value = eq_ptr + 1;
+			env_array_overwrite(&dest_array, tok, value);
+		} else {
+			value = getenv(tok);
+			if (value)
+				env_array_overwrite(&dest_array, tok, value);
+		}
+		tok = strtok_r(NULL, ",", &save_ptr);
+	}
+	xfree(tmp_env);
+
+	return dest_array;
 }
 
 extern int launch_p_step_launch(
@@ -502,7 +532,7 @@ extern int launch_p_step_launch(
 	launch_params.multi_prog = opt.multi_prog ? true : false;
 	launch_params.cwd = opt.cwd;
 	launch_params.slurmd_debug = opt.slurmd_debug;
-	launch_params.buffered_stdio = !opt.unbuffered;
+	launch_params.buffered_stdio = opt.unbuffered;
 	launch_params.labelio = opt.labelio ? true : false;
 	launch_params.remote_output_filename =fname_remote_string(job->ofname);
 	launch_params.remote_input_filename = fname_remote_string(job->ifname);
@@ -531,6 +561,9 @@ extern int launch_p_step_launch(
 	launch_params.spank_job_env     = opt.spank_job_env;
 	launch_params.spank_job_env_size = opt.spank_job_env_size;
 	launch_params.user_managed_io   = opt.user_managed_io;
+
+	if (opt.export_env)
+		launch_params.env = _build_user_env();
 
 	memcpy(&launch_params.local_fds, cio_fds, sizeof(slurm_step_io_fds_t));
 

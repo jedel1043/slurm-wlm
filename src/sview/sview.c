@@ -70,7 +70,6 @@ int global_row_count = 0;
 bool global_multi_error = 0;
 gint last_event_x = 0;
 gint last_event_y = 0;
-int sview_max_cpus = 0;
 GdkCursor* in_process_cursor;
 gchar *global_edit_error_msg = NULL;
 GtkWidget *main_notebook = NULL;
@@ -504,7 +503,7 @@ static void _get_current_debug(GtkRadioAction *action)
 
 static void _get_current_debug_flags(GtkToggleAction *action)
 {
-	static uint32_t debug_flags = 0;
+	static uint64_t debug_flags = 0, tmp_flags;
 	static slurm_ctl_conf_info_msg_t  *slurm_ctl_conf_ptr = NULL;
 	int err_code = get_new_info_config(&slurm_ctl_conf_ptr);
 	GtkAction *debug_action = NULL;
@@ -520,8 +519,13 @@ static void _get_current_debug_flags(GtkToggleAction *action)
 			menu_action_group, debug_actions[i].name);
 		toggle_action = GTK_TOGGLE_ACTION(debug_action);
 		orig_state = gtk_toggle_action_get_active(toggle_action);
-		new_state = debug_flags
-			& debug_str2flags((char *)debug_actions[i].name);
+		if (debug_str2flags((char *)debug_actions[i].name, &tmp_flags)
+		    != SLURM_SUCCESS) {
+			g_error("debug_str2flags no good: %s\n",
+				debug_actions[i].name);
+			continue;
+		}
+		new_state = debug_flags & tmp_flags;
 		if (orig_state != new_state)
 			gtk_toggle_action_set_active(toggle_action, new_state);
 	}
@@ -555,8 +559,8 @@ static void _set_debug(GtkRadioAction *action,
 static void _set_flags(GtkToggleAction *action)
 {
 	char *temp = NULL;
-	uint32_t debug_flags_plus = 0, debug_flags_minus = 0;
-	uint32_t flag = NO_VAL;
+	uint64_t debug_flags_plus = 0, debug_flags_minus = 0;
+	uint64_t flag = (uint64_t)NO_VAL;
 	const char *name;
 
 	if (!action)
@@ -566,7 +570,8 @@ static void _set_flags(GtkToggleAction *action)
 	if (!name)
 		return;
 
-	flag = debug_str2flags((char *)name);
+	if (debug_str2flags((char *)name, &flag) != SLURM_SUCCESS)
+		return;
 
 	if (action && gtk_toggle_action_get_active(action))
 		debug_flags_plus  |= flag;
@@ -638,6 +643,7 @@ static gboolean _delete(GtkWidget *widget,
 	if (cluster_list)
 		list_destroy(cluster_list);
 	xfree(orig_cluster_name);
+	uid_cache_clear();
 #endif
 	for (i = 0; i<debug_action_entries; i++) {
 		xfree(debug_actions[i].name);
@@ -920,7 +926,7 @@ static GtkWidget *_get_menubar_menu(GtkWidget *window, GtkWidget *notebook)
 		{"debug_debug5", NULL, "debug5(9)", "", "Debug5 level", 9},
 	};
 
-	char *all_debug_flags = debug_flags2str(0xFFFFFFFF);
+	char *all_debug_flags = debug_flags2str(0xFFFFFFFFFFFFFFFF);
 	char *last = NULL;
 	char *tok = strtok_r(all_debug_flags, ",", &last);
 

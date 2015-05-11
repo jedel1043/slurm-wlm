@@ -47,6 +47,10 @@
 #  include <inttypes.h>
 #endif
 
+#if HAVE_SYS_PRCTL_H
+#include <sys/prctl.h>
+#endif
+
 #include <stdio.h>
 #include <sys/types.h>
 #include <pwd.h>
@@ -125,6 +129,7 @@ static void _partial_free_dbd_job_start(void *object)
 	dbd_job_start_msg_t *req = (dbd_job_start_msg_t *)object;
 	if (req) {
 		xfree(req->account);
+		xfree(req->array_task_str);
 		xfree(req->block_id);
 		xfree(req->name);
 		xfree(req->nodes);
@@ -172,18 +177,34 @@ static int _setup_job_start_msg(dbd_job_start_msg_t *req,
 
 	if (job_ptr->resize_time) {
 		req->eligible_time = job_ptr->resize_time;
-		req->submit_time   = job_ptr->resize_time;
+		req->submit_time   = job_ptr->details->submit_time;
 	} else if (job_ptr->details) {
 		req->eligible_time = job_ptr->details->begin_time;
 		req->submit_time   = job_ptr->details->submit_time;
 	}
 
+	/* If the reason is WAIT_ARRAY_TASK_LIMIT we don't want to
+	 * give the pending jobs an eligible time since it will add
+	 * time to accounting where as these jobs aren't able to run
+	 * until later so mark it as such.
+	 */
+	if (job_ptr->state_reason == WAIT_ARRAY_TASK_LIMIT)
+		req->eligible_time = INFINITE;
+
 	req->start_time    = job_ptr->start_time;
 	req->gid           = job_ptr->group_id;
 	req->job_id        = job_ptr->job_id;
+	req->array_job_id  = job_ptr->array_job_id;
+	req->array_task_id = job_ptr->array_task_id;
+
+	build_array_str(job_ptr);
+	if (job_ptr->array_recs && job_ptr->array_recs->task_id_str) {
+		req->array_task_str = xstrdup(job_ptr->array_recs->task_id_str);
+		req->array_max_tasks = job_ptr->array_recs->max_run_tasks;
+		req->array_task_pending = job_ptr->array_recs->task_cnt;
+	}
 
 	req->db_index      = job_ptr->db_index;
-
 	req->job_state     = job_ptr->job_state;
 	req->name          = xstrdup(job_ptr->name);
 	req->nodes         = xstrdup(job_ptr->nodes);
@@ -225,6 +246,12 @@ static void *_set_db_inx_thread(void *no_data)
 		{ NO_LOCK, WRITE_LOCK, NO_LOCK, NO_LOCK };
 	/* DEF_TIMERS; */
 
+#if HAVE_SYS_PRCTL_H
+	if (prctl(PR_SET_NAME, "slurmctld_dbinx", NULL, NULL, NULL) < 0) {
+		error("%s: cannot set my name to %s %m",
+		      __func__, "slurmctld_dbinx");
+	}
+#endif
 	(void) pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	(void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
@@ -256,7 +283,7 @@ static void *_set_db_inx_thread(void *no_data)
 		}
 		itr = list_iterator_create(job_list);
 		while ((job_ptr = list_next(itr))) {
-			if (!job_ptr->db_index) {
+			if (!job_ptr->db_index && !job_ptr->resize_time) {
 				dbd_job_start_msg_t *req =
 					xmalloc(sizeof(dbd_job_start_msg_t));
 				if (_setup_job_start_msg(req, job_ptr)
@@ -474,8 +501,13 @@ extern void *acct_storage_p_get_connection(
 	if (!slurmdbd_auth_info)
 		init();
 
+	/* When dealing with rollbacks it turns out it is much faster
+	   to do the commit once or once in a while instead of
+	   autocommit.  The SlurmDBD will periodically do a commit to
+	   avoid such a slow down.
+	*/
 	if (slurm_open_slurmdbd_conn(slurmdbd_auth_info,
-				     callbacks, rollback) == SLURM_SUCCESS)
+				     callbacks, true) == SLURM_SUCCESS)
 		errno = SLURM_SUCCESS;
 	/* send something back to make sure we don't run this again */
 	return (void *)1;
@@ -2470,6 +2502,7 @@ extern int jobacct_storage_p_step_complete(void *db_conn,
 		req.job_submit_time   = step_ptr->job_ptr->resize_time;
 	else if (step_ptr->job_ptr->details)
 		req.job_submit_time   = step_ptr->job_ptr->details->submit_time;
+	req.state       = step_ptr->state;
 	req.step_id     = step_ptr->step_id;
 	req.total_tasks = tasks;
 
@@ -2663,4 +2696,20 @@ extern int acct_storage_p_flush_jobs_on_cluster(void *db_conn,
 		return SLURM_ERROR;
 
 	return SLURM_SUCCESS;
+}
+
+extern int acct_storage_p_reconfig(void *db_conn, bool dbd)
+{
+	slurmdbd_msg_t msg;
+	int rc = SLURM_SUCCESS;
+
+	if (!dbd)
+		return SLURM_SUCCESS;
+
+	memset(&msg, 0, sizeof(slurmdbd_msg_t));
+
+	msg.msg_type = DBD_RECONFIG;
+	slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION, &msg, &rc);
+
+	return rc;
 }

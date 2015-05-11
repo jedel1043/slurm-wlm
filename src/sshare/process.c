@@ -44,6 +44,7 @@ extern int long_flag;
 
 extern int process(shares_response_msg_t *resp)
 {
+	uint32_t flags = slurmctld_conf.priority_flags;
 	int rc = SLURM_SUCCESS;
 	association_shares_object_t *share = NULL;
 	ListIterator itr = NULL;
@@ -72,22 +73,38 @@ extern int process(shares_response_msg_t *resp)
 		PRINT_RAWU,
 		PRINT_RUNMINS,
 		PRINT_USER,
+		PRINT_LEVELFS
 	};
 
 	if (!resp)
 		return SLURM_ERROR;
 
 	format_list = list_create(slurm_destroy_char);
-	if (long_flag) {
-		slurm_addto_char_list(format_list,
-				      "A,User,RawShares,NormShares,"
-				      "RawUsage,NormUsage,EffUsage,"
-				      "FSFctr,GrpCPUMins,CPURunMins");
+	if (flags & PRIORITY_FLAGS_FAIR_TREE) {
+		if (long_flag) {
+			slurm_addto_char_list(format_list,
+					      "A,User,RawShares,NormShares,"
+					      "RawUsage,NormUsage,EffUsage,"
+					      "FSFctr,LevelFS,GrpCPUMins,"
+					      "CPURunMins");
+		} else {
+			slurm_addto_char_list(format_list,
+					      "A,User,RawShares,NormShares,"
+					      "RawUsage,EffUsage,FSFctr");
+		}
 	} else {
-		slurm_addto_char_list(format_list,
-				      "A,User,RawShares,NormShares,"
-				      "RawUsage,EffUsage,FSFctr");
+		if (long_flag) {
+			slurm_addto_char_list(format_list,
+					      "A,User,RawShares,NormShares,"
+					      "RawUsage,NormUsage,EffUsage,"
+					      "FSFctr,GrpCPUMins,CPURunMins");
+		} else {
+			slurm_addto_char_list(format_list,
+					      "A,User,RawShares,NormShares,"
+					      "RawUsage,EffUsage,FSFctr");
+		}
 	}
+
 
 	print_fields_list = list_create(destroy_print_field);
 	itr = list_iterator_create(format_list);
@@ -109,9 +126,14 @@ extern int process(shares_response_msg_t *resp)
 			field->name = xstrdup("Effectv Usage");
 			field->len = 13;
 			field->print_routine = print_fields_double;
-		} else if (!strncasecmp("FSFctr", object, 1)) {
+		} else if (!strncasecmp("FSFctr", object, 4)) {
 			field->type = PRINT_FSFACTOR;
 			field->name = xstrdup("FairShare");
+			field->len = 10;
+			field->print_routine = print_fields_double;
+		} else if (!strncasecmp("LevelFS", object, 1)) {
+			field->type = PRINT_LEVELFS;
+			field->name = xstrdup("Level FS");
 			field->len = 10;
 			field->print_routine = print_fields_double;
 		} else if (!strncasecmp("ID", object, 1)) {
@@ -221,13 +243,38 @@ extern int process(shares_response_msg_t *resp)
 						     (curr_inx == field_count));
 				break;
 			case PRINT_FSFACTOR:
-				field->print_routine(field,
+				if (flags & PRIORITY_FLAGS_FAIR_TREE) {
+					if(share->user)
+						field->print_routine(
+						field,
+						share->fs_factor,
+						(curr_inx == field_count));
+					else
+						print_fields_str(
+							field,
+							NULL,
+							(curr_inx ==
+							 field_count)
+						);
+				}
+				else
+					field->print_routine(field,
 						     priority_g_calc_fs_factor(
 							     (long double)
 							     share->usage_efctv,
 							     (long double)
 							     share->
 							     shares_norm),
+						     (curr_inx == field_count));
+				break;
+			case PRINT_LEVELFS:
+				if (share->shares_raw == SLURMDB_FS_USE_PARENT)
+					print_fields_str(field, NULL,
+							 (curr_inx ==
+							  field_count));
+				else
+					field->print_routine(field,
+						     (double) share->level_fs,
 						     (curr_inx == field_count));
 				break;
 			case PRINT_ID:

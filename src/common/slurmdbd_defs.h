@@ -60,7 +60,7 @@
 
 /*
  * SLURMDBD_VERSION in 14.03 this was changed to be the same as
- * SLURM_PROTOCOL_VERSION in 15.03 we can remove all instances of
+ * SLURM_PROTOCOL_VERSION in 14.03 we can remove all instances of
  * SLURMDBD_*VERSION* SLURMDBD_VERSION was already replaced.
  *
  * SLURMDBD_VERSION_MIN is the minimum protocol version which slurmdbd
@@ -74,10 +74,14 @@
  * The slurmdbd should be at least as current as any Slurm cluster
  *	communicating with it (e.g. it will not accept messages with a
  *	version higher than SLURM_VERSION).
+ *
+ * NOTE: These values must be Moved to
+ * src/plugins/accounting_storage/mysql/as_mysql_archive.c when we are
+ * done here with them since we have to support old version of archive
+ * files since they don't update once they are created.
  */
 #define SLURMDBD_2_6_VERSION   12	/* slurm version 2.6 */
-#define SLURMDBD_2_5_VERSION   11	/* slurm version 2.5 */
-#define SLURMDBD_VERSION_MIN   11
+#define SLURMDBD_MIN_VERSION   SLURMDBD_2_6_VERSION
 
 /* SLURM DBD message types */
 /* ANY TIME YOU ADD TO THIS LIST UPDATE THE CONVERSION FUNCTIONS! */
@@ -97,7 +101,7 @@ typedef enum {
 	DBD_GET_ASSOC_USAGE,  	/* Get assoc usage information  	*/
 	DBD_GET_CLUSTERS,	/* Get account information		*/
 	DBD_GET_CLUSTER_USAGE, 	/* Get cluster usage information	*/
-	DBD_GET_JOBS,		/* VESTIGIAL / DEFUNCT RPC		*/
+	DBD_RECONFIG,   	/* Reread the slurmdbd.conf     	*/
 	DBD_GET_USERS,  	/* Get account information		*/
 	DBD_GOT_ACCOUNTS,	/* Response to DBD_GET_ACCOUNTS		*/
 	DBD_GOT_ASSOCS, 	/* Response to DBD_GET_ASSOCS   	*/
@@ -226,7 +230,7 @@ typedef struct dbd_get_jobs_msg {
 				 * of accounting record */
 	uint32_t gid;		/* group id */
 	time_t last_update;	/* time of latest info */
-	List selected_steps;	/* List of jobacct_selected_step_t *'s */
+	List selected_steps;	/* List of slurmdb_selected_step_t *'s */
 	List selected_parts;	/* List of char *'s */
 	char *user;		/* user name */
 } dbd_get_jobs_msg_t;
@@ -267,6 +271,12 @@ typedef struct dbd_job_start_msg {
 				 * with associations */
 	uint32_t alloc_cpus;	/* count of allocated processors */
 	uint32_t alloc_nodes;   /* how many nodes used in job */
+	uint32_t array_job_id;	/* job_id of a job array or 0 if N/A */
+	uint32_t array_max_tasks;/* max number of tasks able to run at once */
+	uint32_t array_task_id;	/* task_id of a job array of NO_VAL
+				 * if N/A */
+	char *   array_task_str;/* hex string of unstarted tasks */
+	uint32_t array_task_pending;/* number of tasks still pending */
 	uint32_t assoc_id;	/* accounting association id */
 	char *   block_id;      /* Bluegene block id */
 	uint32_t db_index;	/* index into the db for this job */
@@ -339,7 +349,7 @@ typedef struct dbd_node_state_msg {
 	char *reason;		/* explanation for the node's state */
 	uint32_t reason_uid;   	/* User that set the reason, ignore if
 				 * no reason is set. */
-	uint16_t state;         /* current state of node.  Used to get
+	uint32_t state;         /* current state of node.  Used to get
 				   flags on the state (i.e. maintenance) */
 } dbd_node_state_msg_t;
 
@@ -363,10 +373,12 @@ typedef struct dbd_step_comp_msg {
 	uint32_t exit_code;	/* job exit code or signal */
 	jobacctinfo_t *jobacct; /* status info */
 	uint32_t job_id;	/* job ID */
-	uint32_t req_uid;	/* requester user ID */
-	time_t   start_time;	/* step start time */
 	time_t   job_submit_time;/* job submit time needed to find job record
 				  * in db */
+	uint32_t req_uid;	/* requester user ID */
+	time_t   start_time;	/* step start time */
+	uint16_t state;         /* current state of node.  Used to get
+				   flags on the state (i.e. maintenance) */
 	uint32_t step_id;	/* step ID */
 	uint32_t total_tasks;	/* count of tasks for step */
 } dbd_step_comp_msg_t;

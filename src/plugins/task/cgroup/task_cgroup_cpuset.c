@@ -36,7 +36,7 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
 
-#if !defined(__FreeBSD__)
+#if !(defined(__FreeBSD__) || defined(__NetBSD__))
 #if HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -50,13 +50,12 @@
 #include "slurm/slurm.h"
 #include "src/slurmd/slurmstepd/slurmstepd_job.h"
 #include "src/slurmd/slurmd/slurmd.h"
+
 #include "src/common/cpu_frequency.h"
 #include "src/common/slurm_resource_info.h"
 #include "src/common/bitstring.h"
 #include "src/common/proc_args.h"
 #include "src/common/xstring.h"
-#include "src/common/xcgroup_read_config.h"
-#include "src/common/xcgroup.h"
 
 #include "task_cgroup.h"
 
@@ -209,68 +208,6 @@ int str_to_cpuset(cpu_set_t *mask, const char* str)
 	}
 
 	return 0;
-}
-
-/*
- * convert abstract range into the machine one
- */
-static int _abs_to_mac(char* lrange, char** prange)
-{
-	static int total_cores = -1, total_cpus = -1;
-	bitstr_t* absmap = NULL;
-	bitstr_t* macmap = NULL;
-	int icore, ithread;
-	int absid, macid;
-	int rc = SLURM_SUCCESS;
-
-	if (total_cores == -1) {
-		total_cores = conf->sockets * conf->cores;
-		total_cpus  = conf->block_map_size;
-	}
-
-	/* allocate bitmap */
-	absmap = bit_alloc(total_cores);
-	macmap = bit_alloc(total_cpus);
-
-	if (!absmap || !macmap) {
-		rc = SLURM_ERROR;
-		goto end_it;
-	}
-
-	/* string to bitmap conversion */
-	if (bit_unfmt(absmap, lrange)) {
-		rc = SLURM_ERROR;
-		goto end_it;
-	}
-
-	/* mapping abstract id to machine id using conf->block_map */
-	for (icore = 0; icore < total_cores; icore++) {
-		if (bit_test(absmap, icore)) {
-			for (ithread = 0; ithread<conf->threads; ithread++) {
-				absid  = icore*conf->threads + ithread;
-				absid %= total_cpus;
-
-				macid  = conf->block_map[absid];
-				macid %= total_cpus;
-
-				bit_set(macmap, macid);
-			}
-		}
- 	}
-
-	/* convert machine cpu bitmap to range string */
-	*prange = (char*)xmalloc(total_cpus*6);
-	bit_fmt(*prange, total_cpus*6, macmap);
-
-	/* free unused bitmaps */
-end_it:
-	FREE_NULL_BITMAP(absmap);
-	FREE_NULL_BITMAP(macmap);
-
-	if (rc != SLURM_SUCCESS)
-		info("_abs_to_mac failed");
-
-	return rc;
 }
 
 /* when cgroups are configured with cpuset, at least
@@ -484,6 +421,9 @@ static int _task_cgroup_cpuset_dist_block(
 	hwloc_obj_type_t req_hwtype, uint32_t nobj,
 	stepd_step_rec_t *job, int bind_verbose, hwloc_bitmap_t cpuset);
 
+/* The job has specialized cores, synchronize user mask with available cores */
+static void _validate_mask(uint32_t task_id, hwloc_obj_t obj, cpu_set_t *ts);
+
 
 static int _get_ldom_sched_cpuset(hwloc_topology_t topology,
 		hwloc_obj_type_t hwtype, hwloc_obj_type_t req_hwtype,
@@ -542,7 +482,6 @@ int _get_sched_cpuset(hwloc_topology_t topology,
 		return false;
 
 	nummasks = 1;
-	maskid = 0;
 	selstr = NULL;
 
 	/* get number of strings present in cpu_bind */
@@ -550,7 +489,6 @@ int _get_sched_cpuset(hwloc_topology_t topology,
 	while (*curstr) {
 		if (nummasks == local_id+1) {
 			selstr = curstr;
-			maskid = local_id;
 			break;
 		}
 		if (*curstr == ',')
@@ -703,7 +641,7 @@ static int _task_cgroup_cpuset_dist_cyclic(
 						       HWLOC_OBJ_SOCKET);
 	obj_idx = xmalloc(nsockets * sizeof(uint32_t));
 
-	if (hwloc_compare_types(hwtype,HWLOC_OBJ_CORE) >= 0) {
+	if (hwloc_compare_types(hwtype, HWLOC_OBJ_CORE) >= 0) {
 		/* cores or threads granularity */
 		ntskip = taskid;
 		npdist = job->cpus_per_task;
@@ -800,6 +738,42 @@ static int _task_cgroup_cpuset_dist_block(
 	return XCGROUP_SUCCESS;
 }
 
+
+/* The job has specialized cores, synchronize user mask with available cores */
+static void _validate_mask(uint32_t task_id, hwloc_obj_t obj, cpu_set_t *ts)
+{
+	int i, j, overlaps = 0;
+	bool superset = true;
+
+	for (i = 0; i < CPU_SETSIZE; i++) {
+		if (!CPU_ISSET(i, ts))
+			continue;
+		j = hwloc_bitmap_isset(obj->allowed_cpuset, i);
+		if (j > 0) {
+			overlaps++;
+		} else if (j == 0) {
+			CPU_CLR(i, ts);
+			superset = false;
+		}
+	}
+
+	if (overlaps == 0) {
+		/* The task's cpu map is completely invalid.
+		 * Give it all allowed CPUs */
+		for (i = 0; i < CPU_SETSIZE; i++) {
+			if (hwloc_bitmap_isset(obj->allowed_cpuset, i) > 0)
+				CPU_SET(i, ts);
+		}
+	}
+
+	if (!superset) {
+		info("task/cgroup: Ignoring user CPU binding outside of job "
+		     "step allocation for task[%u]", task_id);
+		fprintf(stderr, "Requested cpu_bind option outside of job "
+			"step allocation for task[%u]\n", task_id);
+	}
+}
+
 #endif
 
 extern int task_cgroup_cpuset_init(slurm_cgroup_conf_t *slurm_cgroup_conf)
@@ -857,8 +831,12 @@ extern int task_cgroup_cpuset_create(stepd_step_rec_t *job)
 	char* cpus = NULL;
 	size_t cpus_size;
 
-	char* slurm_cgpath ;
+	char* slurm_cgpath;
 	xcgroup_t slurm_cg;
+
+#ifdef HAVE_NATIVE_CRAY
+	char expected_usage[32];
+#endif
 
 	/* create slurm root cg in this cg namespace */
 	slurm_cgpath = task_cgroup_create_slurm_cg(&cpuset_ns);
@@ -967,12 +945,12 @@ again:
 	      job->job_alloc_cores);
 	debug("task/cgroup: step abstract cores are '%s'",
 	      job->step_alloc_cores);
-	if (_abs_to_mac(job->job_alloc_cores,
+	if (xcpuinfo_abs_to_mac(job->job_alloc_cores,
 			&job_alloc_cores) != SLURM_SUCCESS) {
 		error("task/cgroup: unable to build job physical cores");
 		goto error;
 	}
-	if (_abs_to_mac(job->step_alloc_cores,
+	if (xcpuinfo_abs_to_mac(job->step_alloc_cores,
 			&step_alloc_cores) != SLURM_SUCCESS) {
 		error("task/cgroup: unable to build step physical cores");
 		goto error;
@@ -1067,6 +1045,17 @@ again:
 	}
 	xcgroup_set_param(&step_cpuset_cg, cpuset_meta, step_alloc_cores);
 
+	/*
+	 * on Cray systems, set the expected usage in bytes.
+	 * This is used by the Cray OOM killer
+	 */
+#ifdef HAVE_NATIVE_CRAY
+	snprintf(expected_usage, sizeof(expected_usage), "%"PRIu64,
+		 (uint64_t)job->step_mem * 1024 * 1024);
+	xcgroup_set_param(&step_cpuset_cg, "expected_usage_in_bytes",
+			  expected_usage);
+#endif
+
 	/* attach the slurmstepd to the step cpuset cgroup */
 	pid_t pid = getpid();
 	rc = xcgroup_add_pids(&step_cpuset_cg,&pid,1);
@@ -1078,9 +1067,7 @@ again:
 		fstatus = SLURM_SUCCESS;
 
 	/* validate the requested cpu frequency and set it */
-	if (job->cpu_freq != NO_VAL) {
-		cpu_freq_cgroup_validate(job, step_alloc_cores);
-	}
+	cpu_freq_cgroup_validate(job, step_alloc_cores);
 
 error:
 	xcgroup_unlock(&cpuset_cg);
@@ -1126,7 +1113,7 @@ extern int task_cgroup_cpuset_set_task_affinity(stepd_step_rec_t *job)
 	hwloc_obj_type_t hwtype;
 	hwloc_obj_type_t req_hwtype;
 	int bind_verbose = 0;
-	int rc = SLURM_SUCCESS;
+	int rc = SLURM_SUCCESS, match;
 	pid_t    pid = job->envtp->task_pid;
 	size_t tssize;
 	uint32_t nldoms;
@@ -1145,8 +1132,8 @@ extern int task_cgroup_cpuset_set_task_affinity(stepd_step_rec_t *job)
 		jnpus = jntasks * job->cpus_per_task;
 
 	bind_type = job->cpu_bind_type;
-	if (conf->task_plugin_param & CPU_BIND_VERBOSE ||
-	    bind_type & CPU_BIND_VERBOSE)
+	if ((conf->task_plugin_param & CPU_BIND_VERBOSE) ||
+	    (bind_type & CPU_BIND_VERBOSE))
 		bind_verbose = 1 ;
 
 	/* Allocate and initialize hwloc objects */
@@ -1260,45 +1247,49 @@ extern int task_cgroup_cpuset_set_task_affinity(stepd_step_rec_t *job)
 	/*
 	 * If not enough objects to do the job, revert to no affinity mode
 	 */
-	if (hwloc_compare_types(hwtype,HWLOC_OBJ_MACHINE) == 0) {
-
+	if (hwloc_compare_types(hwtype, HWLOC_OBJ_MACHINE) == 0) {
 		info("task/cgroup: task[%u] disabling affinity because of %s "
-		     "granularity",taskid,hwloc_obj_type_string(hwtype));
+		     "granularity",taskid, hwloc_obj_type_string(hwtype));
 
-	} else if (hwloc_compare_types(hwtype,HWLOC_OBJ_CORE) >= 0 &&
-		   jnpus > nobj) {
-
-		info("task/cgroup: task[%u] not enough %s objects, disabling "
-		     "affinity",taskid,hwloc_obj_type_string(hwtype));
+	} else if ((hwloc_compare_types(hwtype, HWLOC_OBJ_CORE) >= 0) &&
+		   (nobj < jnpus)) {
+		info("task/cgroup: task[%u] not enough %s objects (%d < %d), "
+		     "disabling affinity",
+		     taskid, hwloc_obj_type_string(hwtype), nobj, jnpus);
 
 	} else if (bind_type & bind_mode) {
 		/* Explicit binding mode specified by the user
 		 * Bind the taskid in accordance with the specified mode
 		 */
 		obj = hwloc_get_obj_by_type(topology, HWLOC_OBJ_MACHINE, 0);
-		if (!hwloc_bitmap_isequal(obj->complete_cpuset,
-				obj->allowed_cpuset)) {
+		match = hwloc_bitmap_isequal(obj->complete_cpuset,
+					     obj->allowed_cpuset);
+		if ((job->job_core_spec == (uint16_t) NO_VAL) && !match) {
 			info("task/cgroup: entire node must be allocated, "
 			     "disabling affinity, task[%u]", taskid);
 			fprintf(stderr, "Requested cpu_bind option requires "
 				"entire node to be allocated; disabling "
 				"affinity\n");
 		} else {
-			if (bind_verbose)
+			if (bind_verbose) {
 				info("task/cgroup: task[%u] is requesting "
-					"explicit binding mode",taskid);
+				     "explicit binding mode", taskid);
+			}
 			_get_sched_cpuset(topology, hwtype, req_hwtype, &ts,
-					job);
+					  job);
 			tssize = sizeof(cpu_set_t);
 			fstatus = SLURM_SUCCESS;
+			if (job->job_core_spec != (uint16_t) NO_VAL)
+				_validate_mask(taskid, obj, &ts);
 			if ((rc = sched_setaffinity(pid, tssize, &ts))) {
 				error("task/cgroup: task[%u] unable to set "
-					"mask 0x%s", taskid,
-					cpuset_to_str(&ts, mstr));
+				      "mask 0x%s", taskid,
+				      cpuset_to_str(&ts, mstr));
 				fstatus = SLURM_ERROR;
-			} else if (bind_verbose)
+			} else if (bind_verbose) {
 				info("task/cgroup: task[%u] mask 0x%s",
-					taskid, cpuset_to_str(&ts, mstr));
+				     taskid, cpuset_to_str(&ts, mstr));
+			}
 			slurm_chkaffinity(&ts, job, rc);
 		}
 	} else {
@@ -1380,16 +1371,16 @@ extern int task_cgroup_cpuset_set_task_affinity(stepd_step_rec_t *job)
 		hwloc_bitmap_asprintf(&str, cpuset);
 
 		tssize = sizeof(cpu_set_t);
-		if (hwloc_cpuset_to_glibc_sched_affinity(topology,cpuset,
-							 &ts,tssize) == 0) {
+		if (hwloc_cpuset_to_glibc_sched_affinity(topology, cpuset,
+							 &ts, tssize) == 0) {
 			fstatus = SLURM_SUCCESS;
-			if ((rc = sched_setaffinity(pid,tssize,&ts))) {
+			if ((rc = sched_setaffinity(pid, tssize, &ts))) {
 				error("task/cgroup: task[%u] unable to set "
-				      "taskset '%s'",taskid,str);
+				      "taskset '%s'", taskid, str);
 				fstatus = SLURM_ERROR;
 			} else if (bind_verbose) {
-				info("task/cgroup: task[%u] taskset '%s' is set"
-				     ,taskid,str);
+				info("task/cgroup: task[%u] set taskset '%s'",
+				     taskid, str);
 			}
 			slurm_chkaffinity(&ts, job, rc);
 		} else {

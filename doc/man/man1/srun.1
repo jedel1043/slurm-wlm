@@ -1,4 +1,4 @@
-.TH "srun" "1" "SLURM 2.6" "January 2013" "SLURM Commands"
+.TH "srun" "1" "SLURM 14.11" "November 2014" "SLURM Commands"
 
 .SH "NAME"
 srun \- Run parallel jobs
@@ -275,7 +275,7 @@ To ensure that distinct CPUs are allocated to each job step, use the
 \fB\-\-exclusive\fR option.
 
 If the job step allocation includes an allocation with a number of
-sockets, cores, or threads equal to the number of tasks to be started
+sockets, cores, or threads equal to the number of tasks times cpus\-per\-task,
 then the tasks will by default be bound to the appropriate resources (auto
 binding). Disable this mode of operation by explicitly setting
 "-\-cpu_bind=none".
@@ -381,17 +381,36 @@ Show help message for cpu_bind
 .TP
 \fB\-\-cpu\-freq\fR =<\fIrequested frequency in kilohertz\fR>
 
-Request that the job step initiated by this srun be run at the
-requested frequency if possible, on the cpus selected for the step on
-the compute node(s).  In addition to specifying a numerical frequency in
-kilohertz, the request can specify \fIlow\fR, \fImedium\fR, or
-\fIhigh\fR for the value. "Low" will select the lowest available
-frequency, "high" will select the highest available frequency,
-"highm1" (high minus one) will select the next highest available frequency,
-while "medium" attempts to set a frequency in the middle of the available
-range. If the numeric value specified does not exactly match a legal
-available frequency, SLURM will attempt to pick a legal frequency
-close to the request.
+Request that the job step initiated by this srun command be run at the
+requested frequency if possible, on the CPUs selected for the step on
+the compute node(s).
+Acceptable values at present include:
+.RS
+.TP 14
+\fBLow\fR
+the lowest available frequency
+.TP
+\fBHigh\fR
+the highest available frequency
+.TP
+\fBHighM1\fR
+(high minus one) will select the next highest available frequency
+.TP
+\fBMedium\fR
+attempts to set a frequency in the middle of the available range
+.TP
+\fBConservative\fR
+attempts to use the Conservative CPU governor
+.TP
+\fBOnDemand\fR
+attempts to use the OnDemand CPU governor (the default value)
+.TP
+\fBPerformance\fR
+attempts to use the Performance CPU governor
+.TP
+\fBPowerSave\fR
+attempts to use the PowerSave CPU governor
+.RE
 
 The following informational environment variable is set in the job
 step when \fB\-\-cpu\-freq\fR option is requested.
@@ -400,29 +419,30 @@ step when \fB\-\-cpu\-freq\fR option is requested.
 .fi
 
 This environment variable can also be used to supply the value for the
-cpu frequency request if it is set when the 'srun' command is issued.
+CPU frequency request if it is set when the 'srun' command is issued.
 The \fB\-\-cpu\-freq\fR on the command line will override the
 environment variable value.  See the \fBENVIRONMENT VARIABLES\fR
 section for a description of the SLURM_CPU_FREQ_REQ variable.
 
 \fBNOTE\fR: This parameter is treated as a request, not a requirement.
-If the job step's node does not support setting the cpu frequency, or
+If the job step's node does not support setting the CPU frequency, or
 the requested value is outside the bounds of the legal frequencies, an
 error is logged, but the job step is allowed to continue.
 
-\fBNOTE\fR: Setting the frequency for just the cpus of the job step
-implies that the tasks are confined to those cpus.  If task
+\fBNOTE\fR: Setting the frequency for just the CPUs of the job step
+implies that the tasks are confined to those CPUs.  If task
 confinement (i.e., TaskPlugin=task/affinity or
 TaskPlugin=task/cgroup with the "ConstrainCores" option) is not
 configured, this parameter is ignored.
 
-\fBNOTE\fR: When the step completes, the frequency of each selected cpu
-is set to its minimum available scaling frequency, to minimize default
-energy consumption.  The frequency scaling governor for each selected
-cpu is then reset to its previous type. If that previous
-type is not \fIuserspace\fR, the frequency may also be changed, depending
-on the restored governor type. In general, the frequencies of selected
-cpus before and after a job step is run are unpredictable.
+\fBNOTE\fR: When the step completes, the frequency and governor of each
+selected CPU is reset to the configured \fBCpuFreqDef\fR value with a
+default value of the OnDemand CPU governor.
+
+\fBNOTE\fR: When submitting jobs with  the \fB\-\-cpu\-freq\fR option
+with linuxproc as the ProctrackType can cause jobs to run too quickly before
+Accounting is able to poll for job information. As a result not all of
+accounting information will be present.
 
 .TP
 \fB\-c\fR, \fB\-\-cpus\-per\-task\fR=<\fIncpus\fR>
@@ -556,6 +576,16 @@ following options should NOT be specified
 See \fBEXAMPLE\fR below.
 
 .TP
+\fB\-\-export\fR=<\fIenvironment variables | NONE\fR>
+Identify which environment variables are propagated to the laucnhed application.
+Multiple environment variable names should be comma separated.
+Environment variable names may be specified to propagate the current
+value of those variables (e.g. "\-\-export=EDITOR") or specific values
+for the variables may be exported (e.g.. "\-\-export=EDITOR=/bin/vi")
+in addition to the environment variables that would otherwise be set.
+By default all environment variables are propagated.
+
+.TP
 \fB\-\-gid\fR=<\fIgroup\fR>
 If \fBsrun\fR is run as root, and the \fB\-\-gid\fR option is used,
 submit the job with \fIgroup\fR's group access permissions.  \fIgroup\fR
@@ -564,7 +594,7 @@ may be the group name or the numerical group ID.
 .TP
 \fB\-\-gres\fR=<\fIlist\fR>
 Specifies a comma delimited list of generic consumable resources.
-The format of each entry on the list is "name[:count]".
+The format of each entry on the list is "name[[:type]:count]".
 The name is that of the consumable resource.
 The count is the number of those resources with a default value of 1.
 The specified resources will be allocated to the job on each node.
@@ -572,7 +602,8 @@ The available generic consumable resources is configurable by the system
 administrator.
 A list of available generic consumable resources will be printed and the
 command will exit if the option argument is "help".
-Examples of use include "\-\-gres=gpu:2,mic=1" and "\-\-gres=help".
+Examples of use include "\-\-gres=gpu:2,mic=1", "\-\-gres=gpu:kepler:2", and
+"\-\-gres=help".
 NOTE: By default, a job step is allocated all of the generic resources that
 have allocated to the job. To change the behavior so that each job step is
 allocated no generic resources, explicitly set the value of \-\-gres to specify
@@ -687,9 +718,7 @@ Options for the external launcher if using something other than the
 
 .TP
 \fB\-l\fR, \fB\-\-label\fR
-prepend task number to lines of stdout/err. Normally, stdout and stderr
-from remote tasks is line\-buffered directly to the stdout and stderr of
-\fBsrun\fR.
+Prepend task number to lines of stdout/err.
 The \fB\-\-label\fR option will prepend lines of output with the remote
 task id.
 
@@ -790,8 +819,12 @@ round\-robin fashion).
 .TP
 \fB\-\-mail\-type\fR=<\fItype\fR>
 Notify user by email when certain event types occur.
-Valid \fItype\fR values are BEGIN, END, FAIL, REQUEUE, and ALL (any state
-change). The user to be notified is indicated with \fB\-\-mail\-user\fR.
+Valid \fItype\fR values are BEGIN, END, FAIL, REQUEUE, ALL (equivalent to
+BEGIN, END, FAIL and REQUEUE), TIME_LIMIT, TIME_LIMIT_90 (reached 90 percent of
+time limit), TIME_LIMIT_80 (reached 80 percent of time limit), and TIME_LIMIT_50
+(reached 50 percent of time limit).
+Multiple \fItype\fR values may be specified in a comma separated list.
+The user to be notified is indicated with \fB\-\-mail\-user\fR.
 
 .TP
 \fB\-\-mail\-user\fR=<\fIuser\fR>
@@ -1382,6 +1415,12 @@ with the \fB\-\-relative\fR option, a warning message will be
 printed and the \fB\-\-relative\fR option will take precedence.
 
 .TP
+\fB\-\-reboot\fR
+Force the allocated nodes to reboot before starting the job.
+This is only supported with some system configurations and will otherwise be
+silently ignored.
+
+.TP
 \fB\-\-resv\-ports\fR
 Reserve communication ports for this job.
 Used for OpenMPI.
@@ -1402,17 +1441,20 @@ The resources to be shared can be nodes, sockets, cores, or hyperthreads
 depending upon configuration.
 The default shared behavior depends on system configuration and the partition's
 \fBShared\fR option takes precedence over the job's option.
-This option may result the allocation being granted sooner than if the \-\-share
-option was not set and allow higher system utilization, but application
-performance will likely suffer due to competition for resources.
+This option may result in the allocation being granted sooner than if the
+\-\-share option was not set and allow higher system utilization, but
+application performance will likely suffer due to competition for resources.
 Also see the \-\-exclusive option.
 
 .TP
 \fB\-S\fR, \fB\-\-core\-spec\fR=<\fInum\fR>
-Count of specialized cores per nodereserved by the job for system operations
+Count of specialized cores per node reserved by the job for system operations
 and not used by the application. The application will not use these cores,
-but will be charged for their allocation. Default value is zero.
-
+but will be charged for their allocation.
+Default value is dependent upon the node's configured CoreSpecCount value.
+If a value of zero is designated and the Slurm configuration option
+AllowSpecResourcesUsage is enabled, the job will be allowed to override
+CoreSpecCount and use the specialized resources on nodes it is allocated.
 
 .TP
 \fB\-\-signal\fR=<\fIsig_num\fR>[@<\fIsig_time\fR>]
@@ -1473,7 +1515,7 @@ Acceptable time formats include "minutes", "minutes:seconds",
 The job's maximum time delay may be limited by the system administrator using
 the \fBSchedulerParameters\fR configuration parameter with the
 \fBmax_switch_wait\fR parameter option.
-The default max\-time is the max_switch_wait SchedulerParameter.
+The default max\-time is the max_switch_wait SchedulerParameters.
 
 .TP
 \fB\-T\fR, \fB\-\-threads\fR=<\fInthreads\fR>
@@ -1531,7 +1573,7 @@ the job.  This limits \fBsrun's\fR behavior to just return
 information; no job is actually submitted.
 EXCEPTION: On Bluegene/Q systems on when running within an existing job
 allocation, this disables the use of "runjob" to launch tasks. The program
-will be executed directly by the slurmd dameon.
+will be executed directly by the slurmd daemon.
 
 .TP
 \fB\-\-threads\-per\-core\fR=<\fIthreads\fR>
@@ -1560,9 +1602,9 @@ Specify a minimum amount of temporary disk space.
 
 .TP
 \fB\-u\fR, \fB\-\-unbuffered\fR
-Do not line buffer stdout from remote tasks. This option cannot be used
-with \fI\-\-label\fR.
-
+By default the task launched by srun uses the buffering of its runtime
+environment, e.g. in glibc the stdout is line buffered and stderr is unbuffered.
+This option causes the stdout of the task to be line buffered.
 .TP
 \fB\-\-usage\fR
 Display brief help message and exit.
@@ -1674,11 +1716,6 @@ each dimension (i.e. M,T,T,T will give you a torus connection is all
 dimensions expect the first).
 
 .TP
-\fB\-\-export\fR=\fINONE\fR
-When running on a BGQ only export the minimal set of environment
-variables needed to start a job, nothing else.
-
-.TP
 \fB\-g\fR, \fB\-\-geometry\fR=<\fIXxYxZ\fR> | <\fIAxXxYxZ\fR>
 Specify the geometry requirements for the job. On BlueGene/L and BlueGene/P
 systems there are three numbers giving dimensions in the X, Y and Z directions,
@@ -1712,10 +1749,6 @@ By default the specified geometry can rotate in three dimensions.
 \fB\-\-ramdisk\-image\fR=<\fIpath\fR>
 Path to ramdisk image for bluegene block.  BGL only.
 Default from \fIblugene.conf\fR if not set.
-
-.TP
-\fB\-\-reboot\fR
-Force the allocated nodes to reboot before starting the job.
 
 .PP
 .B srun
@@ -1942,15 +1975,7 @@ Same as \fB\-\-core\-spec\fR
 Same as \fB\-\-cpu_bind\fR
 .TP
 \fBSLURM_CPU_FREQ_REQ\fR
-Same as \fB\-\-cpu\-freq\fR. Can specify a numerical frequency in
-kilohertz, or the request can specify \fIlow\fR, \fImedium\fR, \fIhighm1\fR
-or \fIhigh\fR for the value. "Low" will select the lowest available
-frequency, "high" will select the highest available frequency,
-"highm1" (high minus one) will select the next highest available frequency,
-while "medium" attempts to set a frequency in the middle of the available
-range. If the numeric value specified does not exactly match a legal
-available frequency, SLURM will attempt to pick a legal frequency
-close to the request.
+Same as \fB\-\-cpu\-freq\fR.
 .TP
 \fBSLURM_CPUS_PER_TASK\fR
 Same as \fB\-c, \-\-cpus\-per\-task\fR
@@ -2168,7 +2193,9 @@ These environment variables are:
 \fBSLURM_CHECKPOINT_IMAGE_DIR\fR
 Directory into which checkpoint images should be written
 if specified on the execute line.
-
+.TP
+\fBSLURM_CLUSTER_NAME\fR
+Name of the cluster on which the job is executing.
 .TP
 \fBSLURM_CPU_BIND_VERBOSE\fR
 \-\-cpu_bind verbosity (quiet,verbose).

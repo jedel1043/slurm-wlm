@@ -115,6 +115,7 @@ const char *node_select_syms[] = {
 	"select_p_ba_init",
 	"select_p_ba_fini",
 	"select_p_ba_get_dims",
+	"select_p_ba_cnodelist2bitmap",
 };
 
 strong_alias(destroy_select_ba_request,	slurm_destroy_select_ba_request);
@@ -384,10 +385,10 @@ done:
 	if (!working_cluster_rec) {
 		if (select_running_linear_based()) {
 			uint16_t cr_type = slurm_get_select_type_param();
-			if ((cr_type & CR_SOCKET) || (cr_type & CR_CORE) ||
-			    (cr_type & CR_CPU)) {
+			if (cr_type & (CR_CPU | CR_CORE | CR_SOCKET)) {
 				fatal("Invalid SelectTypeParameters for "
-				      "%s: %s (%u)",
+				      "%s: %s (%u), it's can't contain "
+				      "CR_(CPU|CORE|SOCKET).",
 				      type,
 				      select_type_param_string(cr_type),
 				      cr_type);
@@ -810,7 +811,7 @@ extern int select_g_select_nodeinfo_pack(dynamic_plugin_data_t *nodeinfo,
 	} else
 		plugin_id = select_context_default;
 
-	if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
 		pack32(*(ops[plugin_id].plugin_id),
 		       buffer);
 	} else {
@@ -834,7 +835,7 @@ extern int select_g_select_nodeinfo_unpack(dynamic_plugin_data_t **nodeinfo,
 	nodeinfo_ptr = xmalloc(sizeof(dynamic_plugin_data_t));
 	*nodeinfo = nodeinfo_ptr;
 
-	if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
 		int i;
 		uint32_t plugin_id;
 		safe_unpack32(&plugin_id, buffer);
@@ -1067,7 +1068,7 @@ extern int select_g_select_jobinfo_pack(dynamic_plugin_data_t *jobinfo,
 	} else
 		plugin_id = select_context_default;
 
-	if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
 		pack32(*(ops[plugin_id].plugin_id), buffer);
 	} else {
 		error("select_g_select_jobinfo_pack: protocol_version "
@@ -1095,7 +1096,7 @@ extern int select_g_select_jobinfo_unpack(dynamic_plugin_data_t **jobinfo,
 	jobinfo_ptr = xmalloc(sizeof(dynamic_plugin_data_t));
 	*jobinfo = jobinfo_ptr;
 
-	if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
 		int i;
 		uint32_t plugin_id;
 		safe_unpack32(&plugin_id, buffer);
@@ -1298,22 +1299,25 @@ extern int select_g_reconfigure (void)
  *	request. "best" is defined as either single set of consecutive nodes
  *	satisfying the request and leaving the minimum number of unused nodes
  *	OR the fewest number of consecutive node sets
- * IN/OUT avail_bitmap - nodes available for the reservation
+ * IN/OUT resv_desc_ptr - reservation request - select_jobinfo can be
+ *	updated in the plugin
  * IN node_cnt - count of required nodes
- * IN core_cnt - count of required cores per node
- * IN/OUT core_bitmap - cores which can not be used for this reservation
- * IN flags - reservation request flags
+ * IN/OUT avail_bitmap - nodes available for the reservation
+ * IN/OUT core_bitmap - cores which can not be used for this
+ *	reservation IN, and cores to be used in the reservation OUT
+ *	(flush bitstr then apply only used cores)
  * RET - nodes selected for use by the reservation
  */
-extern bitstr_t * select_g_resv_test(bitstr_t *avail_bitmap, uint32_t node_cnt,
-				     uint32_t *core_cnt, bitstr_t **core_bitmap,
-				     uint32_t flags)
+extern bitstr_t * select_g_resv_test(resv_desc_msg_t *resv_desc_ptr,
+				     uint32_t node_cnt,
+				     bitstr_t *avail_bitmap,
+				     bitstr_t **core_bitmap)
 {
 	if (slurm_select_init(0) < 0)
 		return NULL;
 
 	return (*(ops[select_context_default].resv_test))
-		(avail_bitmap, node_cnt, core_cnt, core_bitmap, flags);
+		(resv_desc_ptr, node_cnt, avail_bitmap, core_bitmap);
 }
 
 extern void select_g_ba_init(node_info_msg_t *node_info_ptr, bool sanity_check)
@@ -1359,4 +1363,19 @@ extern int *select_g_ba_get_dims(void)
 		plugin_id = select_context_default;
 
 	return (*(ops[plugin_id].ba_get_dims))();
+}
+
+extern bitstr_t *select_g_ba_cnodelist2bitmap(char *cnodelist)
+{
+	uint32_t plugin_id;
+
+	if (slurm_select_init(0) < 0)
+		return NULL;
+
+	if (working_cluster_rec)
+		plugin_id = working_cluster_rec->plugin_id_select;
+	else
+		plugin_id = select_context_default;
+
+	return (*(ops[plugin_id].ba_cnodelist2bitmap))(cnodelist);
 }

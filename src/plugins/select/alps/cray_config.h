@@ -94,7 +94,7 @@ typedef struct {
 	char		*sdb_user;
 	char		*sdb_pass;
 	uint32_t	sdb_port;
-	uint32_t	slurm_debug_flags;
+	uint64_t	slurm_debug_flags;
 	bool		sub_alloc;
 	uint32_t	sync_timeout;
 } cray_config_t;

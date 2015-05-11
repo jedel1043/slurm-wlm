@@ -200,6 +200,9 @@ AC_CHECK_FUNCS( \
    sysctlbyname \
    cfmakeraw \
    setresuid \
+   get_current_dir_name \
+   faccessat \
+   eaccess \
 )
 
 AC_CHECK_DECLS([hstrerror, strsignal, sys_siglist])
@@ -276,6 +279,10 @@ fi
 
 if test ${gtk_config_minor_version=0} -ge 14 ; then
        AC_DEFINE([GTK2_USE_GET_FOCUS], 1, [Define to 1 if using gtk+-2.14.0 or higher])
+fi
+
+if test "x$ac_glib_test" != "xyes" -o "x$ac_gtk_test" != "xyes"; then
+	AC_MSG_WARN([cannot build sview without gtk library]);
 fi
 
 AM_CONDITIONAL(BUILD_SVIEW, [test "x$ac_glib_test" = "xyes"] && [test "x$ac_gtk_test" = "xyes"])
@@ -438,8 +445,12 @@ AC_CONFIG_FILES([Makefile
 		 doc/html/Makefile
 		 doc/html/configurator.html
 		 doc/html/configurator.easy.html
+		 etc/cgroup.release_common.example
 		 etc/init.d.slurm
 		 etc/init.d.slurmdbd
+		 etc/slurmctld.service
+		 etc/slurmd.service
+		 etc/slurmdbd.service
 		 src/Makefile
 		 src/api/Makefile
 		 src/common/Makefile
@@ -501,6 +512,9 @@ AC_CONFIG_FILES([Makefile
 		 src/plugins/ext_sensors/Makefile
 		 src/plugins/ext_sensors/rrd/Makefile
 		 src/plugins/ext_sensors/none/Makefile
+		 src/plugins/route/Makefile
+		 src/plugins/route/default/Makefile
+		 src/plugins/route/topology/Makefile
 		 src/plugins/gres/Makefile
 		 src/plugins/gres/gpu/Makefile
 		 src/plugins/gres/nic/Makefile
@@ -550,6 +564,7 @@ AC_CONFIG_FILES([Makefile
 		 src/plugins/launch/runjob/Makefile
 		 src/plugins/launch/slurm/Makefile
 		 src/plugins/preempt/Makefile
+		 src/plugins/preempt/job_prio/Makefile
 		 src/plugins/preempt/none/Makefile
 		 src/plugins/preempt/partition_prio/Makefile
 		 src/plugins/preempt/qos/Makefile

@@ -24,7 +24,7 @@
  *
  *  You should have received a copy of the GNU General Public License along
  *  with SLURM; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
 
 #include "src/sview/sview.h"
@@ -944,13 +944,21 @@ extern void set_page_opts(int page, display_data_t *display_data,
 	itr = list_iterator_create(page_opts->col_list);
 	while ((col_name = list_next(itr))) {
 		replus(col_name);
-		if (strstr(col_name, "list")) {
+		if (strstr(col_name, "list") || strstr(col_name, " count")) {
 			char *orig_ptr = col_name;
 			xstrsubstitute(col_name, "bp ", "midplane");
-			if (cluster_flags & CLUSTER_FLAG_BG)
-				xstrsubstitute(col_name, "node", "midplane");
-			else
+			if (cluster_flags & CLUSTER_FLAG_BG) {
+				/* We only want to replace "nodes",
+				 * not "cnodes"
+				 */
+				if (col_name[0] != 'c')
+					xstrsubstitute(col_name,
+						       "node", "midplane");
+				xstrsubstitute(col_name, "core", "cnode");
+			} else {
 				xstrsubstitute(col_name, "midplane", "node");
+				xstrsubstitute(col_name, "cnode", "core");
+			}
 
 			/* Make sure we have the correct pointer here
 			   since xstrsubstitute() could of changed it
@@ -1439,8 +1447,6 @@ extern gboolean key_released(GtkTreeView *tree_view,
 
 }/*key_released ^^^*/
 
-
-
 extern gboolean row_clicked(GtkTreeView *tree_view, GdkEventButton *event,
 			    const signal_params_t *signal_params)
 {
@@ -1505,13 +1511,18 @@ extern gboolean row_clicked(GtkTreeView *tree_view, GdkEventButton *event,
 	last_event_x = event->x; /*save THIS x*/
 	last_event_y = event->y; /*save THIS y*/
 
-	if (event->x <= 20) {
+	if (event->x <= 28) {
 		/* When you try to resize a column this event happens
 		   for some reason.  Resizing always happens in the
 		   first 2 of x so if that happens just return and
 		   continue. Also if we want to expand/collapse a
-		   column, that happens in the first 20 so just skip
-		   that also. */
+		   column, that happens in the first 28 (The default
+		   expander size is 14, and as of writing this we
+		   could expand 2 levels, so just skip
+		   that also.  If anyone in the future can figure out
+		   a way to know for sure the expander was clicked
+		   and not the actual column please fix this :).
+		*/
 		did_something = FALSE;
 	} else if (event->button == 1) {
 		/*  left click */

@@ -168,6 +168,7 @@ pthread_mutex_t aeld_mutex = PTHREAD_MUTEX_INITIALIZER;	// Mutex for the above
 
 #define AELD_SESSION_INTERVAL	60	// aeld session retry interval (s)
 #define AELD_EVENT_INTERVAL	110	// aeld event sending interval (ms)
+#define AELD_LIST_CAPACITY	65536	// maximum list capacity
 
 /* Static functions used for aeld communication */
 static void _handle_aeld_error(const char *funcname, char *errmsg, int rv,
@@ -188,7 +189,7 @@ static void _update_app(struct job_record *job_ptr,
 			alpsc_ev_app_state_e state);
 #endif
 
-static uint32_t debug_flags = 0;
+static uint64_t debug_flags = 0;
 
 /*
  * These variables are required by the generic plugin interface.  If they
@@ -221,7 +222,7 @@ static uint32_t debug_flags = 0;
 const char plugin_name[]	= "Cray node selection plugin";
 const char plugin_type[]	= "select/cray";
 uint32_t plugin_id		= 107;
-const uint32_t plugin_version	= 100;
+const uint32_t plugin_version	= 120;
 
 extern int select_p_select_jobinfo_free(select_jobinfo_t *jobinfo);
 
@@ -320,6 +321,11 @@ fini:
 	xfree(nodelist_nids);
 
 	return status;
+
+#elif HAVE_CRAY_NETWORK
+	/* NHC not supported, but don't sleep before return. */
+	return 0;
+
 #else
 	if (debug_flags & DEBUG_FLAG_SELECT_TYPE)
 		info("simluating calling NHC for jobid %u "
@@ -401,9 +407,6 @@ static void _start_session(alpsc_ev_session_t **session, int *sessionfd)
 
 	while (1) {
 		pthread_mutex_lock(&aeld_mutex);
-
-		// Clear out the event list
-		_clear_event_list(event_list, &event_list_size);
 
 		// Create the session
 		rv = alpsc_ev_create_session(&errmsg, session, app_list,
@@ -526,7 +529,7 @@ static void _initialize_event(alpsc_ev_app_t *event,
 	event->nodes = NULL;
 	event->num_nodes = 0;
 
-	// Fill in nodes and num_nodes
+	// Fill in nodes and num_nodes if available
 	if (step_ptr->step_layout) {
 		hl = hostlist_create(step_ptr->step_layout->node_list);
 		if (hl == NULL) {
@@ -555,8 +558,6 @@ static void _initialize_event(alpsc_ev_app_t *event,
 
 		hostlist_iterator_destroy(hlit);
 		hostlist_destroy(hl);
-	} else {
-		// TODO: do we have to worry about batch scripts?
 	}
 	return;
 }
@@ -604,6 +605,9 @@ static void _add_to_app_list(alpsc_ev_app_t **list, int32_t *size,
 	if (*size + 1 > *capacity) {
 		if (*capacity == 0) {
 			*capacity = 16;
+		} else if (*capacity >= AELD_LIST_CAPACITY) {
+			debug("aeld list over capacity");
+			return;
 		} else {
 			*capacity *= 2;
 		}
@@ -638,10 +642,18 @@ static void _update_app(struct job_record *job_ptr,
 	// Fill in the new event
 	_initialize_event(&app, job_ptr, step_ptr, state);
 
+	// If there are no nodes, set_application_info will fail
+	if (app.nodes == NULL || app.num_nodes == 0) {
+		debug("Job %"PRIu32".%"PRIu32" has no nodes, skipping",
+		      job_ptr->job_id, step_ptr->step_id);
+		_free_event(&app);
+		return;
+	}
+
 	pthread_mutex_lock(&aeld_mutex);
 
 	// Add it to the event list, only if aeld is up
-	if (aeld_running == 2) {
+	if (aeld_running) {
 		_add_to_app_list(&event_list, &event_list_size,
 				 &event_list_capacity, &app);
 	}
@@ -766,17 +778,30 @@ static void _free_blade(blade_info_t *blade_info)
 static void _pack_blade(blade_info_t *blade_info, Buf buffer,
 			uint16_t protocol_version)
 {
-	pack64(blade_info->id, buffer);
-	pack32(blade_info->job_cnt, buffer);
-	pack_bit_str(blade_info->node_bitmap, buffer);
+	if (protocol_version >= SLURM_14_11_PROTOCOL_VERSION) {
+		pack64(blade_info->id, buffer);
+		pack32(blade_info->job_cnt, buffer);
+		pack_bit_str_hex(blade_info->node_bitmap, buffer);
+	} else if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
+		pack64(blade_info->id, buffer);
+		pack32(blade_info->job_cnt, buffer);
+		pack_bit_str(blade_info->node_bitmap, buffer);
+	}
+
 }
 
 static int _unpack_blade(blade_info_t *blade_info, Buf buffer,
 			 uint16_t protocol_version)
 {
-	safe_unpack64(&blade_info->id, buffer);
-	safe_unpack32(&blade_info->job_cnt, buffer);
-	unpack_bit_str(&blade_info->node_bitmap, buffer);
+	if (protocol_version >= SLURM_14_11_PROTOCOL_VERSION) {
+		safe_unpack64(&blade_info->id, buffer);
+		safe_unpack32(&blade_info->job_cnt, buffer);
+		unpack_bit_str_hex(&blade_info->node_bitmap, buffer);
+	} else if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
+		safe_unpack64(&blade_info->id, buffer);
+		safe_unpack32(&blade_info->job_cnt, buffer);
+		unpack_bit_str(&blade_info->node_bitmap, buffer);
+	}
 
 	return SLURM_SUCCESS;
 
@@ -996,16 +1021,30 @@ static void _spawn_cleanup_thread(
 static void _select_jobinfo_pack(select_jobinfo_t *jobinfo, Buf buffer,
 				 uint16_t protocol_version)
 {
-	if (!jobinfo) {
-		pack_bit_str(NULL, buffer);
-		pack16(0, buffer);
-		pack8(0, buffer);
-		pack_bit_str(NULL, buffer);
-	} else {
-		pack_bit_str(jobinfo->blade_map, buffer);
-		pack16(jobinfo->cleaning, buffer);
-		pack8(jobinfo->npc, buffer);
-		pack_bit_str(jobinfo->used_blades, buffer);
+	if (protocol_version >= SLURM_14_11_PROTOCOL_VERSION) {
+		if (!jobinfo) {
+			pack_bit_str_hex(NULL, buffer);
+			pack16(0, buffer);
+			pack8(0, buffer);
+			pack_bit_str_hex(NULL, buffer);
+		} else {
+			pack_bit_str_hex(jobinfo->blade_map, buffer);
+			pack16(jobinfo->cleaning, buffer);
+			pack8(jobinfo->npc, buffer);
+			pack_bit_str_hex(jobinfo->used_blades, buffer);
+		}
+	} else if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
+		if (!jobinfo) {
+			pack_bit_str(NULL, buffer);
+			pack16(0, buffer);
+			pack8(0, buffer);
+			pack_bit_str(NULL, buffer);
+		} else {
+			pack_bit_str(jobinfo->blade_map, buffer);
+			pack16(jobinfo->cleaning, buffer);
+			pack8(jobinfo->npc, buffer);
+			pack_bit_str(jobinfo->used_blades, buffer);
+		}
 	}
 }
 
@@ -1018,10 +1057,17 @@ static int _select_jobinfo_unpack(select_jobinfo_t **jobinfo_pptr,
 
 	jobinfo->magic = JOBINFO_MAGIC;
 
-	unpack_bit_str(&jobinfo->blade_map, buffer);
-	safe_unpack16(&jobinfo->cleaning, buffer);
-	safe_unpack8(&jobinfo->npc, buffer);
-	unpack_bit_str(&jobinfo->used_blades, buffer);
+	if (protocol_version >= SLURM_14_11_PROTOCOL_VERSION) {
+		unpack_bit_str_hex(&jobinfo->blade_map, buffer);
+		safe_unpack16(&jobinfo->cleaning, buffer);
+		safe_unpack8(&jobinfo->npc, buffer);
+		unpack_bit_str_hex(&jobinfo->used_blades, buffer);
+	} else if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
+		unpack_bit_str(&jobinfo->blade_map, buffer);
+		safe_unpack16(&jobinfo->cleaning, buffer);
+		safe_unpack8(&jobinfo->npc, buffer);
+		unpack_bit_str(&jobinfo->used_blades, buffer);
+	}
 
 	return SLURM_SUCCESS;
 
@@ -1333,6 +1379,20 @@ extern int select_p_job_init(List job_list)
 			if (jobinfo->cleaning || IS_JOB_RUNNING(job_ptr))
 				_set_job_running_restore(jobinfo);
 
+			/* We need to resize bitmaps if the
+			 * blades change in count.  We must increase
+			 * the size so loops based off blade_cnt will
+			 * work correctly.
+			 */
+			if (jobinfo->blade_map
+			    && (bit_size(jobinfo->blade_map) < blade_cnt))
+				jobinfo->blade_map = bit_realloc(
+					jobinfo->blade_map, blade_cnt);
+			if (jobinfo->used_blades
+			    && (bit_size(jobinfo->used_blades) < blade_cnt))
+				jobinfo->used_blades = bit_realloc(
+					jobinfo->used_blades, blade_cnt);
+
 			if (!(slurmctld_conf.select_type_param & CR_NHC_STEP_NO)
 			    && job_ptr->step_list
 			    && list_count(job_ptr->step_list)) {
@@ -1380,7 +1440,7 @@ extern int select_p_node_init(struct node_record *node_ptr, int node_cnt)
 	int i, j;
 	uint64_t blade_id = 0;
 
-#ifdef HAVE_NATIVE_CRAY_GA
+#if defined(HAVE_NATIVE_CRAY_GA) && !defined(HAVE_CRAY_NETWORK)
 	int nn, end_nn, last_nn = 0;
 	bool found = 0;
 	alpsc_topology_t *topology = NULL;
@@ -1432,7 +1492,7 @@ extern int select_p_node_init(struct node_record *node_ptr, int node_cnt)
 			nodeinfo->nid = atoll(nid_char);
 		}
 
-#ifdef HAVE_NATIVE_CRAY_GA
+#if defined(HAVE_NATIVE_CRAY_GA) && !defined(HAVE_CRAY_NETWORK)
 		end_nn = num_nodes;
 
 	start_again:
@@ -1488,7 +1548,7 @@ extern int select_p_node_init(struct node_record *node_ptr, int node_cnt)
 	/* give back the memory */
 	xrealloc(blade_array, sizeof(blade_info_t) * blade_cnt);
 
-#ifdef HAVE_NATIVE_CRAY_GA
+#if defined(HAVE_NATIVE_CRAY_GA) && !defined(HAVE_CRAY_NETWORK)
 	free(topology);
 #endif
 
@@ -1789,27 +1849,28 @@ extern int select_p_step_finish(struct step_record *step_ptr)
 		post_job_step(step_ptr);
 		return SLURM_SUCCESS;
 	}
-	/* The NHC needs to be ran after each step even if the job is
-	   about to run the NHC for the allocation.  The NHC
-	   developers feel this is needed.  If it ever changes just
-	   remove the below commented code.
-	*/
 
-	/*  else if (IS_JOB_COMPLETING(step_ptr->job_ptr)) { */
-	/* 	debug3("step completion %u.%u was received after job " */
-	/* 	      "allocation is already completing, no extra NHC needed.", */
-	/* 	      step_ptr->job_ptr->job_id, step_ptr->step_id); */
-	/* 	other_step_finish(step_ptr); */
-	/* 	/\* free resources on the job *\/ */
-	/* 	post_job_step(step_ptr); */
-	/* 	return SLURM_SUCCESS; */
-	/* } */
+#if 0
+	/* The NHC needs to be ran after each step even if the job is about to
+	 * run the NHC for the allocation.  The NHC developers feel this is
+	 * needed.  If it ever changes just use this below code. */
+	else if (IS_JOB_COMPLETING(step_ptr->job_ptr) ||
+		 IS_JOB_FINISHED(step_ptr->job_ptr)) {
+		debug3("step completion %u.%u was received after job "
+		      "allocation is already completing, no extra NHC needed.",
+		      step_ptr->job_ptr->job_id, step_ptr->step_id);
+		other_step_finish(step_ptr);
+		/* free resources on the job */
+		post_job_step(step_ptr);
+		return SLURM_SUCCESS;
+	}
+#endif
 
-	if (jobinfo->cleaning == 1)
+	if (jobinfo->cleaning == 1) {
 		error("Cleaning flag already set for job step %u.%u, "
 		      "this should never happen.",
 		      step_ptr->step_id, step_ptr->job_ptr->job_id);
-	else {
+	} else {
 		jobinfo->cleaning = 1;
 		_spawn_cleanup_thread(step_ptr, _step_fini);
 	}
@@ -2212,11 +2273,11 @@ extern int select_p_fail_cnode(struct step_record *step_ptr)
 	return other_fail_cnode(step_ptr);
 }
 
-extern int select_p_get_info_from_plugin(enum select_jobdata_type info,
+extern int select_p_get_info_from_plugin(enum select_plugindata_info dinfo,
 					 struct job_record *job_ptr,
 					 void *data)
 {
-	return other_get_info_from_plugin(info, job_ptr, data);
+	return other_get_info_from_plugin(dinfo, job_ptr, data);
 }
 
 extern int select_p_update_node_config(int index)
@@ -2240,12 +2301,13 @@ extern int select_p_reconfigure(void)
 	return other_reconfigure();
 }
 
-extern bitstr_t * select_p_resv_test(bitstr_t *avail_bitmap, uint32_t node_cnt,
-				     uint32_t *core_cnt, bitstr_t **core_bitmap,
-				     uint32_t flags)
+extern bitstr_t * select_p_resv_test(resv_desc_msg_t *resv_desc_ptr,
+				     uint32_t node_cnt,
+				     bitstr_t *avail_bitmap,
+				     bitstr_t **core_bitmap)
 {
-	return other_resv_test(avail_bitmap, node_cnt, core_cnt, core_bitmap,
-			       flags);
+	return other_resv_test(resv_desc_ptr, node_cnt,
+			       avail_bitmap, core_bitmap);
 }
 
 extern void select_p_ba_init(node_info_msg_t *node_info_ptr, bool sanity_check)
@@ -2261,4 +2323,9 @@ extern int *select_p_ba_get_dims(void)
 extern void select_p_ba_fini(void)
 {
 	other_ba_fini();
+}
+
+extern bitstr_t *select_p_ba_cnodelist2bitmap(char *cnodelist)
+{
+	return other_ba_cnodelist2bitmap(cnodelist);
 }

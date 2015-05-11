@@ -53,6 +53,7 @@
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
 #include "src/common/slurm_auth.h"
+#include "src/common/slurm_route.h"
 #include "src/common/read_config.h"
 #include "src/common/slurm_protocol_interface.h"
 
@@ -94,7 +95,7 @@ void _destroy_tree_fwd(fwd_tree_t *fwd_tree)
 void *_forward_thread(void *arg)
 {
 	forward_msg_t *fwd_msg = (forward_msg_t *)arg;
-	Buf buffer = init_buf(fwd_msg->buf_len);
+	Buf buffer = init_buf(BUF_SIZE);	/* probably enough for header */
 	List ret_list = NULL;
 	slurm_fd_t fd = -1;
 	ret_data_info_t *ret_data_info = NULL;
@@ -139,9 +140,11 @@ void *_forward_thread(void *arg)
 		xfree(fwd_msg->header.forward.nodelist);
 		fwd_msg->header.forward.nodelist = buf;
 		fwd_msg->header.forward.cnt = hostlist_count(hl);
-		/* info("sending %d forwards (%s) to %s", */
-/* 		     fwd_msg->header.forward.cnt, */
-/* 		     fwd_msg->header.forward.nodelist, name); */
+#if 0
+		info("sending %d forwards (%s) to %s",
+		     fwd_msg->header.forward.cnt,
+		     fwd_msg->header.forward.nodelist, name);
+#endif
 		if (fwd_msg->header.forward.nodelist[0]) {
 			debug3("forward: send to %s along with %s",
 			       name, fwd_msg->header.forward.nodelist);
@@ -152,8 +155,10 @@ void *_forward_thread(void *arg)
 
 		/* add forward data to buffer */
 		if (remaining_buf(buffer) < fwd_msg->buf_len) {
-			buffer->size += (fwd_msg->buf_len + BUF_SIZE);
-			xrealloc(buffer->head, buffer->size);
+			int new_size = buffer->processed + fwd_msg->buf_len;
+			new_size += 1024; /* padded for paranoia */
+			xrealloc_nz(buffer->head, new_size);
+			buffer->size = new_size;
 		}
 		if (fwd_msg->buf_len) {
 			memcpy(&buffer->head[buffer->processed],
@@ -473,20 +478,24 @@ extern int forward_msg(forward_struct_t *forward_struct,
 	int retries = 0;
 	forward_msg_t *forward_msg = NULL;
 	int thr_count = 0;
-	int *span = set_span(header->forward.cnt, 0);
 	hostlist_t hl = NULL;
-	hostlist_t forward_hl = NULL;
-	char *name = NULL;
+	hostlist_t* sp_hl;
+	int hl_count = 0;
 
 	if (!forward_struct->ret_list) {
 		error("didn't get a ret_list from forward_struct");
-		xfree(span);
 		return SLURM_ERROR;
 	}
 	hl = hostlist_create(header->forward.nodelist);
 	hostlist_uniq(hl);
 
-	while ((name = hostlist_shift(hl))) {
+	if ( route_g_split_hostlist(hl, &sp_hl, &hl_count) ) {
+		error("unable to split forward hostlist");
+		hostlist_destroy(hl);
+		return SLURM_ERROR;
+	}
+	for (j = 0; j < hl_count; j++) {
+
 		pthread_attr_t attr_agent;
 		pthread_t thread_agent;
 		char *buf = NULL;
@@ -522,18 +531,8 @@ extern int forward_msg(forward_struct_t *forward_struct,
 		forward_msg->header.ret_list = NULL;
 		forward_msg->header.ret_cnt = 0;
 
-		forward_hl = hostlist_create(name);
-		free(name);
-		for(j = 0; j < span[thr_count]; j++) {
-			name = hostlist_shift(hl);
-			if (!name)
-				break;
-			hostlist_push_host(forward_hl, name);
-			free(name);
-		}
-
-		buf = hostlist_ranged_string_xmalloc(forward_hl);
-		hostlist_destroy(forward_hl);
+		buf = hostlist_ranged_string_xmalloc(sp_hl[j]);
+		hostlist_destroy(sp_hl[j]);
 		forward_init(&forward_msg->header.forward, NULL);
 		forward_msg->header.forward.nodelist = buf;
 		while (pthread_create(&thread_agent, &attr_agent,
@@ -547,8 +546,8 @@ extern int forward_msg(forward_struct_t *forward_struct,
 		slurm_attr_destroy(&attr_agent);
 		thr_count++;
 	}
+	xfree(sp_hl);
 	hostlist_destroy(hl);
-	xfree(span);
 	return SLURM_SUCCESS;
 }
 
@@ -566,15 +565,15 @@ extern int forward_msg(forward_struct_t *forward_struct,
  */
 extern List start_msg_tree(hostlist_t hl, slurm_msg_t *msg, int timeout)
 {
-	int *span = NULL;
 	fwd_tree_t *fwd_tree = NULL;
 	pthread_mutex_t tree_mutex;
 	pthread_cond_t notify;
 	int j = 0, count = 0;
 	List ret_list = NULL;
-	char *name = NULL;
 	int thr_count = 0;
 	int host_count = 0;
+	hostlist_t* sp_hl;
+	int hl_count = 0;
 
 	xassert(hl);
 	xassert(msg);
@@ -582,14 +581,16 @@ extern List start_msg_tree(hostlist_t hl, slurm_msg_t *msg, int timeout)
 	hostlist_uniq(hl);
 	host_count = hostlist_count(hl);
 
-	span = set_span(host_count, 0);
-
+	if ( route_g_split_hostlist(hl, &sp_hl, &hl_count) ) {
+		error("unable to split forward hostlist");
+		return NULL;
+	}
 	slurm_mutex_init(&tree_mutex);
 	pthread_cond_init(&notify, NULL);
 
 	ret_list = list_create(destroy_data_info);
 
-	while ((name = hostlist_shift(hl))) {
+	for (j = 0; j < hl_count; j++) {
 		pthread_attr_t attr_agent;
 		pthread_t thread_agent;
 		int retries = 0;
@@ -612,15 +613,8 @@ extern List start_msg_tree(hostlist_t hl, slurm_msg_t *msg, int timeout)
 			fwd_tree->timeout  = slurm_get_msg_timeout() * 1000;
 		}
 
-		fwd_tree->tree_hl = hostlist_create(name);
-		free(name);
-		for (j = 0; j < span[thr_count]; j++) {
-			name = hostlist_shift(hl);
-			if (!name)
-				break;
-			hostlist_push_host(fwd_tree->tree_hl, name);
-			free(name);
-		}
+		fwd_tree->tree_hl = sp_hl[j];
+		sp_hl[j] = NULL;
 
 		/*
 		 * Lock and increase thread counter, we need that to protect
@@ -643,7 +637,7 @@ extern List start_msg_tree(hostlist_t hl, slurm_msg_t *msg, int timeout)
 		slurm_attr_destroy(&attr_agent);
 
 	}
-	xfree(span);
+	xfree(sp_hl);
 
 	slurm_mutex_lock(&tree_mutex);
 

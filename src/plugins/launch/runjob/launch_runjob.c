@@ -260,6 +260,7 @@ extern int fini(void)
 
 extern int launch_p_setup_srun_opt(char **rest)
 {
+	int i;
 	int command_pos = 0;
 	uint32_t taskid = NO_VAL;
 
@@ -311,28 +312,21 @@ extern int launch_p_setup_srun_opt(char **rest)
 		}
 
 		if (opt.export_env) {
-			if (!strcasecmp(opt.export_env, "NONE")) {
-				/* represents the difference between --env-all
-				 * and --exp-env */
-				command_pos += 2;
-			} else {
-				error("--export= only accepts NONE as "
-				      "an option, ignoring '%s'.",
-				      opt.export_env);
-				xfree(opt.export_env);
+			for (i = 0; opt.export_env[i]; i++) {
+				if (opt.export_env[i] == ',')
+					command_pos++;
 			}
+			command_pos += 5;	/* baseline overhead */
 		}
-
-		opt.argc += command_pos;
 	}
 
 	/* We need to do +2 here just incase multi-prog is needed (we
-	   add an extra argv on so just make space for it).
-	*/
-	opt.argv = (char **) xmalloc((opt.argc + 2) * sizeof(char *));
+	 * add an extra argv on so just make space for it). */
+	opt.argv = (char **) xmalloc((opt.argc + command_pos + 2) *
+		   sizeof(char *));
 
 	if (!opt.test_only) {
-		int i = 0;
+		i = 0;
 		/* First arg has to be something when sending it to the
 		   runjob api.  This can be anything, we put runjob
 		   here so --launch-cmd looks nice :), but it doesn't matter.
@@ -390,10 +384,37 @@ extern int launch_p_setup_srun_opt(char **rest)
 			xfree(tmp);
 		}
 
-		if (opt.export_env && !strcasecmp(opt.export_env, "NONE")) {
+		if (opt.export_env) {
+			char *tmp_env, *tok, *save_ptr = NULL, *eq_ptr;
+			bool has_equal = false;
 			opt.argv[i++]  = xstrdup("--exp-env");
 			opt.argv[i++]  = xstrdup("SLURM_JOB_ID");
 			opt.argv[i++]  = xstrdup("SLURM_STEP_ID");
+			tmp_env = xstrdup(opt.export_env);
+			tok = strtok_r(tmp_env, ",", &save_ptr);
+			while (tok) {
+				if (!strcasecmp(tok, "NONE"))
+					break;
+				eq_ptr = strchr(tok, '=');
+				if (eq_ptr)
+					has_equal = true;
+				else
+					opt.argv[i++]  = xstrdup(tok);
+				tok = strtok_r(NULL, ",", &save_ptr);
+			}
+			xfree(tmp_env);
+			if (has_equal) {
+				opt.argv[i++]  = xstrdup("--envs");
+				tmp_env = xstrdup(opt.export_env);
+				tok = strtok_r(tmp_env, ",", &save_ptr);
+				while (tok) {
+					eq_ptr = strchr(tok, '=');
+					if (eq_ptr)
+						opt.argv[i++]  = xstrdup(tok);
+					tok = strtok_r(NULL, ",", &save_ptr);
+				}
+				xfree(tmp_env);
+			}
 		} else {
 			/* Export all the environment so the
 			 * runjob_mux will get the correct info about
@@ -405,13 +426,8 @@ extern int launch_p_setup_srun_opt(char **rest)
 		 * job, which in this case is exactly what it is.  So, very
 		 * sweet. */
 		opt.argv[i++] = xstrdup(":");
-
-		/* Sanity check to make sure we set it up correctly. */
-		if (i != command_pos) {
-			fatal ("command_pos is set to %d but we are going to "
-			       "put it at %d, please update src/srun/opt.c",
-			       command_pos, i);
-		}
+		command_pos = i;
+		opt.argc += command_pos;
 
 		/* Set default job name to the executable name rather than
 		 * "runjob" */

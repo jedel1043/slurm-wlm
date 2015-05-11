@@ -109,12 +109,18 @@ char *slurm_sprint_reservation_info ( reserve_info_t * resv_ptr,
 	char *out = NULL;
 	uint32_t duration;
 	time_t now = time(NULL);
+	uint32_t cluster_flags = slurmdb_setup_cluster_flags();
+	bool is_bluegene = cluster_flags & CLUSTER_FLAG_BG;
 
 	/****** Line 1 ******/
 	slurm_make_time_str(&resv_ptr->start_time, tmp1, sizeof(tmp1));
 	slurm_make_time_str(&resv_ptr->end_time,   tmp2, sizeof(tmp2));
-	duration = difftime(resv_ptr->end_time, resv_ptr->start_time);
-	secs2time_str(duration, tmp3, sizeof(tmp3));
+	if (resv_ptr->end_time >= resv_ptr->start_time) {
+		duration = difftime(resv_ptr->end_time, resv_ptr->start_time);
+		secs2time_str(duration, tmp3, sizeof(tmp3));
+	} else {
+		snprintf(tmp3, sizeof(tmp3), "N/A");
+	}
 	snprintf(tmp_line, sizeof(tmp_line),
 		 "ReservationName=%s StartTime=%s EndTime=%s Duration=%s",
 		 resv_ptr->name, tmp1, tmp2, tmp3);
@@ -129,9 +135,11 @@ char *slurm_sprint_reservation_info ( reserve_info_t * resv_ptr,
 	flag_str = reservation_flags_string(resv_ptr->flags);
 
 	snprintf(tmp_line, sizeof(tmp_line),
-		 "Nodes=%s NodeCnt=%u CoreCnt=%u Features=%s "
+		 "%s=%s %sCnt=%u %sCnt=%u Features=%s "
 		 "PartitionName=%s Flags=%s",
-		 resv_ptr->node_list, resv_ptr->node_cnt, resv_ptr->core_cnt,
+		 is_bluegene ? "Midplanes" : "Nodes", resv_ptr->node_list,
+		 is_bluegene ? "Midplane" : "Node", resv_ptr->node_cnt,
+		 is_bluegene ? "Cnode" : "Core", resv_ptr->core_cnt,
 		 resv_ptr->features,  resv_ptr->partition, flag_str);
 	xfree(flag_str);
 	xstrcat(out, tmp_line);

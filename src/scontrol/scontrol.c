@@ -80,9 +80,10 @@ static void     _print_version( void );
 static int	_process_command (int argc, char *argv[]);
 static void	_update_it (int argc, char *argv[]);
 static int	_update_bluegene_block (int argc, char *argv[]);
-static int      _update_bluegene_subbp (int argc, char *argv[]);
+static int      _update_bluegene_submp (int argc, char *argv[]);
 static int	_update_slurmctld_debug(char *val);
 static void	_usage ();
+static void	_write_config (void);
 
 int
 main (int argc, char *argv[])
@@ -346,6 +347,73 @@ _get_command (int *argc, char **argv)
 		}
 	}
 	return 0;
+}
+
+/*
+ * _write_config - write the configuration parameters and values to a file.
+ */
+static void
+_write_config (void)
+{
+	int error_code;
+	node_info_msg_t *node_info_ptr = NULL;
+	partition_info_msg_t *part_info_ptr = NULL;
+	slurm_ctl_conf_info_msg_t  *slurm_ctl_conf_ptr = NULL;
+
+	/* slurm config loading code copied from _print_config() */
+
+	if (old_slurm_ctl_conf_ptr) {
+		error_code = slurm_load_ctl_conf (
+				old_slurm_ctl_conf_ptr->last_update,
+				&slurm_ctl_conf_ptr);
+		if (error_code == SLURM_SUCCESS) {
+			slurm_free_ctl_conf(old_slurm_ctl_conf_ptr);
+		} else if (slurm_get_errno () == SLURM_NO_CHANGE_IN_DATA) {
+			slurm_ctl_conf_ptr = old_slurm_ctl_conf_ptr;
+			error_code = SLURM_SUCCESS;
+			if (quiet_flag == -1) {
+				printf ("slurm_load_ctl_conf no change "
+					"in data\n");
+			}
+		}
+	} else {
+		error_code = slurm_load_ctl_conf ((time_t) NULL,
+						  &slurm_ctl_conf_ptr);
+	}
+
+	if (error_code) {
+		exit_code = 1;
+		if (quiet_flag != 1)
+			slurm_perror ("slurm_load_ctl_conf error");
+	} else
+		old_slurm_ctl_conf_ptr = slurm_ctl_conf_ptr;
+
+
+	if (error_code == SLURM_SUCCESS) {
+		/* now gather node info */
+		error_code = scontrol_load_nodes(&node_info_ptr, 0);
+
+		if (error_code) {
+			exit_code = 1;
+			if (quiet_flag != 1)
+				slurm_perror ("slurm_load_node error");
+			return;
+		}
+
+		/* now gather partition info */
+		error_code = scontrol_load_partitions(&part_info_ptr);
+		if (error_code) {
+			exit_code = 1;
+			if (quiet_flag != 1)
+				slurm_perror ("slurm_load_partitions error");
+			return;
+		}
+
+		/* send the info off to be written */
+		slurm_write_ctl_conf (slurm_ctl_conf_ptr,
+				      node_info_ptr,
+				      part_info_ptr);
+	}
 }
 
 /*
@@ -881,14 +949,8 @@ _process_command (int argc, char *argv[])
 					"too few arguments for keyword:%s\n",
 					tag);
 		} else {
-			error_code = scontrol_requeue((argc - 1), &argv[1]);
-			if (error_code) {
-				exit_code = 1;
-				if (quiet_flag != 1)
-					slurm_perror ("slurm_requeue error");
-			}
+			scontrol_requeue((argc - 1), &argv[1]);
 		}
-
 	}
 	else if (strncasecmp(tag, "requeuehold", 11) == 0) {
 		if (argc > 3) {
@@ -904,12 +966,7 @@ _process_command (int argc, char *argv[])
 					"too few arguments for keyword:%s\n",
 					tag);
 		} else {
-			error_code = scontrol_requeue_hold((argc - 1), &argv[1]);
-			if (error_code) {
-				exit_code = 1;
-				if (quiet_flag != 1)
-					slurm_perror ("slurm_requeue error");
-			}
+			scontrol_requeue_hold((argc - 1), &argv[1]);
 		}
 
 	}
@@ -945,12 +1002,7 @@ _process_command (int argc, char *argv[])
 					tag);
 		} else {
 			for (i = 1; i < argc; i++) {
-				error_code = scontrol_suspend(argv[0], argv[i]);
-				if (error_code) {
-					exit_code = 1;
-					if (quiet_flag != 1)
-						slurm_perror ("slurm_suspend error");
-				}
+				scontrol_suspend(argv[0], argv[i]);
 			}
 		}
 	}
@@ -991,8 +1043,8 @@ _process_command (int argc, char *argv[])
 					tag);
 		} else {
 			int i, mode = 0;
-			uint32_t debug_flags_plus  = 0;
-			uint32_t debug_flags_minus = 0, flags;
+			uint64_t debug_flags_plus  = 0;
+			uint64_t debug_flags_minus = 0, flags;
 
 			for (i = 1; i < argc; i++) {
 				if (argv[i][0] == '+')
@@ -1003,8 +1055,9 @@ _process_command (int argc, char *argv[])
 					mode = 0;
 					break;
 				}
-				flags = debug_str2flags(&argv[i][1]);
-				if (flags == NO_VAL)
+
+				if (debug_str2flags(&argv[i][1], &flags)
+				    != SLURM_SUCCESS)
 					break;
 				if (mode == 1)
 					debug_flags_plus  |= flags;
@@ -1017,7 +1070,7 @@ _process_command (int argc, char *argv[])
 					fprintf(stderr, "invalid debug "
 						"flag: %s\n", argv[i]);
 				}
-				if ((quiet_flag != 1) &&  (mode = 0)) {
+				if ((quiet_flag != 1) && (mode == 0)) {
 					fprintf(stderr, "Usage: setdebugflags"
 						" [+|-]NAME\n");
 				}
@@ -1139,6 +1192,26 @@ _process_command (int argc, char *argv[])
 	}
 	else if (strncasecmp (tag, "show", MAX(tag_len, 3)) == 0) {
 		_show_it (argc, argv);
+	}
+	else if (strncasecmp (tag, "write", MAX(tag_len, 5)) == 0) {
+		if (argc > 2) {
+			exit_code = 1;
+			fprintf(stderr,
+				"too many arguments for keyword:%s\n",
+				tag);
+		} else if (argc < 2) {
+			exit_code = 1;
+			fprintf(stderr,
+				"too few arguments for keyword:%s\n",
+				tag);
+		} else if (strcmp(argv[1], "config")) {
+			exit_code = 1;
+			fprintf (stderr,
+				 "invalid write argument:%s\n",
+				 argv[1]);
+		} else {
+			_write_config ();
+		}
 	}
 	else if (strncasecmp (tag, "takeover", MAX(tag_len, 8)) == 0) {
 		char *secondary = NULL;
@@ -1489,6 +1562,7 @@ _update_it (int argc, char *argv[])
 	int node_tag = 0, part_tag = 0, job_tag = 0;
 	int block_tag = 0, sub_tag = 0, res_tag = 0;
 	int debug_tag = 0, step_tag = 0, front_end_tag = 0;
+	int jerror_code = SLURM_SUCCESS;
 
 	/* First identify the entity to update */
 	for (i=0; i<argc; i++) {
@@ -1505,14 +1579,15 @@ _update_it (int argc, char *argv[])
 		} else if (!strncasecmp(tag, "PartitionName",
 					MAX(tag_len, 3))) {
 			part_tag = 1;
-		} else if (!strncasecmp(tag, "JobId", MAX(tag_len, 3))) {
+		} else if (!strncasecmp(tag, "JobId", MAX(tag_len, 3)) ||
+			   !strncasecmp(tag, "JobNAME", MAX(tag_len, 3))) {
 			job_tag = 1;
 		} else if (!strncasecmp(tag, "StepId", MAX(tag_len, 4))) {
 			step_tag = 1;
 		} else if (!strncasecmp(tag, "BlockName", MAX(tag_len, 3))) {
 			block_tag = 1;
-		} else if (!strncasecmp(tag, "SubBPName", MAX(tag_len, 3))
-			   || !strncasecmp(tag, "SubMPName", MAX(tag_len, 3))) {
+		} else if (!strncasecmp(tag, "SubBPName", MAX(tag_len, 3)) ||
+			   !strncasecmp(tag, "SubMPName", MAX(tag_len, 3))) {
 			sub_tag = 1;
 		} else if (!strncasecmp(tag, "FrontendName",
 					MAX(tag_len, 2))) {
@@ -1522,7 +1597,7 @@ _update_it (int argc, char *argv[])
 			res_tag = 1;
 		} else if (!strncasecmp(tag, "SlurmctldDebug",
 					MAX(tag_len, 2))) {
-			debug_tag= 1;
+			debug_tag = 1;
 		}
 	}
 
@@ -1534,7 +1609,7 @@ _update_it (int argc, char *argv[])
 	 * aren't any other duplicate tags.  */
 
 	if (job_tag)
-		error_code = scontrol_update_job (argc, argv);
+		jerror_code = scontrol_update_job (argc, argv);
 	else if (step_tag)
 		error_code = scontrol_update_step (argc, argv);
 	else if (res_tag)
@@ -1548,7 +1623,7 @@ _update_it (int argc, char *argv[])
 	else if (block_tag)
 		error_code = _update_bluegene_block (argc, argv);
 	else if (sub_tag)
-		error_code = _update_bluegene_subbp (argc, argv);
+		error_code = _update_bluegene_submp (argc, argv);
 	else if (debug_tag)
 		error_code = _update_slurmctld_debug(val);
 	else {
@@ -1567,6 +1642,12 @@ _update_it (int argc, char *argv[])
 		exit_code = 1;
 		slurm_perror ("slurm_update error");
 	}
+	/* The slurm error message is already
+	 * printed for each array task in
+	 * scontrol_update_job()
+	 */
+	if (jerror_code)
+		exit_code = 1;
 }
 
 /*
@@ -1657,7 +1738,7 @@ _update_bluegene_block (int argc, char *argv[])
 }
 
 /*
- * _update_bluegene_subbp - update the bluegene nodecards per the
+ * _update_bluegene_submp - update the bluegene nodecards per the
  *	supplied arguments
  * IN argc - count of arguments
  * IN argv - list of arguments
@@ -1665,7 +1746,7 @@ _update_bluegene_block (int argc, char *argv[])
  *			error message and returns 0
  */
 static int
-_update_bluegene_subbp (int argc, char *argv[])
+_update_bluegene_submp (int argc, char *argv[])
 {
 	int i, update_cnt = 0;
 	update_block_msg_t block_msg;

@@ -173,13 +173,14 @@ uint32_t *cr_node_cores_offset;
 const char plugin_name[] = "Consumable Resources (CR) Node Selection plugin";
 const char plugin_type[] = "select/cons_res";
 const uint32_t plugin_id      = 101;
-const uint32_t plugin_version = 110;
+const uint32_t plugin_version = 120;
 const uint32_t pstate_version = 7;	/* version control on saved state */
 
 uint16_t cr_type = CR_CPU; /* cr_type is overwritten in init() */
 
-uint32_t select_debug_flags;
-uint16_t select_fast_schedule;
+bool     pack_serial_at_end   = false;
+uint64_t select_debug_flags   = 0;
+uint16_t select_fast_schedule = 0;
 
 struct part_res_record *select_part_record = NULL;
 struct node_res_record *select_node_record = NULL;
@@ -619,7 +620,7 @@ static void _build_row_bitmaps(struct part_res_record *p_ptr,
 		return;
 	}
 
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 		info("DEBUG: _build_row_bitmaps (before):");
 		_dump_part(p_ptr);
 	}
@@ -662,7 +663,7 @@ static void _build_row_bitmaps(struct part_res_record *p_ptr,
 	 *     - fixme: JOB SHUFFLING BETWEEN ROWS NEEDS TESTING
 	 */
 	qsort(ss, num_jobs, sizeof(struct sort_support), _compare_support);
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 		for (i = 0; i < num_jobs; i++) {
 			char cstr[64], nstr[64];
 			if (ss[i].tmpjobs->core_bitmap) {
@@ -706,7 +707,7 @@ static void _build_row_bitmaps(struct part_res_record *p_ptr,
 		 * Thus, we'll restore the original layout here */
 		debug3("cons_res: build_row_bitmap: dangling job found");
 
-		if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+		if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 			info("DEBUG: _build_row_bitmaps (post-algorithm):");
 			_dump_part(p_ptr);
 		}
@@ -730,7 +731,7 @@ static void _build_row_bitmaps(struct part_res_record *p_ptr,
 		}
 	}
 
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 		info("DEBUG: _build_row_bitmaps (after):");
 		_dump_part(p_ptr);
 	}
@@ -797,7 +798,7 @@ static int _add_job_to_res(struct job_record *job_ptr, int action)
 	debug3("cons_res: _add_job_to_res: job %u act %d ", job_ptr->job_id,
 	       action);
 
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND)
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE)
 		_dump_job_res(job);
 
 	for (i = 0, n = -1; i < select_node_cnt; i++) {
@@ -883,7 +884,7 @@ static int _add_job_to_res(struct job_record *job_ptr, int action)
 					job->node_req;
 			}
 		}
-		if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+		if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 			info("DEBUG: _add_job_to_res (after):");
 			_dump_part(p_ptr);
 		}
@@ -1144,7 +1145,7 @@ static int _rm_job_from_res(struct part_res_record *part_record_ptr,
 
 	debug3("cons_res: _rm_job_from_res: job %u action %d", job_ptr->job_id,
 	       action);
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND)
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE)
 		_dump_job_res(job);
 
 	first_bit = bit_ffs(job->node_bitmap);
@@ -1289,7 +1290,7 @@ static int _rm_job_from_one_node(struct job_record *job_ptr,
 
 	debug3("cons_res: _rm_job_from_one_node: job %u node %s",
 	       job_ptr->job_id, node_ptr->name);
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND)
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE)
 		_dump_job_res(job);
 
 	/* subtract memory */
@@ -1697,7 +1698,7 @@ static int _will_run_test(struct job_record *job_ptr, bitstr_t *bitmap,
 			 select_node_usage, exc_core_bitmap);
 	if (rc == SLURM_SUCCESS) {
 		FREE_NULL_BITMAP(orig_map);
-		job_ptr->start_time = time(NULL);
+		job_ptr->start_time = now;
 		return SLURM_SUCCESS;
 	}
 
@@ -1918,8 +1919,9 @@ extern int select_p_node_init(struct node_record *node_ptr, int node_cnt)
 	int i, tot_core;
 
 	info("cons_res: select_p_node_init");
-	if ((cr_type & (CR_CPU | CR_SOCKET | CR_CORE)) == 0) {
-		fatal("Invalid SelectTypeParameters: %s (%u)",
+	if ((cr_type & (CR_CPU | CR_CORE | CR_SOCKET)) == 0) {
+		fatal("Invalid SelectTypeParameters: %s (%u), "
+		      "You need at least CR_(CPU|CORE|SOCKET)*",
 		      select_type_param_string(cr_type), cr_type);
 	}
 	if (node_ptr == NULL) {
@@ -1941,6 +1943,8 @@ extern int select_p_node_init(struct node_record *node_ptr, int node_cnt)
 		fatal("Invalid SchedulerParameters preempt_reorder_count: %d",
 		      preempt_reorder_cnt);
 	}
+	if (sched_params && strstr(sched_params, "pack_serial_at_end"))
+		pack_serial_at_end = true;
 	xfree(sched_params);
 
 	/* initial global core data structures */
@@ -2041,14 +2045,17 @@ extern int select_p_job_test(struct job_record *job_ptr, bitstr_t * bitmap,
 	debug2("select_p_job_test for job %u", job_ptr->job_id);
 	if (!debug_check) {
 		debug_check = true;
-		if (slurm_get_debug_flags() & DEBUG_FLAG_CPU_BIND)
+		if (slurm_get_debug_flags() & DEBUG_FLAG_SELECT_TYPE)
 			debug_cpu_bind = true;
 	}
 
 	if (!job_ptr->details)
 		return EINVAL;
 
-	if (job_ptr->details->core_spec && job_ptr->details->whole_node == 0) {
+	if (slurm_get_use_spec_resources() == 0)
+		job_ptr->details->core_spec = (uint16_t) NO_VAL;
+	if ((job_ptr->details->core_spec != (uint16_t) NO_VAL) &&
+	    (job_ptr->details->whole_node == 0)) {
 		info("Setting Exclusive mode for job %u with CoreSpec=%u",
 		      job_ptr->job_id, job_ptr->details->core_spec);
 		job_ptr->details->whole_node = 1;
@@ -2058,7 +2065,7 @@ extern int select_p_job_test(struct job_record *job_ptr, bitstr_t * bitmap,
 		job_ptr->details->mc_ptr = _create_default_mc();
 	job_node_req = _get_job_node_req(job_ptr);
 
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 		info("cons_res: select_p_job_test: job %u node_req %u mode %d",
 		     job_ptr->job_id, job_node_req, mode);
 		info("cons_res: select_p_job_test: min_n %u max_n %u req_n %u "
@@ -2228,11 +2235,9 @@ extern int select_p_select_nodeinfo_pack(select_nodeinfo_t *nodeinfo,
 					 Buf buffer,
 					 uint16_t protocol_version)
 {
-	if (protocol_version >= SLURM_2_6_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
 		pack16(nodeinfo->alloc_cpus, buffer);
 		pack32(nodeinfo->alloc_memory, buffer);
-	} else {
-		pack16(nodeinfo->alloc_cpus, buffer);
 	}
 
 	return SLURM_SUCCESS;
@@ -2247,11 +2252,9 @@ extern int select_p_select_nodeinfo_unpack(select_nodeinfo_t **nodeinfo,
 	nodeinfo_ptr = select_p_select_nodeinfo_alloc();
 	*nodeinfo = nodeinfo_ptr;
 
-	if (protocol_version >= SLURM_2_6_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
 		safe_unpack16(&nodeinfo_ptr->alloc_cpus, buffer);
 		safe_unpack32(&nodeinfo_ptr->alloc_memory, buffer);
-	} else {
-		safe_unpack16(&nodeinfo_ptr->alloc_cpus, buffer);
 	}
 
 	return SLURM_SUCCESS;
@@ -2884,21 +2887,10 @@ static int _get_avail_core_in_node(bitstr_t *core_bitmap, int node,
 	return 0;
 }
 
-/*
- * select_p_resv_test - Identify the nodes which "best" satisfy a reservation
- *	request. "best" is defined as either single set of consecutive nodes
- *	satisfying the request and leaving the minimum number of unused nodes
- *	OR the fewest number of consecutive node sets
- * IN/OUT avail_bitmap - nodes available for the reservation
- * IN node_cnt - count of required nodes
- * IN core_cnt - count of required cores per node
- * IN/OUT core_bitmap - cores which can not be used for this reservation
- * IN flags - reservation request flags
- * RET - nodes selected for use by the reservation
- */
-extern bitstr_t * select_p_resv_test(bitstr_t *avail_bitmap, uint32_t node_cnt,
-				     uint32_t *core_cnt, bitstr_t **core_bitmap,
-				     uint32_t flags)
+extern bitstr_t * select_p_resv_test(resv_desc_msg_t *resv_desc_ptr,
+				     uint32_t node_cnt,
+				     bitstr_t *avail_bitmap,
+				     bitstr_t **core_bitmap)
 {
 	bitstr_t **switches_bitmap;		/* nodes on this switch */
 	bitstr_t **switches_core_bitmap;	/* cores on this switch */
@@ -2915,8 +2907,14 @@ extern bitstr_t * select_p_resv_test(bitstr_t *avail_bitmap, uint32_t node_cnt,
 	int best_fit_location = 0, best_fit_sufficient;
 	bool sufficient;
 	int cores_per_node;
+	uint32_t *core_cnt;
+	uint32_t flags;
 
 	xassert(avail_bitmap);
+	xassert(resv_desc_ptr);
+
+	core_cnt = resv_desc_ptr->core_cnt;
+	flags = resv_desc_ptr->flags;
 
 	if ((flags & RESERVE_FLAG_FIRST_CORES) && core_cnt) {
 		return _pick_first_cores(avail_bitmap, node_cnt, core_cnt,
@@ -3151,8 +3149,8 @@ fini:	for (i=0; i<switch_record_cnt; i++) {
 		cores_per_node = core_cnt[0] / MAX(node_cnt, 1);
 
 		while (core_cnt[0]) {
-			uint32_t inx, coff;
-			int i;
+			uint32_t coff;
+			int inx, i;
 			int avail_cores_in_node;
 
 			inx = bit_ffs(avail_nodes_bitmap);
@@ -3226,6 +3224,11 @@ extern void select_p_ba_fini(void)
 }
 
 extern int *select_p_ba_get_dims(void)
+{
+	return NULL;
+}
+
+extern bitstr_t *select_p_ba_cnodelist2bitmap(char *cnodelist)
 {
 	return NULL;
 }

@@ -1572,16 +1572,22 @@ static void _get_all_node_series(FILE *fp, bool hd, hid_t jgid_step, int stepx)
 	// allocate node arrays
 
 	series_smp = xmalloc(nnodes * (sizeof(uint64_t)));
-	if (series_smp == NULL)
+	if (series_smp == NULL) {
 		fatal("Failed to get memory for node_samples");
+		return;		/* fix for CLANG false positive */
+	}
 
 	node_name = xmalloc(nnodes * (sizeof(char*)));
-	if (node_name == NULL)
+	if (node_name == NULL) {
 		fatal("Failed to get memory for node_name");
+		return;		/* fix for CLANG false positive */
+	}
 
 	all_series = xmalloc(nnodes * (sizeof(double*)));
-	if (all_series == NULL)
+	if (all_series == NULL) {
 		fatal("Failed to get memory for all_series");
+		return;		/* fix for CLANG false positive */
+	}
 
 	jgid_nodes = get_group(jgid_step, GRP_NODES);
 	if (jgid_nodes < 0)
@@ -1717,14 +1723,20 @@ static void _get_all_task_series(FILE *fp, bool hd, hid_t jgid_step, int stepx)
 	nnodes = get_int_attribute(jgid_step, ATTR_NNODES);
 	// allocate node arrays
 	series_smp = (uint64_t*) xmalloc(ntasks*(sizeof(uint64_t)));
-	if (series_smp == NULL)
+	if (series_smp == NULL) {
 		fatal("Failed to get memory for node_samples");
+		return; /* Fix for CLANG false positive */
+	}
 	series_name = (char**) xmalloc(ntasks*(sizeof(char*)));
-	if (series_name == NULL)
+	if (series_name == NULL) {
 		fatal("Failed to get memory for series_name");
+		return; /* Fix for CLANG false positive */
+	}
 	all_series = (double**) xmalloc(ntasks*(sizeof(double*)));
-	if (all_series == NULL)
+	if (all_series == NULL) {
 		fatal("Failed to get memory for all_series");
+		return; /* Fix for CLANG false positive */
+	}
 
 	for (ndx=0; ndx<nnodes; ndx++) {
 

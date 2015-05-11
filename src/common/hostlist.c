@@ -309,23 +309,22 @@ static uint64_t grid_size = 1;
 /* used to protect the above grid, grid_start, and grid_end. */
 static pthread_mutex_t multi_dim_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static int _tell_if_used(int dim, int curr,
-			 int *start,
-			 int *end,
-			 int *last,
-			 int *found, int dims);
-static int _get_next_box(int *start, int *end, int dims);
-static int _get_boxes(char *buf, int max_len, int dims, int brackets);
-static void _set_box_in_grid(int dim, int curr,
-			     int *start,
-			     int *end,
-			     bool value, int dims);
 static int _add_box_ranges(int dim,  int curr,
 			   int *start,
 			   int *end,
 			   int *pos,
-			   struct _range *ranges,
-			   int len, int *count, int dims);
+			   struct _range * *ranges,
+			   int *capacity, int max_capacity, int *count,
+			   int dims);
+static int _get_next_box(int *start, int *end, int dims);
+static int _get_boxes(char *buf, int max_len, int dims, int brackets);
+static int _grow_ranges(struct _range * *ranges,	/* in/out */
+			int *capacity,			/* in/out */
+			int max_capacity);
+static void _set_box_in_grid(int dim, int curr,
+			     int *start,
+			     int *end,
+			     bool value, int dims);
 static void _set_min_max_of_grid(int dim, int curr,
 				 int *start,
 				 int *end,
@@ -333,6 +332,11 @@ static void _set_min_max_of_grid(int dim, int curr,
 				 int *max,
 				 int *pos, int dims);
 static void _set_grid(unsigned long start, unsigned long end, int dims);
+static int _tell_if_used(int dim, int curr,
+			 int *start,
+			 int *end,
+			 int *last,
+			 int *found, int dims);
 static bool _test_box_in_grid(int dim, int curr,
 			      int *start,
 			      int *end, int dims);
@@ -624,7 +628,7 @@ static int host_prefix_end(const char *hostname, int dims)
 static hostname_t hostname_create_dims(const char *hostname, int dims)
 {
 	hostname_t hn = NULL;
-	char *p = '\0';
+	char *p;
 	int idx = 0;
 	int hostlist_base;
 
@@ -1159,7 +1163,6 @@ static int hostrange_hn_within(hostrange_t hr, hostname_t hn)
 
 		if (ldiff > 0 && isdigit(hr->prefix[len1-1])
 		    && (strlen(hn->suffix) >= ldiff)) {
-			char *p = '\0';
 			/* Tack on ldiff of the hostname's suffix to that of
 			 * it's prefix */
 			hn->prefix = realloc(hn->prefix, len2+ldiff+1);
@@ -1174,7 +1177,7 @@ static int hostrange_hn_within(hostrange_t hr, hostname_t hn)
 			 * single dimension systems we will always use
 			 * the base 10.
 			 */
-			hn->num = strtoul(hn->suffix, &p, 10);
+			hn->num = strtoul(hn->suffix, NULL, 10);
 
 			/* Now compare them and see if they match */
 			if (strcmp(hr->prefix, hn->prefix) != 0)
@@ -1664,10 +1667,36 @@ hostlist_t _hostlist_create(const char *hostlist, char *sep,
 
 #endif                /* WANT_RECKLESS_HOSTRANGE_EXPANSION */
 
+static int _grow_ranges(struct _range * *ranges,	/* in/out */
+			int *capacity,			/* in/out */
+			int max_capacity)
+{
+	int new_capacity;
+
+	if ((*capacity) >= max_capacity) {
+		errno = EINVAL;
+		_error(__FILE__, __LINE__,
+		       "Can't grow ranges -- already at max");
+		return 0;
+	}
+	new_capacity = (*capacity) * 2 + 10;
+	if (new_capacity > max_capacity)
+		new_capacity = max_capacity;
+	xrealloc_nz((*ranges), (sizeof(struct _range) * new_capacity));
+	if ((*ranges) == NULL) {
+		errno = ENOMEM;
+		_error(__FILE__, __LINE__,
+		       "Can't grow ranges -- xrealloc() failed");
+		return 0;
+	}
+	*capacity = new_capacity;
+	return 1;
+}
 
 
-static int _parse_box_range(char *str, struct _range *ranges,
- 			    int len, int *count, int dims)
+static int _parse_box_range(char *str, struct _range * *ranges,
+			    int *capacity, int max_capacity, int *count,
+			    int dims)
 {
 	int start[dims], end[dims],
 		pos[dims];
@@ -1702,13 +1731,15 @@ static int _parse_box_range(char *str, struct _range *ranges,
 	memset(coord, 0, sizeof(coord));
 	memset(coord2, 0, sizeof(coord2));
 
-	for(i = 0; i<dims; i++) {
+	for (i = 0; i < dims; i++) {
 		coord[i] = alpha_num[start[i]];
 		coord2[i] = alpha_num[end[i]];
 	}
 /* 	info("adding ranges in %sx%s", coord, coord2); */
 
-	return _add_box_ranges(0, 0, start, end, pos, ranges, len, count, dims);
+	return _add_box_ranges(0, 0, start, end, pos,
+			       ranges, capacity, max_capacity, count,
+			       dims);
 }
 
 /* Grab a single range from str
@@ -1775,18 +1806,19 @@ error:
 
 /*
  * Convert 'str' containing comma separated digits and ranges into an array
- *  of struct _range types (max 'len' elements).
+ *  of struct _range types (dynamically allocated and resized).
  *
  * Return number of ranges created, or -1 on error.
  */
-static int _parse_range_list(char *str, struct _range *ranges,
-			     int len, int dims)
+static int _parse_range_list(char *str,
+			     struct _range * *ranges, int *capacity,
+			     int max_capacity, int dims)
 {
 	char *p;
 	int count = 0;
 
 	while (str) {
-		if (count == len) {
+		if (count == max_capacity) {
 			errno = EINVAL;
 			_error(__FILE__, __LINE__,
 			       "Too many ranges, can't process "
@@ -1799,10 +1831,17 @@ static int _parse_range_list(char *str, struct _range *ranges,
 		if ((dims > 1) &&
 		    (str[dims] == 'x') &&
 		    (strlen(str) == (dims * 2 + 1))) {
-			if (!_parse_box_range(str, ranges, len, &count, dims))
+			if (!_parse_box_range(str,
+					      ranges, capacity, max_capacity,
+					      &count, dims))
 				return -1;
 		} else {
-			if (!_parse_single_range(str, &ranges[count++], dims))
+			if (count >= (*capacity)) {
+				if (!_grow_ranges(ranges, capacity,
+						  max_capacity))
+					return -1;
+			}
+			if (!_parse_single_range(str, &(*ranges)[count++],dims))
 				return -1;
 		}
 		str = p;
@@ -1824,7 +1863,8 @@ _push_range_list(hostlist_t hl, char *prefix, struct _range *range,
 	strncpy(tmp_prefix, prefix, sizeof(tmp_prefix));
 	if (((p = strrchr(tmp_prefix, '[')) != NULL) &&
 	    ((q = strrchr(p, ']')) != NULL)) {
-		struct _range *prefix_range;
+		struct _range *prefix_range = NULL;
+		int pr_capacity = 0;
 		struct _range *saved_range = range, *pre_range;
 		unsigned long j, prefix_cnt = 0;
 		bool recurse = false;
@@ -1832,10 +1872,10 @@ _push_range_list(hostlist_t hl, char *prefix, struct _range *range,
 		*q++ = '\0';
 		if (strrchr(tmp_prefix, '[') != NULL)
 			recurse = true;
-		prefix_range = malloc(sizeof(struct _range) * MAX_RANGES);
-		nr = _parse_range_list(p, prefix_range, MAX_RANGES, dims);
+		nr = _parse_range_list(p, &prefix_range, &pr_capacity,
+				       MAX_RANGES, dims);
 		if (nr < 0) {
-			free(prefix_range);
+			xfree(prefix_range);
 			return -1;	/* bad numeric expression */
 		}
 		pre_range = prefix_range;
@@ -1844,7 +1884,7 @@ _push_range_list(hostlist_t hl, char *prefix, struct _range *range,
 			if (prefix_cnt > MAX_PREFIX_CNT) {
 				/* Prevent overflow of memory with user input
 				 * of something like "a[0-999999999].b[0-9]" */
-				free(prefix_range);
+				xfree(prefix_range);
 				return -1;
 			}
 			for (j = pre_range->lo; j <= pre_range->hi; j++) {
@@ -1869,7 +1909,7 @@ _push_range_list(hostlist_t hl, char *prefix, struct _range *range,
 			}
 			pre_range++;
 		}
-		free(prefix_range);
+		xfree(prefix_range);
 		return rc;
 	}
 
@@ -1890,7 +1930,8 @@ _hostlist_create_bracketed(const char *hostlist, char *sep,
 			   char *r_op, int dims)
 {
 	hostlist_t new = hostlist_new();
-	struct _range *ranges;
+	struct _range *ranges = NULL;
+	int capacity = 0;
 	int nr, err;
 	char *p, *tok, *str, *orig;
 	char cur_tok[1024];
@@ -1903,7 +1944,6 @@ _hostlist_create_bracketed(const char *hostlist, char *sep,
 		return NULL;
 	}
 
-	ranges = malloc(sizeof(struct _range) * MAX_RANGES);
 	while ((tok = _next_tok(sep, &str)) != NULL) {
 		strncpy(cur_tok, tok, 1024);
 		if ((p = strrchr(tok, '[')) != NULL) {
@@ -1914,8 +1954,10 @@ _hostlist_create_bracketed(const char *hostlist, char *sep,
 				if ((q[1] != ',') && (q[1] != '\0'))
 					goto error;
 				*q = '\0';
-				nr = _parse_range_list(p, ranges,
-						       MAX_RANGES, dims);
+				nr = _parse_range_list(p,
+						       &ranges,
+						       &capacity, MAX_RANGES,
+						       dims);
 				if (nr < 0)
 					goto error;
 				if (_push_range_list(
@@ -1939,7 +1981,7 @@ _hostlist_create_bracketed(const char *hostlist, char *sep,
 		} else
 			hostlist_push_host_dims(new, cur_tok, dims);
 	}
-	free(ranges);
+	xfree(ranges);
 
 	free(orig);
 	return new;
@@ -1947,7 +1989,7 @@ _hostlist_create_bracketed(const char *hostlist, char *sep,
 error:
 	err = errno = EINVAL;
 	hostlist_destroy(new);
-	free(ranges);
+	xfree(ranges);
 	free(orig);
 	seterrno_ret(err, NULL);
 }
@@ -2585,14 +2627,14 @@ char *hostlist_deranged_string_malloc(hostlist_t hl)
 char *hostlist_deranged_string_xmalloc_dims(hostlist_t hl, int dims)
 {
 	int buf_size = 8192;
-	char *buf = xmalloc(buf_size);
+	char *buf = xmalloc_nz(buf_size);
 
 	if (!dims)
 		dims = slurmdb_setup_cluster_name_dims();
 
 	while (hostlist_deranged_string_dims(hl, buf_size, buf, dims) < 0) {
 		buf_size *= 2;
-		xrealloc(buf, buf_size);
+		xrealloc_nz(buf, buf_size);
 	}
 	return buf;
 }
@@ -2967,8 +3009,9 @@ static int _add_box_ranges(int dim,  int curr,
 			   int *start,
 			   int *end,
 			   int *pos,
-			   struct _range *ranges,
-			   int len, int *count, int dims)
+			   struct _range * *ranges,
+			   int *capacity, int max_capacity,  int *count,
+			   int dims)
 {
 	int i;
 	int start_curr = curr;
@@ -2979,12 +3022,18 @@ static int _add_box_ranges(int dim,  int curr,
 			char new_str[(dims*2)+2];
 			memset(new_str, 0, sizeof(new_str));
 
-			if (*count == len) {
+			if ((*count) == max_capacity) {
 				errno = EINVAL;
 				_error(__FILE__, __LINE__,
 				       "Too many ranges, can't process "
 				       "entire list");
 				return 0;
+			}
+			if ((*count) >= (*capacity)) {
+				if (!_grow_ranges(ranges,
+						  capacity, max_capacity)) {
+					return 0;
+				}
 			}
 			new_str[dims] = '-';
 			for(i = 0; i<(dims-1); i++) {
@@ -2997,12 +3046,14 @@ static int _add_box_ranges(int dim,  int curr,
 
 /* 			info("got %s", new_str); */
 			if (!_parse_single_range(
-				    new_str, &ranges[*count], dims))
+				    new_str, &(*ranges)[(*count)], dims))
 				return 0;
 			(*count)++;
 		} else
 			if (!_add_box_ranges(dim+1, curr, start, end, pos,
-					    ranges, len, count, dims))
+					     ranges,
+					     capacity, max_capacity, count,
+					     dims))
 				return 0;
 	}
 	return 1;
@@ -3087,7 +3138,7 @@ _test_box(int *start, int *end, int dims)
 	if (!memcmp(start, end, dim_grid_size)) /* single node */
 		return false;
 
-	for (i = 0; i<dims; i++)
+	for (i = 0; i < dims; i++)
 		if (start[i] > end[i])
 			return false;
 
@@ -3107,15 +3158,14 @@ char *hostlist_ranged_string_malloc(hostlist_t hl)
 	return buf;
 }
 
-char *hostlist_ranged_string_xmalloc_dims(
-	hostlist_t hl, int dims, int brackets)
+char *hostlist_ranged_string_xmalloc_dims(hostlist_t hl, int dims, int brackets)
 {
 	int buf_size = 8192;
-	char *buf = xmalloc(buf_size);
+	char *buf = xmalloc_nz(buf_size);
 	while (hostlist_ranged_string_dims(
 		       hl, buf_size, buf, dims, brackets) < 0) {
 		buf_size *= 2;
-		xrealloc(buf, buf_size);
+		xrealloc_nz(buf, buf_size);
 	}
 	return buf;
 }

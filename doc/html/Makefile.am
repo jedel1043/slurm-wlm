@@ -47,6 +47,8 @@ generated_html = \
 	job_submit_plugins.html \
 	jobcompplugins.html \
 	launch_plugins.html \
+	licenses.html \
+	fair_tree.html \
 	mail.html \
 	man_index.html \
 	maui.html \
@@ -77,6 +79,7 @@ generated_html = \
 	reservations.html \
 	resource_limits.html \
 	rosetta.html \
+	route_plugin.html \
 	rpc.html \
 	sched_config.html \
 	schedplugins.html \
@@ -95,7 +98,8 @@ generated_html = \
 	topology.html \
 	topology_plugin.html \
 	troubleshoot.html \
-	tutorials.html
+	tutorials.html \
+	wckey.html
 
 html_DATA = \
 	${generated_html} \

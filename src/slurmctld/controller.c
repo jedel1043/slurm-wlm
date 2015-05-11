@@ -3,6 +3,7 @@
  *****************************************************************************
  *  Copyright (C) 2002-2007 The Regents of the University of California.
  *  Copyright (C) 2008-2010 Lawrence Livermore National Security.
+ *  Portions Copyright (C) 2010-2014 SchedMD LLC.
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
  *  Written by Morris Jette <jette1@llnl.gov>, Kevin Tew <tew1@llnl.gov>
  *  CODE-OCEC-09-009. All rights reserved.
@@ -67,6 +68,7 @@
 #include "src/common/fd.h"
 #include "src/common/gres.h"
 #include "src/common/hostlist.h"
+#include "src/common/layouts_mgr.h"
 #include "src/common/log.h"
 #include "src/common/macros.h"
 #include "src/common/node_select.h"
@@ -79,6 +81,7 @@
 #include "src/common/slurm_auth.h"
 #include "src/common/slurm_ext_sensors.h"
 #include "src/common/slurm_jobcomp.h"
+#include "src/common/slurm_route.h"
 #include "src/common/slurm_topology.h"
 #include "src/common/slurm_priority.h"
 #include "src/common/slurm_protocol_api.h"
@@ -163,38 +166,38 @@ log_options_t log_opts = LOG_OPTS_INITIALIZER;
 log_options_t sched_log_opts = SCHEDLOG_OPTS_INITIALIZER;
 
 /* Global variables */
+int	accounting_enforce = 0;
+int	association_based_accounting = 0;
+void *	acct_db_conn = NULL;
+int	batch_sched_delay = 3;
+int	bg_recover = DEFAULT_RECOVER;
+uint32_t cluster_cpus = 0;
+time_t	last_proc_req_start = 0;
+bool	ping_nodes_now = false;
+int	sched_interval = 60;
+char *	slurmctld_cluster_name = NULL; /* name of cluster */
 slurmctld_config_t slurmctld_config;
-int bg_recover = DEFAULT_RECOVER;
-char *slurmctld_cluster_name = NULL; /* name of cluster */
-void *acct_db_conn = NULL;
-int accounting_enforce = 0;
-int association_based_accounting = 0;
-bool ping_nodes_now = false;
-uint32_t      cluster_cpus = 0;
-int   with_slurmdbd = 0;
-bool want_nodes_reboot = true;
-int   batch_sched_delay = 3;
-int   sched_interval = 60;
-int   slurmctld_primary = 1;
-
-/* Next used for stats/diagnostics */
 diag_stats_t slurmctld_diag_stats;
+int	slurmctld_primary = 1;
+bool	want_nodes_reboot = true;
+int	with_slurmdbd = 0;
 
 /* Local variables */
+static pthread_t assoc_cache_thread = (pthread_t) 0;
 static int	daemonize = DEFAULT_DAEMONIZE;
 static int	debug_level = 0;
-static char	*debug_logfile = NULL;
-static bool     dump_core = false;
+static char *	debug_logfile = NULL;
+static bool	dump_core = false;
+static int      job_sched_cnt = 0;
 static uint32_t max_server_threads = MAX_SERVER_THREADS;
+static time_t	next_stats_reset = 0;
 static int	new_nice = 0;
 static char	node_name[MAX_SLURM_NAME];
 static int	recover   = DEFAULT_RECOVER;
+static pthread_mutex_t sched_cnt_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t server_thread_cond = PTHREAD_COND_INITIALIZER;
 static pid_t	slurmctld_pid;
-static char    *slurm_conf_filename;
-static pthread_t assoc_cache_thread = (pthread_t) 0;
-static pthread_mutex_t sched_cnt_mutex = PTHREAD_MUTEX_INITIALIZER;
-static int      job_sched_cnt = 0;
+static char *	slurm_conf_filename;
 
 /*
  * Static list of signals to block in this process
@@ -234,9 +237,6 @@ static void         _update_nice(void);
 inline static void  _usage(char *prog_name);
 static bool         _valid_controller(void);
 static bool         _wait_for_server_thread(void);
-
-time_t last_proc_req_start = 0;
-time_t next_stats_reset = 0;
 
 /* main - slurmctld main function, start various threads and process RPCs */
 int main(int argc, char *argv[])
@@ -605,6 +605,8 @@ int main(int argc, char *argv[])
 		recover = 2;
 	}
 
+	slurm_layouts_fini();
+
 	/* Since pidfile is created as user root (its owner is
 	 *   changed to SlurmUser) SlurmUser may not be able to
 	 *   remove it, so this is not necessarily an error. */
@@ -621,15 +623,15 @@ int main(int argc, char *argv[])
 
 
 	/* Give running agents a chance to complete and free memory.
-	 * Wait up to 60 seconds (3 seconds * 20) */
-	for (i=0; i<20; i++) {
+	 * Wait up to 60 seconds. */
+	for (i=0; i<60; i++) {
 		agent_purge();
-		sleep(3);
+		usleep(100000);
 		cnt = get_agent_count();
 		if (cnt == 0)
 			break;
 	}
-	if (i >= 10)
+	if (cnt)
 		error("Left %d agent threads active", cnt);
 
 	slurm_sched_fini();	/* Stop all scheduling */
@@ -645,6 +647,7 @@ int main(int argc, char *argv[])
 	assoc_mgr_fini(dir_name);
 	xfree(dir_name);
 	reserve_port_config(NULL);
+	free_rpc_stats();
 
 	/* Some plugins are needed to purge job/node data structures,
 	 * unplug after other data structures are purged */
@@ -660,6 +663,7 @@ int main(int argc, char *argv[])
 	checkpoint_fini();
 	slurm_auth_fini();
 	switch_fini();
+	route_fini();
 
 	/* purge remaining data structures */
 	license_free();
@@ -667,17 +671,17 @@ int main(int argc, char *argv[])
 	slurm_crypto_fini();	/* must be after ctx_destroy */
 	slurm_conf_destroy();
 	slurm_api_clear_config();
-	sleep(2);
+	usleep(500000);
 }
 #else
 	/* Give REQUEST_SHUTDOWN a chance to get propagated,
 	 * up to 3 seconds. */
-	for (i=0; i<3; i++) {
+	for (i=0; i<30; i++) {
 		agent_purge();
 		cnt = get_agent_count();
 		if (cnt == 0)
 			break;
-		sleep(1);
+		usleep(100000);
 	}
 #ifdef HAVE_BG
 	/* Always call slurm_select_fini() on some systems like
@@ -782,6 +786,7 @@ static void _reconfigure_slurm(void)
 	slurm_sched_g_partition_change();	/* notify sched plugin */
 	unlock_slurmctld(config_write_lock);
 	assoc_mgr_set_missing_uids();
+	acct_storage_g_reconfig(acct_db_conn, 0);
 	start_power_mgr(&slurmctld_config.thread_id_power);
 	trigger_reconfig();
 	priority_g_reconfig(true);	/* notify priority plugin too */
@@ -805,6 +810,12 @@ static void *_slurmctld_signal_hand(void *no_data)
 	int sig_array[] = {SIGINT, SIGTERM, SIGHUP, SIGABRT, 0};
 	sigset_t set;
 
+#if HAVE_SYS_PRCTL_H
+	if (prctl(PR_SET_NAME, "slurmctld_sigmgr", NULL, NULL, NULL) < 0) {
+		error("%s: cannot set my name to %s %m",
+		      __func__, "slurmctld_sigmgr");
+	}
+#endif
 	(void) pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	(void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
@@ -879,6 +890,13 @@ static void *_slurmctld_rpc_mgr(void *no_data)
 		READ_LOCK, NO_LOCK, NO_LOCK, NO_LOCK };
 	int sigarray[] = {SIGUSR1, 0};
 	char* node_addr = NULL;
+
+#if HAVE_SYS_PRCTL_H
+	if (prctl(PR_SET_NAME, "slurmctld_rpcmgr", NULL, NULL, NULL) < 0) {
+		error("%s: cannot set my name to %s %m",
+		      __func__, "slurmctld_rpcmgr");
+	}
+#endif
 
 	(void) pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	(void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
@@ -1024,6 +1042,12 @@ static void *_service_connection(void *arg)
 	void *return_code = NULL;
 	slurm_msg_t *msg = xmalloc(sizeof(slurm_msg_t));
 
+#if HAVE_SYS_PRCTL_H
+	if (prctl(PR_SET_NAME, "slurmctld_srvcn", NULL, NULL, NULL) < 0) {
+		error("%s: cannot set my name to %s %m",
+		      __func__, "slurmctld_srvcn");
+	}
+#endif
 	slurm_msg_t_init(msg);
 	/*
 	 * slurm_receive_msg sets msg connection fd to accepted fd. This allows
@@ -1299,8 +1323,14 @@ static void _queue_reboot_msg(void)
 			reboot_agent_args->msg_type = REQUEST_REBOOT_NODES;
 			reboot_agent_args->retry = 0;
 			reboot_agent_args->hostlist = hostlist_create(NULL);
+			reboot_agent_args->protocol_version =
+				SLURM_PROTOCOL_VERSION;
 		}
-		hostlist_push(reboot_agent_args->hostlist, node_ptr->name);
+		if (reboot_agent_args->protocol_version
+		    > node_ptr->protocol_version)
+			reboot_agent_args->protocol_version =
+				node_ptr->protocol_version;
+		hostlist_push_host(reboot_agent_args->hostlist, node_ptr->name);
 		reboot_agent_args->node_count++;
 		node_ptr->node_state &= ~NODE_STATE_MAINT;
 		node_ptr->node_state &=  NODE_STATE_FLAGS;
@@ -1352,6 +1382,7 @@ static void *_slurmctld_background(void *no_data)
 	time_t now;
 	int no_resp_msg_interval, ping_interval, purge_job_interval;
 	int group_time, group_force;
+	int i;
 	uint32_t job_limit;
 	DEF_TIMERS;
 
@@ -1413,8 +1444,10 @@ static void *_slurmctld_background(void *no_data)
 	debug3("_slurmctld_background pid = %u", getpid());
 
 	while (1) {
-		if (slurmctld_config.shutdown_time == 0)
-			sleep(1);
+		for (i = 0; ((i < 10) && (slurmctld_config.shutdown_time == 0));
+		     i++) {
+			usleep(100000);
+		}
 
 		now = time(NULL);
 		START_TIMER;
@@ -1427,12 +1460,11 @@ static void *_slurmctld_background(void *no_data)
 			no_resp_msg_interval = 1;
 
 		if (slurmctld_config.shutdown_time) {
-			int i;
 			/* wait for RPC's to complete */
-			for (i = 1; i < CONTROL_TIMEOUT; i++) {
+			for (i = 1; i < (CONTROL_TIMEOUT * 10); i++) {
 				if (slurmctld_config.server_thread_count == 0)
 					break;
-				sleep(1);
+				usleep(100000);
 			}
 			if (slurmctld_config.server_thread_count)
 				info("shutdown server_thread_count=%d",
@@ -1479,8 +1511,13 @@ static void *_slurmctld_background(void *no_data)
 		    (difftime(now, last_health_check_time) >=
 		     slurmctld_conf.health_check_interval) &&
 		    is_ping_done()) {
-			now = time(NULL);
-			last_health_check_time = now;
+			if (slurmctld_conf.health_check_node_state &
+			     HEALTH_CHECK_CYCLE) {
+				/* Call run_health_check() on each cycle */
+			} else {
+				now = time(NULL);
+				last_health_check_time = now;
+			}
 			lock_slurmctld(node_write_lock);
 			run_health_check();
 			unlock_slurmctld(node_write_lock);
@@ -1582,12 +1619,14 @@ static void *_slurmctld_background(void *no_data)
 			job_sched_cnt = 0;
 			slurm_mutex_unlock(&sched_cnt_mutex);
 			last_full_sched_time = now;
-		} else if (job_sched_cnt &&
-			   (difftime(now, last_sched_time) >=
-			    batch_sched_delay)) {
+		} else {
 			slurm_mutex_lock(&sched_cnt_mutex);
-			job_limit = 0;	/* Default depth */
-			job_sched_cnt = 0;
+			if (job_sched_cnt &&
+			    (difftime(now, last_sched_time) >=
+			     batch_sched_delay)) {
+				job_limit = 0;	/* Default depth */
+				job_sched_cnt = 0;
+			}
 			slurm_mutex_unlock(&sched_cnt_mutex);
 		}
 		if (job_limit != NO_VAL) {
@@ -2287,7 +2326,7 @@ static void *_assoc_cache_mgr(void *no_data)
 			if ((assoc_mgr_fill_in_qos(
 				    acct_db_conn, &qos_rec,
 				    accounting_enforce,
-				    (slurmdb_qos_rec_t **)&job_ptr->qos_ptr))
+				    (slurmdb_qos_rec_t **)&job_ptr->qos_ptr, 0))
 			   != SLURM_SUCCESS) {
 				verbose("Invalid qos (%u) for job_id %u",
 					job_ptr->qos_id, job_ptr->job_id);

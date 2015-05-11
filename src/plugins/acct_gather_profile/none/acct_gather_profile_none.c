@@ -93,7 +93,7 @@ const uint32_t plugin_version = 100;
  */
 extern int init(void)
 {
-	verbose("%s loaded", plugin_name);
+	debug("%s loaded", plugin_name);
 	return SLURM_SUCCESS;
 }
 
@@ -135,7 +135,12 @@ extern int acct_gather_profile_p_node_step_start(stepd_step_rec_t* job)
 	return SLURM_SUCCESS;
 }
 
-extern int acct_gather_profile_p_node_step_end()
+extern int acct_gather_profile_p_child_forked(void)
+{
+	return SLURM_SUCCESS;
+}
+
+extern int acct_gather_profile_p_node_step_end(void)
 {
 	return SLURM_SUCCESS;
 }

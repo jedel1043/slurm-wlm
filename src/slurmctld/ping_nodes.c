@@ -366,7 +366,9 @@ extern void run_health_check(void)
 	front_end_record_t *front_end_ptr;
 #else
 	struct node_record *node_ptr;
-	int node_states = slurmctld_conf.health_check_node_state;
+	int node_test_cnt = 0, node_limit, node_states, run_cyclic;
+	static int base_node_loc = -1;
+	static time_t cycle_start_time = (time_t) 0;
 #endif
 	int i;
 	char *host_str = NULL;
@@ -383,25 +385,63 @@ extern void run_health_check(void)
 	check_agent_args = xmalloc (sizeof (agent_arg_t));
 	check_agent_args->msg_type = REQUEST_HEALTH_CHECK;
 	check_agent_args->retry = 0;
+	check_agent_args->protocol_version = SLURM_PROTOCOL_VERSION;
 	check_agent_args->hostlist = hostlist_create(NULL);
 #ifdef HAVE_FRONT_END
 	for (i = 0, front_end_ptr = front_end_nodes;
 	     i < front_end_node_cnt; i++, front_end_ptr++) {
 		if (IS_NODE_NO_RESPOND(front_end_ptr))
 			continue;
+		if (check_agent_args->protocol_version >
+		    front_end_ptr->protocol_version)
+			check_agent_args->protocol_version =
+				front_end_ptr->protocol_version;
 		hostlist_push_host(check_agent_args->hostlist,
 				   front_end_ptr->name);
 		check_agent_args->node_count++;
 	}
 #else
+	node_limit = 0;
+	run_cyclic = slurmctld_conf.health_check_node_state &
+		     HEALTH_CHECK_CYCLE;
+	node_states = slurmctld_conf.health_check_node_state &
+		      (~HEALTH_CHECK_CYCLE);
+	if (run_cyclic) {
+		time_t now = time(NULL);
+		if (cycle_start_time == (time_t) 0)
+			cycle_start_time = now;
+		else if (base_node_loc >= 0)
+			;	/* mid-cycle */
+		else if (difftime(now, cycle_start_time) <
+			 slurmctld_conf.health_check_interval) {
+			return;	/* Wait to start next cycle */
+		}
+		cycle_start_time = now;
+		/* Determine how many nodes we want to test on each call of
+		 * run_health_check() to spread out the work. */
+		node_limit = (node_record_count * 2) /
+			     slurmctld_conf.health_check_interval;
+		node_limit = MAX(node_limit, 10);
+	}
 	if ((node_states != HEALTH_CHECK_NODE_ANY) &&
 	    (node_states != HEALTH_CHECK_NODE_IDLE)) {
 		/* Update each node's alloc_cpus count */
 		select_g_select_nodeinfo_set_all();
 	}
 
-	for (i=0, node_ptr=node_record_table_ptr;
-	     i<node_record_count; i++, node_ptr++) {
+	for (i = 0; i < node_record_count; i++) {
+		if (run_cyclic) {
+			if (node_test_cnt++ >= node_limit)
+				break;
+			base_node_loc++;
+			if (base_node_loc >= node_record_count) {
+				base_node_loc = -1;
+				break;
+			}
+			node_ptr = node_record_table_ptr + base_node_loc;
+		} else {
+			node_ptr = node_record_table_ptr + i;
+		}
 		if (IS_NODE_NO_RESPOND(node_ptr) || IS_NODE_FUTURE(node_ptr) ||
 		    IS_NODE_POWER_SAVE(node_ptr))
 			continue;
@@ -441,10 +481,15 @@ extern void run_health_check(void)
 					continue;
 			}
 		}
-
+		if (check_agent_args->protocol_version >
+		    node_ptr->protocol_version)
+			check_agent_args->protocol_version =
+				node_ptr->protocol_version;
 		hostlist_push_host(check_agent_args->hostlist, node_ptr->name);
 		check_agent_args->node_count++;
 	}
+	if (run_cyclic && (i >= node_record_count))
+		base_node_loc = -1;
 #endif
 
 	if (check_agent_args->node_count == 0) {
@@ -476,6 +521,7 @@ extern void update_nodes_acct_gather_data(void)
 	agent_args = xmalloc (sizeof (agent_arg_t));
 	agent_args->msg_type = REQUEST_ACCT_GATHER_UPDATE;
 	agent_args->retry = 0;
+	agent_args->protocol_version = SLURM_PROTOCOL_VERSION;
 	agent_args->hostlist = hostlist_create(NULL);
 
 #ifdef HAVE_FRONT_END
@@ -483,6 +529,11 @@ extern void update_nodes_acct_gather_data(void)
 	     i < front_end_node_cnt; i++, front_end_ptr++) {
 		if (IS_NODE_NO_RESPOND(front_end_ptr))
 			continue;
+		if (agent_args->protocol_version >
+		    front_end_ptr->protocol_version)
+			agent_args->protocol_version =
+				front_end_ptr->protocol_version;
+
 		hostlist_push_host(agent_args->hostlist, front_end_ptr->name);
 		agent_args->node_count++;
 	}
@@ -492,6 +543,9 @@ extern void update_nodes_acct_gather_data(void)
 		if (IS_NODE_NO_RESPOND(node_ptr) || IS_NODE_FUTURE(node_ptr) ||
 		    IS_NODE_POWER_SAVE(node_ptr))
 			continue;
+		if (agent_args->protocol_version > node_ptr->protocol_version)
+			agent_args->protocol_version =
+				node_ptr->protocol_version;
 		hostlist_push_host(agent_args->hostlist, node_ptr->name);
 		agent_args->node_count++;
 	}

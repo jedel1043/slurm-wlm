@@ -61,7 +61,7 @@ way to run "regression" is to write its standard output to one file and
 either write standard error to another file or print it to the terminal.
 Execution time of the full test suite is roughly 80 minutes, but can vary
 considerably with the architecture, configuration, and system load. Some
-tests send e-mail, so check for four e-mail messages set the the user
+tests send e-mail, so check for four e-mail messages sent to the user
 running the tests. Here is an example.
     $ ./regression >slurm.test.tux.Aug3
     Completions:357
@@ -167,20 +167,16 @@ test1.62   Test of gres/gpu plugin (if configured).
 test1.63   Test of srun --disable-status/-X option, SIGINT to be sent to tasks.
 test1.64   Test interruption of srun while waiting for resource allocation.
 test1.65   Test of srun --mpi=list option.
-test1.66   Test srun to make sure that the jobs are running on the correct node
-	    within a allocation.
-test1.67   Test that an srun program can move from the background to the
-	   foreground.
-test1.68   Test that an srun program can move from the foreground to the
-	   background.
-test1.69   Test that multiple srun programs execute simultaneously in the
-	   background.
+test1.66   Validates srun steps run on the correct node within a allocation.
+test1.67   Test srun program movement between background and foreground.
+test1.68   Test srun program movement between foreground and background.
+test1.69   Test multiple background srun programs execute simultaneously.
 test1.70   Validates that srun standard input and output work with binary files.
 test1.71   Validates that srun exit code matches that of a test program.
-test1.72   Validate that the JobAcctGatherFrequency value is enforced when
-	   used in srun.
-test1.73   Validate that the OverTimeLimit value set in the slurm.conf
-	   file is enforce when running a job with a timelimit.
+test1.72   Validate JobAcctGatherFrequency configuration parameter is enforced.
+test1.73   Validate OverTimeLimit configuration parameter is enforced.
+test1.74   Validate MaxNode and GrpNode limit enforcment with QoS & association.
+test1.75   Test that --cpu-freq is enforced when using non-numeric values
 
 **NOTE**   The following tests attempt to utilize multiple CPUs or partitions,
 	   The test will print "WARNING" and terminate with an exit code of
@@ -210,6 +206,7 @@ test1.94   Test of MPICH2 task spawn logic
 test1.95   Basic UPC (Unified Parallel C) test via srun.
 test1.96   Basic SHMEM test via srun.
 test1.97   Test that --ntask-per-node and -c options are enforced
+test1.99   Validate that SrunPortRange is enforced when using srun
 **NOTE**   The above tests for multiple processor/partition systems only
 
 test2.#    Testing of scontrol options (to be run as unprivileged user).
@@ -245,7 +242,7 @@ test3.#    Testing of scontrol options (best run as SlurmUser or root).
 test3.1    Validate scontrol reconfigure command.
 test3.2    Validate scontrol update command for partitions.
 test3.3    Validate scontrol update command for nodes.
-test3.4    Validate scontrol update command for jobs.
+test3.4    Validate scontrol update command for jobs by JobID.
 test3.5    Validate scontrol create, delete, and update of partition.
 test3.6    Testing of hidden partitions.
 test3.7    Test of job suspend/resume.
@@ -254,6 +251,7 @@ test3.9    Test of "scontrol show slurmd"
 test3.10   Test of "scontrol notify <jobid> <message>"
 test3.11   Validate scontrol create, delete, and update of reservations.
 test3.12   Validate scontrol update command for front end nodes.
+test3.13   Validate scontrol update command for jobs by JobName and UserID.
 UNTESTED   "scontrol abort"    would stop slurm
 UNTESTED   "scontrol shutdown" would stop slurm
 
@@ -291,6 +289,8 @@ test5.6    Test squeue filtering (--jobs, --nodelist, --states, --steps and
 test5.7    Confirm that squeue verbose option works (--verbose option).
 test5.8    Confirm that squeue reports a proper version number (--version
 	   option).
+test5.9    Validate that squeue -O displays correct job/step format.
+test5.10   Validate that squeue --priority is listing jobs by priority.
 
 
 test6.#    Testing of scancel options.
@@ -337,12 +337,13 @@ test7.9    Test that no files are open in spawned tasks (except stdin,
 test7.10   Test if we can trick SLURM into using the wrong user ID
 	   through an LD_PRELOAD option.
 test7.11   Test of SPANK plugin.
-test7.12   Test of slurm_job_step_stat() API call.
+test7.12   Test of slurm_job_step_stat() and slurm_load_job() API calls.
 test7.13   Verify the correct setting of a job's ExitCode
 test7.14   Verify the ability to modify the Derived Exit Code/String fields
 	   of a job record in the database
 test7.15   Verify signal mask of tasks have no ignored signals.
 test7.16   Verify that auth/munge credential is properly validated.
+test7.17   Test GRES APIs.
 
 
 test8.#    Test of Blue Gene specific functionality.
@@ -429,6 +430,7 @@ test12.4   Test sacct --b, g, j, l, n, p, u, v options.
 test12.5   Test sacct --helpformat option.
 test12.6   Test hdf5 acct_gather_profile (--profile=task)
 test12.7   Validate that -D shows the correct state when jobs are requeued.
+test12.8   Validate that a job step reports TIMEOUT inside accounting.
 
 test13.#   Testing of switch plugins
 ====================================
@@ -488,6 +490,7 @@ test15.23  Test of environment variables that control salloc actions:
 test15.24  Test of --overcommit option.
 test15.25  Test of job account(--account option).
 test15.26  Test interruption of salloc while waiting for resource allocation.
+test15.27  Test salloc --exclusive allocates all cpus on node.
 
 test16.#   Testing of sattach options.
 ======================================
@@ -549,6 +552,10 @@ test17.31  Tests #PBS entry functionality in a batch script.
 test17.32  Test of --overcommit option.
 test17.33  Test of --open-mode option.
 test17.34  Test of --core-spec option.
+test17.35  Test performance/timing of job submissions.
+test17.36  Test that the shared option in partitions is enforced.
+test17.37  Validate that afternotok dependency is enforced.
+test17.38  Test for sbatch --signal.
 
 
 test19.#   Testing of strigger options.
@@ -560,6 +567,8 @@ test19.4   strigger --set --reconfig
 test19.5   strigger --set (job options)
 test19.6   strigger --clear and --get (with filtering)
 test19.7   strigger --set --idle
+test19.8   strigger --noheader
+test19.9   Validate that duplicate triggers cannot be submitted
 
 
 test20.#   Testing of PBS commands and Perl APIs.
@@ -631,7 +640,8 @@ test24.#   Testing of sshare/priority multifactor plugin.
 =========================================================
 test24.1   multifactor plugin algo test
 test24.2   sshare h, n, p, P, v, and V options.
-
+test24.3   multifactor plugin algo test for fairshare=parent
+test24.4   Test of Fair Tree multifactor
 
 test25.#   Testing of sprio command and options.
 ================================================
@@ -705,3 +715,13 @@ test32.9   Validates that sgather -p option perserves file state.
 test32.10  Validates that sgather -r copies files recursively.
 test32.11  Validates that sgather -v prints the output logging of the job.
 test32.12  Validates that sgather -t changes the timeout message.
+
+test33.#   Test of message forwarding.
+======================================
+test33.1   Validates the route_g_splithost api of the route plugin correctly
+           splits hostlists.
+
+test34.*   Test of Slurm preemption.
+====================================
+test34.1   Validate that partition PreemptMode is enforced.
+test34.2   Validate that qos PreemptMode is enforced.

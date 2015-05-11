@@ -47,8 +47,6 @@
 #include "src/slurmd/slurmd/slurmd.h"
 
 #include "src/common/xstring.h"
-#include "src/common/xcgroup_read_config.h"
-#include "src/common/xcgroup.h"
 
 #include "task_cgroup.h"
 
@@ -86,6 +84,8 @@ static uint64_t percent_in_bytes (uint64_t mb, float percent)
 
 extern int task_cgroup_memory_init(slurm_cgroup_conf_t *slurm_cgroup_conf)
 {
+	xcgroup_t memory_cg;
+
 	/* initialize user/job/jobstep cgroup relative paths */
 	user_cgroup_path[0]='\0';
 	job_cgroup_path[0]='\0';
@@ -97,6 +97,12 @@ extern int task_cgroup_memory_init(slurm_cgroup_conf_t *slurm_cgroup_conf)
 		error("task/cgroup: unable to create memory namespace");
 		return SLURM_ERROR;
 	}
+
+	/* Enable memory.use_hierarchy in the root of the cgroup.
+	 */
+	xcgroup_create(&memory_ns, &memory_cg, "", 0, 0);
+	xcgroup_set_param(&memory_cg, "memory.use_hierarchy","1");
+	xcgroup_destroy(&memory_cg);
 
 	constrain_ram_space = slurm_cgroup_conf->constrain_ram_space;
 	constrain_swap_space = slurm_cgroup_conf->constrain_swap_space;
@@ -303,15 +309,12 @@ static int memcg_initialize (xcgroup_ns_t *ns, xcgroup_t *cg,
 extern int task_cgroup_memory_create(stepd_step_rec_t *job)
 {
 	int fstatus = SLURM_ERROR;
-
 	xcgroup_t memory_cg;
-
 	uint32_t jobid = job->jobid;
 	uint32_t stepid = job->stepid;
 	uid_t uid = job->uid;
 	gid_t gid = job->gid;
-
-	char* slurm_cgpath ;
+	char *slurm_cgpath;
 
 	/* create slurm root cg in this cg namespace */
 	slurm_cgpath = task_cgroup_create_slurm_cg(&memory_ns);
@@ -343,11 +346,24 @@ extern int task_cgroup_memory_create(stepd_step_rec_t *job)
 
 	/* build job step cgroup relative path (should not be) */
 	if (*jobstep_cgroup_path == '\0') {
-		if (snprintf(jobstep_cgroup_path,PATH_MAX,"%s/step_%u",
-			      job_cgroup_path,stepid) >= PATH_MAX) {
-			error("task/cgroup: unable to build job step %u memory "
-			      "cg relative path : %m",stepid);
-			return SLURM_ERROR;
+		int cc;
+
+		if (stepid == NO_VAL) {
+			cc = snprintf(jobstep_cgroup_path, PATH_MAX,
+				      "%s/step_batch", job_cgroup_path);
+			if (cc >= PATH_MAX) {
+				error("task/cgroup: unable to build "
+				      "step batch memory cg path : %m");
+
+			}
+
+		} else {
+			if (snprintf(jobstep_cgroup_path, PATH_MAX, "%s/step_%u",
+				     job_cgroup_path,stepid) >= PATH_MAX) {
+				error("task/cgroup: unable to build job step %u memory "
+				      "cg relative path : %m",stepid);
+				return SLURM_ERROR;
+			}
 		}
 	}
 

@@ -45,18 +45,11 @@
 #  include <pthread.h>
 #endif
 
-#if defined(__NetBSD__)
-#include <sys/types.h> /* for pid_t */
-#include <sys/signal.h> /* for SIGKILL */
-#endif
-#if defined(__FreeBSD__)
-#include <signal.h>
-#endif
-
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -77,10 +70,8 @@
 #define MAX_PROG_TIME 300	/* maximum run time for program */
 
 /* Change TRIGGER_STATE_VERSION value when changing the state save format */
-#define TRIGGER_STATE_VERSION        "VER004"
+#define TRIGGER_STATE_VERSION        "PROTOCOL_VERSION"
 #define TRIGGER_14_03_STATE_VERSION  "VER004"	/* SLURM version 14.03 */
-#define TRIGGER_2_6_STATE_VERSION    "VER004"	/* SLURM version 2.6 */
-#define TRIGGER_2_5_STATE_VERSION    "VER004"	/* SLURM version 2.5 */
 
 List trigger_list;
 uint32_t next_trigger_id = 1;
@@ -400,8 +391,8 @@ static bool _duplicate_trigger(trigger_info_t *trig_desc)
 		    (trig_desc->trig_type == trig_rec->trig_type)  &&
 		    (trig_desc->offset    == trig_rec->trig_time)  &&
 		    (trig_desc->user_id   == trig_rec->user_id)    &&
-		    !strcmp(trig_desc->program, trig_rec->program) &&
-		    !strcmp(trig_desc->res_id, trig_rec->res_id)) {
+		    !xstrcmp(trig_desc->program, trig_rec->program) &&
+		    !xstrcmp(trig_desc->res_id, trig_rec->res_id)) {
 			found_dup = true;
 			break;
 		}
@@ -738,7 +729,7 @@ static int _load_trigger_state(Buf buffer, uint16_t protocol_version)
 
 	trig_ptr = xmalloc(sizeof(trig_mgr_info_t));
 
-	if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
 		/* restore trigger pull state flags */
 		safe_unpack8(&ctld_failure, buffer);
 		safe_unpack8(&bu_ctld_failure, buffer);
@@ -822,6 +813,7 @@ extern int trigger_state_save(void)
 
 	/* write header: version, time */
 	packstr(TRIGGER_STATE_VERSION, buffer);
+	pack16(SLURM_PROTOCOL_VERSION, buffer);
 	pack_time(time(NULL), buffer);
 
 	/* write individual trigger records */
@@ -969,12 +961,13 @@ extern void trigger_state_restore(void)
 	buffer = create_buf(data, data_size);
 	safe_unpackstr_xmalloc(&ver_str, &ver_str_len, buffer);
 	if (ver_str) {
+		/* 14.03 and 2.6 all had the same version, so just go
+		   with 14.03 here.
+		*/
 		if (!strcmp(ver_str, TRIGGER_STATE_VERSION))
-			protocol_version = SLURM_PROTOCOL_VERSION;
-		else if (!strcmp(ver_str, TRIGGER_2_6_STATE_VERSION))
-			protocol_version = SLURM_2_6_PROTOCOL_VERSION;
-		else if (!strcmp(ver_str, TRIGGER_2_5_STATE_VERSION))
-			protocol_version = SLURM_2_5_PROTOCOL_VERSION;
+			safe_unpack16(&protocol_version, buffer);
+		else if (!strcmp(ver_str, TRIGGER_14_03_STATE_VERSION))
+			protocol_version = SLURM_14_03_PROTOCOL_VERSION;
 	}
 
 	if (protocol_version == (uint16_t) NO_VAL) {

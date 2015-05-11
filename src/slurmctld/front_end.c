@@ -59,7 +59,6 @@
 /* Change FRONT_END_STATE_VERSION value when changing the state save format */
 #define FRONT_END_STATE_VERSION        "PROTOCOL_VERSION"
 #define FRONT_END_2_6_STATE_VERSION    "VER001"	/* SLURM version 2.6 */
-#define FRONT_END_2_5_STATE_VERSION    "VER001"	/* SLURM version 2.5 */
 
 front_end_record_t *front_end_nodes = NULL;
 uint16_t front_end_node_cnt = 0;
@@ -75,7 +74,7 @@ static void _dump_front_end_state(front_end_record_t *front_end_ptr,
 				  Buf buffer)
 {
 	packstr  (front_end_ptr->name, buffer);
-	pack16   (front_end_ptr->node_state, buffer);
+	pack32   (front_end_ptr->node_state, buffer);
 	packstr  (front_end_ptr->reason, buffer);
 	pack_time(front_end_ptr->reason_time, buffer);
 	pack32   (front_end_ptr->reason_uid, buffer);
@@ -129,7 +128,22 @@ static int _open_front_end_state_file(char **state_file)
 static void _pack_front_end(struct front_end_record *dump_front_end_ptr,
 			    Buf buffer, uint16_t protocol_version)
 {
-	if (protocol_version >= SLURM_14_03_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_14_11_PROTOCOL_VERSION) {
+		packstr(dump_front_end_ptr->allow_groups, buffer);
+		packstr(dump_front_end_ptr->allow_users, buffer);
+		pack_time(dump_front_end_ptr->boot_time, buffer);
+		packstr(dump_front_end_ptr->deny_groups, buffer);
+		packstr(dump_front_end_ptr->deny_users, buffer);
+		packstr(dump_front_end_ptr->name, buffer);
+		pack32(dump_front_end_ptr->node_state, buffer);
+		packstr(dump_front_end_ptr->version, buffer);
+
+		packstr(dump_front_end_ptr->reason, buffer);
+		pack_time(dump_front_end_ptr->reason_time, buffer);
+		pack32(dump_front_end_ptr->reason_uid, buffer);
+
+		pack_time(dump_front_end_ptr->slurmd_start_time, buffer);
+	} else if (protocol_version >= SLURM_14_03_PROTOCOL_VERSION) {
 		packstr(dump_front_end_ptr->allow_groups, buffer);
 		packstr(dump_front_end_ptr->allow_users, buffer);
 		pack_time(dump_front_end_ptr->boot_time, buffer);
@@ -150,16 +164,6 @@ static void _pack_front_end(struct front_end_record *dump_front_end_ptr,
 		pack_time(dump_front_end_ptr->boot_time, buffer);
 		packstr(dump_front_end_ptr->deny_groups, buffer);
 		packstr(dump_front_end_ptr->deny_users, buffer);
-		packstr(dump_front_end_ptr->name, buffer);
-		pack16(dump_front_end_ptr->node_state, buffer);
-
-		packstr(dump_front_end_ptr->reason, buffer);
-		pack_time(dump_front_end_ptr->reason_time, buffer);
-		pack32(dump_front_end_ptr->reason_uid, buffer);
-
-		pack_time(dump_front_end_ptr->slurmd_start_time, buffer);
-	} else if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
-		pack_time(dump_front_end_ptr->boot_time, buffer);
 		packstr(dump_front_end_ptr->name, buffer);
 		pack16(dump_front_end_ptr->node_state, buffer);
 
@@ -226,14 +230,12 @@ static bool _front_end_access(front_end_record_t *front_end_ptr,
 extern front_end_record_t *assign_front_end(struct job_record *job_ptr)
 {
 #ifdef HAVE_FRONT_END
-	static int last_assigned = -1;
-	front_end_record_t *front_end_ptr;
-	uint16_t state_flags;
+	front_end_record_t *front_end_ptr, *best_front_end = NULL;
+	uint32_t state_flags;
 	int i;
 
-	for (i = 0; i < front_end_node_cnt; i++) {
-		last_assigned = (last_assigned + 1) % front_end_node_cnt;
-		front_end_ptr = front_end_nodes + last_assigned;
+	for (i = 0, front_end_ptr = front_end_nodes; i < front_end_node_cnt;
+	     i++, front_end_ptr++) {
 		if (job_ptr->batch_host) {   /* Find specific front-end node */
 			if (strcmp(job_ptr->batch_host, front_end_ptr->name))
 				continue;
@@ -247,14 +249,17 @@ extern front_end_record_t *assign_front_end(struct job_record *job_ptr)
 			if (!_front_end_access(front_end_ptr, job_ptr))
 				continue;
 		}
-		state_flags = front_end_nodes[last_assigned].node_state &
-			      NODE_STATE_FLAGS;
-		front_end_nodes[last_assigned].node_state =
-				NODE_STATE_ALLOCATED | state_flags;
-		front_end_nodes[last_assigned].job_cnt_run++;
-		return front_end_ptr;
+		if ((best_front_end == NULL) ||
+		    (front_end_ptr->job_cnt_run < best_front_end->job_cnt_run))
+			best_front_end = front_end_ptr;
 	}
-	if (job_ptr->batch_host) {	/* Find specific front-end node */
+
+	if (best_front_end) {
+		state_flags = best_front_end->node_state & NODE_STATE_FLAGS;
+		best_front_end->node_state = NODE_STATE_ALLOCATED | state_flags;
+		best_front_end->job_cnt_run++;
+		return best_front_end;
+	} else if (job_ptr->batch_host) {    /* Find specific front-end node */
 		error("assign_front_end: front end node %s not found",
 		      job_ptr->batch_host);
 	} else {		/* Find some usable front-end node */
@@ -317,7 +322,7 @@ extern int update_front_end(update_front_end_msg_t *msg_ptr)
 			xassert(front_end_ptr->magic == FRONT_END_MAGIC);
 			if (strcmp(this_node_name, front_end_ptr->name))
 				continue;
-			if (msg_ptr->node_state == (uint16_t) NO_VAL) {
+			if (msg_ptr->node_state == (uint32_t)NO_VAL) {
 				;	/* No change in node state */
 			} else if (msg_ptr->node_state == NODE_RESUME) {
 				front_end_ptr->node_state = NODE_STATE_IDLE;
@@ -338,7 +343,7 @@ extern int update_front_end(update_front_end_msg_t *msg_ptr)
 				set_front_end_down(front_end_ptr,
 						   msg_ptr->reason);
 			}
-			if (msg_ptr->node_state != (uint16_t) NO_VAL) {
+			if (msg_ptr->node_state != (uint32_t) NO_VAL) {
 				info("update_front_end: set state of %s to %s",
 				     this_node_name,
 				     node_state_string(front_end_ptr->
@@ -507,7 +512,7 @@ extern void restore_front_end_state(int recover)
 #ifdef HAVE_FRONT_END
 	slurm_conf_frontend_t *slurm_conf_fe_ptr;
 	ListIterator iter;
-	uint16_t state_base, state_flags, tree_width;
+	uint32_t state_base, state_flags, tree_width;
 	int i;
 
 	last_front_end_update = time(NULL);
@@ -641,7 +646,7 @@ extern void pack_all_front_end(char **buffer_ptr, int *buffer_size, uid_t uid,
 	buffer = init_buf(BUF_SIZE * 2);
 	nodes_packed = 0;
 
-	if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
 		/* write header: count and time */
 		pack32(nodes_packed, buffer);
 		pack_time(now, buffer);
@@ -780,7 +785,7 @@ extern int load_all_front_end_state(bool state_only)
 #ifdef HAVE_FRONT_END
 	char *node_name = NULL, *reason = NULL, *data = NULL, *state_file;
 	int data_allocated, data_read = 0, error_code = 0, node_cnt = 0;
-	uint16_t node_state;
+	uint32_t node_state;
 	uint32_t data_size = 0, name_len;
 	uint32_t reason_uid = NO_VAL;
 	time_t reason_time = 0;
@@ -845,21 +850,34 @@ extern int load_all_front_end_state(bool state_only)
 	safe_unpack_time(&time_stamp, buffer);
 
 	while (remaining_buf (buffer) > 0) {
-		uint16_t base_state, obj_protocol_version = (uint16_t)NO_VAL;;
-		if (protocol_version >= SLURM_14_03_PROTOCOL_VERSION) {
+		uint32_t base_state = (uint32_t)NO_VAL;
+		uint16_t tmp_state;
+		uint16_t obj_protocol_version = (uint16_t)NO_VAL;;
+
+		if (protocol_version >= SLURM_14_11_PROTOCOL_VERSION) {
 			safe_unpackstr_xmalloc (&node_name, &name_len, buffer);
-			safe_unpack16 (&node_state,  buffer);
+			safe_unpack32 (&node_state,  buffer);
 			safe_unpackstr_xmalloc (&reason,    &name_len, buffer);
 			safe_unpack_time (&reason_time, buffer);
 			safe_unpack32 (&reason_uid,  buffer);
 			safe_unpack16 (&obj_protocol_version, buffer);
 			base_state = node_state & NODE_STATE_BASE;
-		} else if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
+		} else if (protocol_version >= SLURM_14_03_PROTOCOL_VERSION) {
 			safe_unpackstr_xmalloc (&node_name, &name_len, buffer);
-			safe_unpack16 (&node_state,  buffer);
+			safe_unpack16 (&tmp_state,  buffer);
 			safe_unpackstr_xmalloc (&reason,    &name_len, buffer);
 			safe_unpack_time (&reason_time, buffer);
 			safe_unpack32 (&reason_uid,  buffer);
+			safe_unpack16 (&obj_protocol_version, buffer);
+			node_state = tmp_state;
+			base_state = node_state & NODE_STATE_BASE;
+		} else if (protocol_version >= SLURM_2_6_PROTOCOL_VERSION) {
+			safe_unpackstr_xmalloc (&node_name, &name_len, buffer);
+			safe_unpack16 (&tmp_state,  buffer);
+			safe_unpackstr_xmalloc (&reason,    &name_len, buffer);
+			safe_unpack_time (&reason_time, buffer);
+			safe_unpack32 (&reason_uid,  buffer);
+			node_state = tmp_state;
 			base_state = node_state & NODE_STATE_BASE;
 		} else
 			goto unpack_error;
@@ -872,7 +890,7 @@ extern int load_all_front_end_state(bool state_only)
 			error("Front_end node %s has vanished from "
 			      "configuration", node_name);
 		} else if (state_only) {
-			uint16_t orig_flags;
+			uint32_t orig_flags;
 			orig_flags = front_end_ptr->node_state &
 				     NODE_STATE_FLAGS;
 			if (IS_NODE_UNKNOWN(front_end_ptr)) {
@@ -972,7 +990,7 @@ extern void sync_front_end_state(void)
 	ListIterator job_iterator;
 	struct job_record *job_ptr;
 	front_end_record_t *front_end_ptr;
-	uint16_t state_flags;
+	uint32_t state_flags;
 	int i;
 
 	for (i = 0, front_end_ptr = front_end_nodes;

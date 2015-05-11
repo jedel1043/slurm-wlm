@@ -23,12 +23,13 @@
  *
  *  You should have received a copy of the GNU General Public License along
  *  with SLURM; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
 
 #include "src/common/uid.h"
 #include "src/sview/sview.h"
 #include "src/common/parse_time.h"
+#include "src/common/proc_args.h"
 
 #define _DEBUG 0
 
@@ -54,6 +55,7 @@ enum {
 	SORTID_ACTION,
 	SORTID_COLOR,
 	SORTID_COLOR_INX,
+	SORTID_CORE_CNT,
 	SORTID_DURATION,
 	SORTID_FEATURES,
 	SORTID_FLAGS,
@@ -78,7 +80,7 @@ enum {
 /*these are the settings to apply for the user
  * on the first startup after a fresh slurm install.
  * s/b a const probably*/
-static char *_initial_page_opts = "Name,Node_Count,NodeList,"
+static char *_initial_page_opts = "Name,Node_Count,Core_Count,NodeList,"
 	"Time_Start,Time_End";
 
 static display_data_t display_data_resv[] = {
@@ -90,8 +92,20 @@ static display_data_t display_data_resv[] = {
 	 refresh_resv, create_model_resv, admin_edit_resv},
 	{G_TYPE_STRING, SORTID_ACTION,     "Action", FALSE, EDIT_MODEL,
 	 refresh_resv, create_model_resv, admin_edit_resv},
-	{G_TYPE_STRING, SORTID_NODE_CNT,   "Node Count", FALSE, EDIT_TEXTBOX,
-	 refresh_resv, create_model_resv, admin_edit_resv},
+	{G_TYPE_STRING, SORTID_NODE_CNT,
+#ifdef HAVE_BG
+	 "Midplane Count",
+#else
+	 "Node Count",
+#endif
+	 FALSE, EDIT_TEXTBOX, refresh_resv, create_model_resv, admin_edit_resv},
+	{G_TYPE_STRING, SORTID_CORE_CNT,
+#ifdef HAVE_BG
+	 "Cnode Count",
+#else
+	 "Core Count",
+#endif
+	 FALSE, EDIT_TEXTBOX, refresh_resv, create_model_resv, admin_edit_resv},
 	{G_TYPE_STRING, SORTID_NODELIST,
 #ifdef HAVE_BG
 	 "MidplaneList",
@@ -131,8 +145,20 @@ static display_data_t create_data_resv[] = {
 	 refresh_resv, create_model_resv, admin_edit_resv},
 	{G_TYPE_STRING, SORTID_NAME,  "Name", FALSE, EDIT_TEXTBOX,
 	 refresh_resv, create_model_resv, admin_edit_resv},
-	{G_TYPE_STRING, SORTID_NODE_CNT,   "Node_Count", FALSE, EDIT_TEXTBOX,
-	 refresh_resv, create_model_resv, admin_edit_resv},
+	{G_TYPE_STRING, SORTID_NODE_CNT,
+#ifdef HAVE_BG
+	 "Midplane_Count",
+#else
+	 "Node_Count",
+#endif
+	 FALSE, EDIT_TEXTBOX, refresh_resv, create_model_resv, admin_edit_resv},
+	{G_TYPE_STRING, SORTID_CORE_CNT,
+#ifdef HAVE_BG
+	 "Cnode_Count",
+#else
+	 "Core_Count",
+#endif
+	 FALSE, EDIT_TEXTBOX, refresh_resv, create_model_resv, admin_edit_resv},
 	{G_TYPE_STRING, SORTID_NODELIST,
 #ifdef HAVE_BG
 	 "Midplane_List",
@@ -186,99 +212,6 @@ static GtkTreeModel *last_model = NULL;
 static void _admin_resv(GtkTreeModel *model, GtkTreeIter *iter, char *type);
 static void _process_each_resv(GtkTreeModel *model, GtkTreePath *path,
 			       GtkTreeIter*iter, gpointer userdata);
-
-/*
- *  _parse_flags  is used to parse the Flags= option.  It handles
- *  daily, weekly, maint, static_nodes and part_nodes optionally
- *  preceded by + or -, separated by a comma but no spaces.
- */
-static uint32_t _parse_flags(const char *flagstr)
-{
-	int flip;
-	uint32_t outflags = 0;
-	const char *curr = flagstr;
-	int taglen = 0;
-
-	while (*curr != '\0') {
-		flip = 0;
-		if (*curr == '+') {
-			curr++;
-		} else if (*curr == '-') {
-			flip = 1;
-			curr++;
-		}
-		taglen = 0;
-		while (curr[taglen] != ',' && curr[taglen] != '\0')
-			taglen++;
-
-		if (strncasecmp(curr, "Maintenance", MAX(taglen,1)) == 0) {
-			curr += taglen;
-			if (flip)
-				outflags |= RESERVE_FLAG_NO_MAINT;
-			else
-				outflags |= RESERVE_FLAG_MAINT;
-		} else if ((strncasecmp(curr, "Overlap",MAX(taglen,1))
-			    == 0) && (!flip)) {
-			curr += taglen;
-			outflags |= RESERVE_FLAG_OVERLAP;
-		} else if (strncasecmp(curr, "Ignore_Jobs", MAX(taglen,1))
-			   == 0) {
-			curr += taglen;
-			if (flip)
-				outflags |= RESERVE_FLAG_NO_IGN_JOB;
-			else
-				outflags |= RESERVE_FLAG_IGN_JOBS;
-		} else if (strncasecmp(curr, "Daily", MAX(taglen,1)) == 0) {
-			curr += taglen;
-			if (flip)
-				outflags |= RESERVE_FLAG_NO_DAILY;
-			else
-				outflags |= RESERVE_FLAG_DAILY;
-		} else if (strncasecmp(curr, "Weekly", MAX(taglen,1)) == 0) {
-			curr += taglen;
-			if (flip)
-				outflags |= RESERVE_FLAG_NO_WEEKLY;
-			else
-				outflags |= RESERVE_FLAG_WEEKLY;
-		} else if (strncasecmp(curr, "License_Only", MAX(taglen,1))
-			    == 0) {
-			curr += taglen;
-			if (flip)
-				outflags |= RESERVE_FLAG_NO_LIC_ONLY;
-			else
-				outflags |= RESERVE_FLAG_LIC_ONLY;
-		} else if (strncasecmp(curr, "Static_Alloc", MAX(taglen,1))
-			   == 0) {
-			curr += taglen;
-			if (flip)
-				outflags |= RESERVE_FLAG_NO_STATIC;
-			else
-				outflags |= RESERVE_FLAG_STATIC;
-		} else if (strncasecmp(curr, "Part_Nodes", MAX(taglen,1))
-			   == 0) {
-			curr += taglen;
-			if (flip)
-				outflags |= RESERVE_FLAG_NO_PART_NODES;
-			else
-				outflags |= RESERVE_FLAG_PART_NODES;
-		} else if (!strncasecmp(curr, "First_Cores", MAX(taglen,1)) &&
-			   !flip) {
-			curr += taglen;
-			outflags |= RESERVE_FLAG_FIRST_CORES;
-		} else {
-			char *temp = g_strdup_printf("Error parsing flags %s.",
-						     flagstr);
-			display_edit_note(temp);
-			g_free(temp);
-			outflags = (uint32_t)NO_VAL;
-			break;
-		}
-
-		if (*curr == ',')
-			curr++;
-	}
-	return outflags;
-}
 
 static void _set_active_combo_resv(GtkComboBox *combo,
 				   GtkTreeModel *model, GtkTreeIter *iter,
@@ -353,7 +286,7 @@ static const char *_set_resv_msg(resv_desc_msg_t *resv_msg,
 		type = "features";
 		break;
 	case SORTID_FLAGS:
-		f = _parse_flags(new_text);
+		f = parse_resv_flags(new_text, __func__);
 		type = "flags";
 		if (f == (uint32_t)NO_VAL)
 			goto return_error;
@@ -554,6 +487,12 @@ static void _layout_resv_record(GtkTreeView *treeview,
 						 SORTID_ACCOUNTS),
 				   resv_ptr->accounts);
 
+	convert_num_unit((float)resv_ptr->core_cnt,
+			 time_buf, sizeof(time_buf), UNIT_NONE);
+	add_display_treestore_line(update, treestore, &iter,
+				   find_col_name(display_data_resv,
+						 SORTID_CORE_CNT),
+				   time_buf);
 	secs2time_str((uint32_t)difftime(resv_ptr->end_time,
 					 resv_ptr->start_time),
 		      time_buf, sizeof(time_buf));
@@ -619,7 +558,8 @@ static void _layout_resv_record(GtkTreeView *treeview,
 static void _update_resv_record(sview_resv_info_t *sview_resv_info_ptr,
 				GtkTreeStore *treestore)
 {
-	char tmp_duration[40], tmp_end[40], tmp_nodes[40], tmp_start[40];
+	char tmp_duration[40], tmp_end[40], tmp_nodes[40], tmp_start[40],
+		tmp_cores[40];
 	char *tmp_flags;
 	reserve_info_t *resv_ptr = sview_resv_info_ptr->resv_ptr;
 
@@ -631,6 +571,9 @@ static void _update_resv_record(sview_resv_info_t *sview_resv_info_ptr,
 			    sizeof(tmp_end));
 
 	tmp_flags = reservation_flags_string(resv_ptr->flags);
+
+	convert_num_unit((float)resv_ptr->core_cnt,
+			 tmp_cores, sizeof(tmp_cores), UNIT_NONE);
 
 	convert_num_unit((float)resv_ptr->node_cnt,
 			 tmp_nodes, sizeof(tmp_nodes), UNIT_NONE);
@@ -644,6 +587,7 @@ static void _update_resv_record(sview_resv_info_t *sview_resv_info_ptr,
 			   SORTID_COLOR,
 				sview_colors[sview_resv_info_ptr->color_inx],
 			   SORTID_COLOR_INX,  sview_resv_info_ptr->color_inx,
+			   SORTID_CORE_CNT,   tmp_cores,
 			   SORTID_DURATION,   tmp_duration,
 			   SORTID_FEATURES,   resv_ptr->features,
 			   SORTID_FLAGS,      tmp_flags,

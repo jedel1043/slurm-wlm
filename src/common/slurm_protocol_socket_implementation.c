@@ -108,21 +108,6 @@ static int _tot_wait (struct timeval *start_time)
 	return msec_delay;
 }
 
-slurm_fd_t _slurm_init_msg_engine ( slurm_addr_t * slurm_address )
-{
-	return _slurm_listen_stream ( slurm_address ) ;
-}
-
-slurm_fd_t _slurm_open_msg_conn ( slurm_addr_t * slurm_address )
-{
-	return _slurm_open_stream ( slurm_address, false ) ;
-}
-
-slurm_fd_t _slurm_accept_msg_conn (slurm_fd_t fd, slurm_addr_t *addr)
-{
-	return _slurm_accept_stream(fd, addr);
-}
-
 /*
  * Pick a random port number to use. Use this if the system
  * selected port can't connect. This may indicate that the
@@ -189,7 +174,7 @@ ssize_t _slurm_msg_recvfrom_timeout(slurm_fd_t fd, char **pbuf, size_t *lenp,
 	/*
 	 *  Allocate memory on heap for message
 	 */
-	*pbuf = xmalloc(msglen);
+	*pbuf = xmalloc_nz(msglen);
 
 	if (_slurm_recv_timeout(fd, *pbuf, msglen, 0, tmout) != msglen) {
 		xfree(*pbuf);
@@ -450,7 +435,7 @@ int _slurm_shutdown_msg_engine ( slurm_fd_t open_fd )
 	return _slurm_close ( open_fd ) ;
 }
 
-slurm_fd_t _slurm_listen_stream(slurm_addr_t *addr)
+slurm_fd_t slurm_init_msg_engine(slurm_addr_t *addr)
 {
 	int rc;
 	slurm_fd_t fd;
@@ -489,13 +474,13 @@ slurm_fd_t _slurm_listen_stream(slurm_addr_t *addr)
 
 }
 
-slurm_fd_t _slurm_accept_stream(slurm_fd_t fd, slurm_addr_t *addr)
+slurm_fd_t slurm_accept_msg_conn(slurm_fd_t fd, slurm_addr_t *addr)
 {
 	socklen_t len = sizeof(slurm_addr_t);
 	return _slurm_accept(fd, (struct sockaddr *)addr, &len);
 }
 
-slurm_fd_t _slurm_open_stream(slurm_addr_t *addr, bool retry)
+slurm_fd_t slurm_open_stream(slurm_addr_t *addr, bool retry)
 {
 	int retry_cnt;
 	slurm_fd_t fd;
@@ -561,13 +546,13 @@ int _slurm_close_stream ( slurm_fd_t open_fd )
 }
 
 
-int _slurm_set_stream_non_blocking(slurm_fd_t fd)
+inline int _slurm_set_stream_non_blocking(slurm_fd_t fd)
 {
 	fd_set_nonblocking(fd);
 	return SLURM_SUCCESS;
 }
 
-int _slurm_set_stream_blocking(slurm_fd_t fd)
+inline int _slurm_set_stream_blocking(slurm_fd_t fd)
 {
 	fd_set_blocking(fd);
 	return SLURM_SUCCESS;
