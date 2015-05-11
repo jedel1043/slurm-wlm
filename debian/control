@@ -271,7 +271,7 @@ Depends:
  ${misc:Depends}
 Replaces: slurm-llnl-doc (<< 14.03)
 Breaks: slurm-llnl-doc (<< 14.03)
-Description: SLURM docmentation
+Description: SLURM documentation
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
  This package contains the SLURM html documentation.
