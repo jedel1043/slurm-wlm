@@ -1,4 +1,4 @@
-.TH "slurm.conf" "5" "May 2014" "slurm.conf 14.11" "Slurm configuration file"
+.TH "slurm.conf" "5" "Slurm Configuration File" "April 2015" "Slurm Configuration File"
 
 .SH "NAME"
 slurm.conf \- Slurm configuration file
@@ -939,7 +939,7 @@ or "jobacct_gather/cgroup" must be configured.
 \fBNOTE:\fR Changing this configuration parameter changes the contents of
 the messages between Slurm daemons. Any previously running job steps are
 managed by a slurmstepd daemon that will persist through the lifetime of
-that job step and not change it's communication prototol. Only change this
+that job step and not change it's communication protocol. Only change this
 configuration parameter when there are no running job steps.
 
 .TP
@@ -1282,7 +1282,7 @@ May not exceed 65533.
 \fBMemLimitEnforce\fR
 If set to "no" then Slurm will not terminate the job or the job step
 if they exceeds the value requested using the --mem-per-cpu option of
-salloc/sbatch/srun. This is usefull if jobs need to specify --mem-per-cpu
+salloc/sbatch/srun. This is useful if jobs need to specify --mem-per-cpu
 for scheduling but they should not be terminate if they exceed the
 estimated value. The default value is 'yes', terminate the job/step
 if exceed the requested memory.
@@ -1866,18 +1866,21 @@ the definitions in the slurm.conf file.
 .TP
 \fBRequeueExit\fR
 Enables automatic job requeue for jobs which exit with the specified values.
-Separate multiple exit code by a comma. Jobs will be put back in to pending
-state and later scheduled again. Restarted jobs will have the environment
-variable \fBSLURM_RESTART_COUNT\fP set to the number of times the job has been
-restarted.
+Separate multiple exit code by a comma and/or specify numeric ranges using a
+"\-" separator (e.g. "RequeueExit=1\-9,18")
+Jobs will be put back in to pending state and later scheduled again.
+Restarted jobs will have the environment variable \fBSLURM_RESTART_COUNT\fP
+set to the number of times the job has been restarted.
 
 .TP
 \fBRequeueExitHold\fR
 Enables automatic requeue of jobs into pending state in hold, meaning their
-priority is zero. Separate multiple exit code by a comma. These jobs are put
-in the \fBJOB_SPECIAL_EXIT\fP exit state. Restarted jobs will have the
-environment variable \fBSLURM_RESTART_COUNT\fP set to the number of times the
-job has been restarted.
+priority is zero.
+Separate multiple exit code by a comma and/or specify numeric ranges using a
+"\-" separator (e.g. "RequeueExitHold=10\-12,16")
+These jobs are put in the \fBJOB_SPECIAL_EXIT\fP exit state.
+Restarted jobs will have the environment variable \fBSLURM_RESTART_COUNT\fP
+set to the number of times the job has been restarted.
 
 .TP
 \fBResumeProgram\fR
@@ -2099,7 +2102,10 @@ This option applies only to \fBSchedulerType=sched/backfill\fR.
 .TP
 \fBbf_min_age_reserve=#\fR
 The backfill scheduler will not reserve resources for pending jobs until they
-have been pending for at least the specified number of seconds.
+have been runnable for at least the specified number of seconds.
+In addition jobs waiting for less than the specified number of seconds will
+not prevent a newly submitted job from starting immediately, even if the newly
+submitted job has a lower priority.
 This can be valuable if jobs lack time limits or all time limits have the same
 value.
 The default value is zero, which will reserve resources for any pending job
@@ -2179,6 +2185,15 @@ on such hardware, Slurm will consider each NUMA node within the socket as a
 separate socket by default. Use the Ignore_NUMA option to report the correct
 socket count, but \fBnot\fR optimize resource allocations on the NUMA nodes.
 .TP
+\fBinventory_interval=#\fR
+On a Cray system using Slurm on top of ALPS this limits the amount of times
+a Basil Inventory call is made.  Normally this call happens every scheduling
+consideration to attempt to close a node state change window with respects to
+what ALPS has.  This call is rather slow, so making it less frequently improves
+performance dramatically, but in the situation where a node changes state the
+window is as large as this setting.  In an HTC environment this setting is a
+must and we advise around 10 seconds.
+.TP
 \fBkill_invalid_depend\fR
 If a job has an invalid dependency and it can never run terminate it
 and set its state to be JOB_CANCELLED. By default the job stays pending
@@ -2250,6 +2265,11 @@ held so that the scheduler can dispatch it to another host.
 How frequently, in seconds, the main scheduling loop will execute and test all
 pending jobs.
 The default value is 60 seconds.
+.TP
+\fBsched_max_job_start=#\fR
+The maximum number of jobs that the main scheduling logic will start in any
+single execution.
+The default value is zero, which imposes no limit.
 .RE
 
 .TP
@@ -2459,11 +2479,16 @@ Also see the partition configuration parameter \fBLLN\fR
 use the least loaded nodes in selected partitions.
 .TP
 \fBCR_Pack_Nodes\fR
-Rather than evenly distributing a job's tasks evenly across it's allocated
-nodes, pack them as tightly as possible on the nodes. For example, a job
-starting ten tasks acrosss two nodes each without this option will start
-five tasks on each of the two nodes. With this option, eight tasks will be
-started on the first node and two on the second node.
+If a job allocation contains more resources than will be used for launching
+tasks (e.g. if whole nodes are allocated to a job), then rather than evenly
+distributing a job's tasks evenly across it's allocated nodes, pack them as
+tightly as possible on thsee nodes.
+For example, consider a job allocation containing two \fBentire\fR nodes with
+eight CPUs each.
+If the job starts ten tasks across those two nodes without this option, it will
+start five tasks on each of the two nodes.
+With this option, eight tasks will be started on the first node and two tasks
+on the second node.
 .TP
 \fBCR_Socket\fR
 Sockets are consumable resources.
@@ -3097,7 +3122,7 @@ memory limit. For example, if a job's real memory limit is 500MB and
 VSizeFactor is set to 101 then the job will be killed if its real memory
 exceeds 500MB or its virtual memory exceeds 505MB (101 percent of the
 real memory limit).
-The default valus is 0, which disables enforcement of virtual memory limits.
+The default value is 0, which disables enforcement of virtual memory limits.
 The value may not exceed 65533 percent.
 
 .TP

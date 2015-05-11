@@ -1,4 +1,4 @@
-.TH "sbatch" "1" "SLURM 14.11" "November 2014" "SLURM Commands"
+.TH sbatch "1" "Slurm Commands" "April 2015" "Slurm Commands"
 
 .SH "NAME"
 sbatch \- Submit a batch script to SLURM.
@@ -11,9 +11,6 @@ sbatch submits a batch script to SLURM.  The batch script may be given to
 sbatch through a file name on the command line, or if no file name is specified,
 sbatch will read in a script from standard input. The batch script may contain
 options preceded with "#SBATCH" before any executable commands in the script.
-After the first line of the batch script, which typically identifies the
-shell to be used, sbatch will stop processing options at the first line which
-does NOT begin with "#SBATCH".
 
 sbatch exits immediately after the script is successfully transferred to the
 SLURM controller and assigned a SLURM job ID.  The batch script is not
@@ -542,7 +539,7 @@ between clusters.
 
 .TP
 \fB\-m\fR, \fB\-\-distribution\fR=
-<\fIblock\fR|\fIcyclic\fR|\fIarbitrary\fR|\fIplane=<options>\fR[:\fIblock\fR|\fIcyclic\fR]>
+\fIarbitrary\fR|<\fIblock\fR|\fIcyclic\fR|\fIplane=<options>\fR[:\fIblock\fR|\fIcyclic\fR|\fIfcyclic\fR]>
 
 Specify alternate distribution methods for remote processes.
 In sbatch, this only sets environment variables that will be used by
@@ -626,6 +623,15 @@ that consecutive tasks share a socket.
 The cyclic distribution method will distribute tasks to sockets such
 that consecutive tasks are distributed over consecutive sockets (in a
 round\-robin fashion).
+Tasks requiring more than one CPU will have all of those CPUs allocated on a
+single socket if possible.
+.TP
+.B fcyclic
+The fcyclic distribution method will distribute tasks to sockets such
+that consecutive tasks are distributed over consecutive sockets (in a
+round\-robin fashion).
+Tasks requiring more than one CPU will have each CPUs allocated in a cyclic
+fashion across sockets.
 .RE
 
 .TP
@@ -1283,8 +1289,8 @@ errors will be displayed.
 .TP
 \fB\-w\fR, \fB\-\-nodelist\fR=<\fInode name list\fR>
 Request a specific list of hosts.
-Unless constrained by the maximum node count, the job will contain
-\fIall\fR of these hosts.
+The job will contain \fIall\fR of these hosts and possibly additional hosts
+as needed to satisfy resource requirements.
 The list may be specified as a comma\-separated list of hosts, a range of hosts
 (host[1\-5,7,...] for example), or a filename.
 The host list will be assumed to be a filename if it contains a "/" character.

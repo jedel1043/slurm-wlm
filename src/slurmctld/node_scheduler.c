@@ -2528,6 +2528,11 @@ static int _build_node_list(struct job_record *job_ptr,
 		return rc;
 	}
 
+	/* Clear message about any nodes which fail to satisfy specific
+	 * job requirements as there are some nodes which can be used */
+	if (err_msg)
+		xfree(*err_msg);
+
 	/* If any nodes are powered down, put them into a new node_set
 	 * record with a higher scheduling weight. This means we avoid
 	 * scheduling jobs on powered down nodes where possible. */

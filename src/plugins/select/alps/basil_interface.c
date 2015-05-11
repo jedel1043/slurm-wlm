@@ -229,6 +229,12 @@ extern int basil_inventory(void)
 	time_t now = time(NULL);
 	static time_t slurm_alps_mismatch_time = (time_t) 0;
 	static bool logged_sync_timeout = false;
+	static time_t last_inv_run = 0;
+
+	if ((now - last_inv_run) < inv_interval)
+		return SLURM_SUCCESS;
+
+	last_inv_run = now;
 
 	inv = get_full_inventory(version);
 	if (inv == NULL) {
