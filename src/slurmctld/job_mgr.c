@@ -4019,7 +4019,7 @@ static int _job_signal(struct job_record *job_ptr, uint16_t signal,
 		job_term_state = JOB_PREEMPTED;
 	else
 		job_term_state = JOB_CANCELLED;
-	if (IS_JOB_SUSPENDED(job_ptr) &&  (signal == SIGKILL)) {
+	if (IS_JOB_SUSPENDED(job_ptr) && (signal == SIGKILL)) {
 		last_job_update         = now;
 		job_ptr->end_time       = job_ptr->suspend_time;
 		job_ptr->tot_sus_time  += difftime(now, job_ptr->suspend_time);
@@ -12490,10 +12490,15 @@ static int _job_requeue(uid_t uid, struct job_record *job_ptr, bool preempt,
 	if (state & JOB_SPECIAL_EXIT) {
 		job_ptr->job_state |= JOB_SPECIAL_EXIT;
 		job_ptr->state_reason = WAIT_HELD_USER;
+		xfree(job_ptr->state_desc);
+		job_ptr->state_desc =
+			xstrdup("job requeued in special exit state");
 		job_ptr->priority = 0;
 	}
 	if (state & JOB_REQUEUE_HOLD) {
 		job_ptr->state_reason = WAIT_HELD_USER;
+		xfree(job_ptr->state_desc);
+		job_ptr->state_desc = xstrdup("job requeued in held state");
 		job_ptr->priority = 0;
 	}
 
