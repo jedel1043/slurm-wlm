@@ -38,4 +38,19 @@ override_dh_auto_install:
 		pod2man $$i > debian/tmp/usr/share/man/man1/$$(basename $$i).1; \
 	done
 
+override_dh_strip:
+	dh_strip -plibslurm28 --dbg-package=libslurm28-dbg
+	dh_strip -plibslurmdb28 --dbg-package=libslurmdb28-dbg
+	dh_strip -plibpmi0 --dbg-package=libpmi0-dbg
+	dh_strip -pslurm-wlm-basic-plugins --dbg-package=slurm-wlm-basic-plugins-dbg
+	dh_strip -pslurm-client --dbg-package=slurm-client-dbg
+	dh_strip -pslurmd --dbg-package=slurmd-dbg
+	dh_strip -pslurmctld --dbg-package=slurmctld-dbg
+	dh_strip -pslurmdbd --dbg-package=slurmctld-dbg
+	# we do not care about debug symbols for those pkgs
+	dh_strip -plibslurmdb-perl
+	dh_strip -plibslurm-perl
+	dh_strip -psview
+	dh_strip -plibpam-slurm
+
 override_dh_auto_test:
