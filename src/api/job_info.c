@@ -227,7 +227,7 @@ extern uint32_t slurm_xlate_job_id(char *job_id_str)
 	char *next_str;
 	uint32_t i, job_id;
 	uint16_t array_id;
-	job_info_msg_t *resp;
+	job_info_msg_t *resp = NULL;
 	slurm_job_info_t *job_ptr;
 
 	job_id = (uint32_t) strtol(job_id_str, &next_str, 10);
@@ -238,7 +238,7 @@ extern uint32_t slurm_xlate_job_id(char *job_id_str)
 	array_id = (uint16_t) strtol(next_str + 1, &next_str, 10);
 	if (next_str[0] != '\0')
 		return (uint32_t) 0;
-	if (slurm_load_job(&resp, job_id, SHOW_ALL) != 0)
+	if ((slurm_load_job(&resp, job_id, SHOW_ALL) != 0) || (resp == NULL))
 		return (uint32_t) 0;
 	job_id = 0;
 	for (i = 0, job_ptr = resp->job_array; i < resp->record_count;
@@ -367,12 +367,20 @@ slurm_sprint_job_info ( job_info_t * job_ptr, int one_liner )
 	snprintf(tmp_line, sizeof(tmp_line), "JobId=%u ", job_ptr->job_id);
 	out = xstrdup(tmp_line);
 	if (job_ptr->array_job_id) {
-		snprintf(tmp_line, sizeof(tmp_line),
-			 "ArrayJobId=%u ArrayTaskId=%u ",
-			 job_ptr->array_job_id, job_ptr->array_task_id);
+		if (job_ptr->array_task_str) {
+			snprintf(tmp_line, sizeof(tmp_line),
+				 "ArrayJobId=%u ArrayTaskId=%s ",
+				 job_ptr->array_job_id,
+				 job_ptr->array_task_str);
+		} else {
+			snprintf(tmp_line, sizeof(tmp_line),
+				 "ArrayJobId=%u ArrayTaskId=%u ",
+				 job_ptr->array_job_id,
+				 job_ptr->array_task_id);
+		}
 		xstrcat(out, tmp_line);
 	}
-	snprintf(tmp_line, sizeof(tmp_line), "Name=%s", job_ptr->name);
+	snprintf(tmp_line, sizeof(tmp_line), "JobName=%s", job_ptr->name);
 	xstrcat(out, tmp_line);
 	if (one_liner)
 		xstrcat(out, " ");
@@ -432,8 +440,9 @@ slurm_sprint_job_info ( job_info_t * job_ptr, int one_liner )
 
 	/****** Line 5 ******/
 	snprintf(tmp_line, sizeof(tmp_line),
-		 "Requeue=%u Restarts=%u BatchFlag=%u ",
-		 job_ptr->requeue, job_ptr->restart_cnt, job_ptr->batch_flag);
+		 "Requeue=%u Restarts=%u BatchFlag=%u Reboot=%u ",
+		 job_ptr->requeue, job_ptr->restart_cnt, job_ptr->batch_flag,
+		 job_ptr->reboot);
 	xstrcat(out, tmp_line);
 	if (WIFSIGNALED(job_ptr->exit_code))
 		term_sig = WTERMSIG(job_ptr->exit_code);
@@ -612,6 +621,8 @@ line6:
 		xstrcat(out, tmp_line);
 		xfree(ionodes);
 	}
+	if (job_ptr->sched_nodes)
+		xstrfmtcat(out, " Sched%s=%s", nodelist, job_ptr->sched_nodes);
 	if (one_liner)
 		xstrcat(out, " ");
 	else
@@ -707,9 +718,13 @@ line6:
 		strcpy(tmp5, "*");
 	else
 		snprintf(tmp5, sizeof(tmp5), "%u", job_ptr->ntasks_per_core);
+	if (job_ptr->core_spec == (uint16_t) NO_VAL)
+		strcpy(tmp6, "*");
+	else
+		snprintf(tmp6, sizeof(tmp6), "%u", job_ptr->core_spec);
 	snprintf(tmp_line, sizeof(tmp_line),
-		 "Socks/Node=%s NtasksPerN:B:S:C=%s:%s:%s:%s CoreSpec=%u",
-		 tmp1, tmp2, tmp3, tmp4, tmp5, job_ptr->core_spec);
+		 "Socks/Node=%s NtasksPerN:B:S:C=%s:%s:%s:%s CoreSpec=%s",
+		 tmp1, tmp2, tmp3, tmp4, tmp5, tmp6);
 	xstrcat(out, tmp_line);
 	if (one_liner)
 		xstrcat(out, " ");

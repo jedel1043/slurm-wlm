@@ -49,7 +49,7 @@
 #define XCGROUP_SUCCESS  0
 
 // http://lists.debian.org/debian-boot/2012/04/msg00047.html
-#if defined(__FreeBSD__)
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 #define	MS_NOSUID	MNT_NOSUID
 #define	MS_NOEXEC	MNT_NOEXEC
 #define	MS_NODEV	0
@@ -138,7 +138,16 @@ int xcgroup_ns_is_available(xcgroup_ns_t* cgns);
  *  - XCGROUP_ERROR
  *  - XCGROUP_SUCCESS
  */
-int xcgroup_ns_find_by_pid(xcgroup_ns_t* cgns,xcgroup_t* cg,pid_t pid);
+int xcgroup_ns_find_by_pid(xcgroup_ns_t* cgns, xcgroup_t* cg, pid_t pid);
+
+/*
+ * load a cgroup namespace
+ *
+ * returned values:
+ *  - XCGROUP_ERROR
+ *  - XCGROUP_SUCCESS
+ */
+int xcgroup_ns_load(slurm_cgroup_conf_t *conf, xcgroup_ns_t *cgns, char *subsys);
 
 /*
  * create a cgroup structure
@@ -194,8 +203,7 @@ int xcgroup_instanciate(xcgroup_t* cg);
  *  - XCGROUP_ERROR
  *  - XCGROUP_SUCCESS
  */
-int xcgroup_load(xcgroup_ns_t* cgns,xcgroup_t* cg,
-		 char* uri);
+int xcgroup_load(xcgroup_ns_t* cgns, xcgroup_t* cg, char* uri);
 
 /*
  * delete a cgroup instance in a cgroup namespace (rmdir)

@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
 	resource_allocation_response_msg_t *alloc;
 	time_t before, after;
 	allocation_msg_thread_t *msg_thr;
-	char **env = NULL;
+	char **env = NULL, *cluster_name;
 	int status = 0;
 	int retries = 0;
 	pid_t pid  = getpid();
@@ -414,6 +414,13 @@ int main(int argc, char *argv[])
 	}
 	if (opt.network)
 		env_array_append_fmt(&env, "SLURM_NETWORK", "%s", opt.network);
+	cluster_name = slurm_get_cluster_name();
+	if (cluster_name) {
+		env_array_append_fmt(&env, "SLURM_CLUSTER_NAME", "%s",
+				     cluster_name);
+		xfree(cluster_name);
+	}
+
 
 	env_array_set_environment(env);
 	env_array_free(env);
@@ -609,7 +616,7 @@ static int _fill_job_desc_from_opts(job_desc_msg_t *desc)
 	}
 #endif
 	desc->contiguous = opt.contiguous ? 1 : 0;
-	if (opt.core_spec)
+	if (opt.core_spec != (uint16_t) NO_VAL)
 		desc->core_spec = opt.core_spec;
 	desc->features = opt.constraints;
 	desc->gres = opt.gres;
@@ -635,10 +642,6 @@ static int _fill_job_desc_from_opts(job_desc_msg_t *desc)
 	if (opt.dependency)
 		desc->dependency = xstrdup(opt.dependency);
 
-	if (opt.cpu_bind)
-		desc->cpu_bind       = opt.cpu_bind;
-	if (opt.cpu_bind_type)
-		desc->cpu_bind_type  = opt.cpu_bind_type;
 	if (opt.mem_bind)
 		desc->mem_bind       = opt.mem_bind;
 	if (opt.mem_bind_type)

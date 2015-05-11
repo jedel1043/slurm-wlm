@@ -109,7 +109,6 @@
 #define OPT_ACCTG_FREQ  0x0f
 #define OPT_NO_REQUEUE  0x10
 #define OPT_REQUEUE     0x11
-#define OPT_CPU_BIND    0x12
 #define OPT_MEM_BIND    0x13
 #define OPT_WCKEY       0x14
 #define OPT_SIGNAL      0x15
@@ -124,7 +123,6 @@
 
 /* generic getopt_long flags, integers and *not* valid characters */
 #define LONG_OPT_PROPAGATE   0x100
-#define LONG_OPT_CPU_BIND    0x101
 #define LONG_OPT_MEM_BIND    0x102
 #define LONG_OPT_JOBID       0x105
 #define LONG_OPT_TMP         0x106
@@ -317,11 +315,9 @@ static void _opt_default()
 	opt.ntasks_per_node      = 0;  /* ntask max limits */
 	opt.ntasks_per_socket    = NO_VAL;
 	opt.ntasks_per_core      = NO_VAL;
-	opt.cpu_bind_type = 0;
-	opt.cpu_bind = NULL;
 	opt.mem_bind_type = 0;
 	opt.mem_bind = NULL;
-	opt.core_spec = 0;
+	opt.core_spec = (uint16_t) NO_VAL;
 	opt.time_limit = NO_VAL;
 	opt.time_min = NO_VAL;
 	opt.partition = NULL;
@@ -434,7 +430,6 @@ env_vars_t env_vars[] = {
   {"SBATCH_CNLOAD_IMAGE",  OPT_STRING,     &opt.linuximage,    NULL          },
   {"SBATCH_CONN_TYPE",     OPT_CONN_TYPE,  NULL,               NULL          },
   {"SBATCH_CORE_SPEC",     OPT_INT,        &opt.core_spec,     NULL          },
-  {"SBATCH_CPU_BIND",      OPT_CPU_BIND,   NULL,               NULL          },
   {"SBATCH_DEBUG",         OPT_DEBUG,      NULL,               NULL          },
   {"SBATCH_DISTRIBUTION",  OPT_DISTRIB ,   NULL,               NULL          },
   {"SBATCH_EXCLUSIVE",     OPT_EXCLUSIVE,  NULL,               NULL          },
@@ -544,12 +539,6 @@ _process_env_var(env_vars_t *e, const char *val)
 		}
 		break;
 
-	case OPT_CPU_BIND:
-		if (slurm_verify_cpu_bind(val, &opt.cpu_bind,
-					  &opt.cpu_bind_type))
-			exit(error_exit);
-		break;
-
 	case OPT_HINT:
 		/* Keep after other options filled in */
 		if (verify_hint(val,
@@ -557,7 +546,7 @@ _process_env_var(env_vars_t *e, const char *val)
 				&opt.cores_per_socket,
 				&opt.threads_per_core,
 				&opt.ntasks_per_core,
-				&opt.cpu_bind_type)) {
+				NULL)) {
 			exit(error_exit);
 		}
 		break;
@@ -713,7 +702,6 @@ static struct option long_options[] = {
 	{"conn-type",     required_argument, 0, LONG_OPT_CONNTYPE},
 	{"contiguous",    no_argument,       0, LONG_OPT_CONT},
 	{"cores-per-socket", required_argument, 0, LONG_OPT_CORESPERSOCKET},
-	{"cpu_bind",      required_argument, 0, LONG_OPT_CPU_BIND},
 	{"exclusive",     no_argument,       0, LONG_OPT_EXCLUSIVE},
 	{"export",        required_argument, 0, LONG_OPT_EXPORT},
 	{"export-file",   required_argument, 0, LONG_OPT_EXPORT_FILE},
@@ -1177,7 +1165,7 @@ static void _set_options(int argc, char **argv)
 						&opt.sockets_per_node,
 						&opt.cores_per_socket,
 						&opt.threads_per_core,
-						&opt.cpu_bind_type);
+						NULL);
 
 			if (opt.extra_set == false) {
 				error("invalid resource allocation -B `%s'",
@@ -1346,16 +1334,8 @@ static void _set_options(int argc, char **argv)
 		case LONG_OPT_CONT:
 			opt.contiguous = true;
 			break;
-                case LONG_OPT_EXCLUSIVE:
-                        opt.shared = 0;
-                        break;
-                case LONG_OPT_CPU_BIND:
-			verbose("The --cpu_bind option has been deprecated in "
-				"sbatch, --cpu_bind is for srun only going "
-				"forward.");
-			if (slurm_verify_cpu_bind(optarg, &opt.cpu_bind,
-						  &opt.cpu_bind_type))
-				exit(error_exit);
+		case LONG_OPT_EXCLUSIVE:
+			opt.shared = 0;
 			break;
 		case LONG_OPT_MEM_BIND:
 			if (slurm_verify_mem_bind(optarg, &opt.mem_bind,
@@ -1561,7 +1541,7 @@ static void _set_options(int argc, char **argv)
 			opt.ntasks_per_core = _get_int(optarg,
 				"ntasks-per-core");
 			setenvf(NULL, "SLURM_NTASKS_PER_CORE", "%d",
-				opt.ntasks_per_socket);
+				opt.ntasks_per_core);
 			break;
 		case LONG_OPT_HINT:
 			/* Keep after other options filled in */
@@ -1570,7 +1550,7 @@ static void _set_options(int argc, char **argv)
 					&opt.cores_per_socket,
 					&opt.threads_per_core,
 					&opt.ntasks_per_core,
-					&opt.cpu_bind_type)) {
+					NULL)) {
 				exit(error_exit);
 			}
 			break;
@@ -1677,7 +1657,10 @@ static void _set_options(int argc, char **argv)
 		case LONG_OPT_EXPORT:
 			xfree(opt.export_env);
 			opt.export_env = xstrdup(optarg);
-			setenv("SLURM_EXPORT_ENV", opt.export_env, 0);
+			if (!strcasecmp(opt.export_env, "ALL"))
+				; /* srun ignores "ALL", it is the default */
+			else
+				setenv("SLURM_EXPORT_ENV", opt.export_env, 0);
 			break;
 		case LONG_OPT_EXPORT_FILE:
 			xfree(opt.export_file);
@@ -1692,10 +1675,10 @@ static void _set_options(int argc, char **argv)
 			}
 			opt.req_switch = _get_int(optarg, "switches");
 			break;
-                case LONG_OPT_IGNORE_PBS:
+		case LONG_OPT_IGNORE_PBS:
 			/* Ignore here, needed to process earlier,
 			 * when the batch script was read. */
-                        break;
+			break;
 		case LONG_OPT_TEST_ONLY:
 			opt.test_only = true;
 			break;
@@ -1741,7 +1724,7 @@ static void _proc_get_user_env(char *optarg)
 static void _set_pbs_options(int argc, char **argv)
 {
 	int opt_char, option_index = 0;
-	char *sep;
+	char *sep = "";
 	char *pbs_opt_string = "+a:A:c:C:e:hIj::J:k:l:m:M:N:o:p:q:r:S:t:u:v:VW:z";
 
 	struct option pbs_long_options[] = {
@@ -1869,6 +1852,7 @@ static void _set_pbs_options(int argc, char **argv)
 		case 'v':
 			if (opt.export_env)
 				sep = ",";
+			/* CLANG false positive */
 			xstrfmtcat(opt.export_env, "%s%s", sep, optarg);
 			break;
 		case 'V':
@@ -2350,7 +2334,7 @@ static bool _opt_verify(void)
 		}
 	}
 
-        /* Check to see if user has specified enough resources to
+	/* Check to see if user has specified enough resources to
 	 * satisfy the plane distribution with the specified
 	 * plane_size.
 	 * if (n/plane_size < N) and ((N-1) * plane_size >= n) -->
@@ -2394,30 +2378,6 @@ static bool _opt_verify(void)
 
 	if (lllp_dist && setenvf(NULL, "SLURM_DIST_LLLP", "%s", lllp_dist)) {
 		error("Can't set SLURM_DIST_LLLP env variable");
-	}
-
-
-
-	/* bound threads/cores from ntasks_cores/sockets */
-	if (opt.ntasks_per_core > 0) {
-		/* if cpu_bind_type doesn't already have a auto pref,
-		 * choose the level based on the level of ntasks
-		 */
-		if (!(opt.cpu_bind_type & (CPU_BIND_TO_SOCKETS |
-					   CPU_BIND_TO_CORES |
-					   CPU_BIND_TO_THREADS))) {
-			opt.cpu_bind_type |= CPU_BIND_TO_CORES;
-		}
-	}
-	if (opt.ntasks_per_socket > 0) {
-		/* if cpu_bind_type doesn't already have a auto pref,
-		 * choose the level based on the level of ntasks
-		 */
-		if (!(opt.cpu_bind_type & (CPU_BIND_TO_SOCKETS |
-					   CPU_BIND_TO_CORES |
-					   CPU_BIND_TO_THREADS))) {
-			opt.cpu_bind_type |= CPU_BIND_TO_SOCKETS;
-		}
 	}
 
 	/* massage the numbers */
@@ -2580,19 +2540,6 @@ static bool _opt_verify(void)
 		setenv("SLURM_NETWORK", opt.network, 1);
 #endif
 
-	if (slurm_verify_cpu_bind(NULL, &opt.cpu_bind,
-				  &opt.cpu_bind_type))
-		exit(error_exit);
-	if (opt.cpu_bind_type && (getenv("SBATCH_CPU_BIND") == NULL)) {
-		char tmp[64];
-		slurm_sprint_cpu_bind_type(tmp, opt.cpu_bind_type);
-		if (opt.cpu_bind) {
-			setenvf(NULL, "SBATCH_CPU_BIND", "%s:%s",
-				tmp, opt.cpu_bind);
-		} else {
-			setenvf(NULL, "SBATCH_CPU_BIND", "%s", tmp);
-		}
-	}
 	if (opt.mem_bind_type && (getenv("SBATCH_MEM_BIND") == NULL)) {
 		char tmp[64];
 		slurm_sprint_mem_bind_type(tmp, opt.mem_bind_type);
@@ -2947,7 +2894,7 @@ static void _usage(void)
 #else
 "              [--geometry=AxXxYxZ] "
 #endif
-"[--conn-type=type] [--no-rotate] [--reboot]\n"
+"[--conn-type=type] [--no-rotate]\n"
 #ifdef HAVE_BGL
 "              [--blrts-image=path] [--linux-image=path]\n"
 "              [--mloader-image=path] [--ramdisk-image=path]\n"
@@ -2962,7 +2909,7 @@ static void _usage(void)
 "              [--network=type] [--mem-per-cpu=MB] [--qos=qos] [--gres=list]\n"
 "              [--mem_bind=...] [--reservation=name]\n"
 "              [--switches=max-switches{@max-time-to-wait}]\n"
-"              [--core-spec=cores]\n"
+"              [--core-spec=cores] [--reboot]\n"
 "              [--array=index_values] [--profile=...] [--ignore-pbs]\n"
 "              [--export[=names]] [--export-file=file|fd] executable [args...]\n");
 }
@@ -2971,7 +2918,7 @@ static void _help(void)
 {
 	slurm_ctl_conf_t *conf;
 
-        printf (
+	printf (
 "Usage: sbatch [OPTIONS...] executable [args...]\n"
 "\n"
 "Parallel run options:\n"
@@ -3021,6 +2968,7 @@ static void _help(void)
 "      --propagate[=rlimits]   propagate all [or specific list of] rlimits\n"
 "      --qos=qos               quality of service\n"
 "  -Q, --quiet                 quiet mode (suppress informational messages)\n"
+"      --reboot                reboot compute nodes before starting job\n"
 "      --signal=[B:]num[@time] send signal when time limit within time seconds\n"
 "      --requeue               if set, permit the job to be requeued\n"
 "  -t, --time=minutes          time limit\n"
@@ -3029,6 +2977,7 @@ static void _help(void)
 "  -S, --core-spec=cores       count of reserved cores\n"
 "      --uid=user_id           user ID to run job as (user root only)\n"
 "  -v, --verbose               verbose mode (multiple -v's increase verbosity)\n"
+"      --wckey=wckey           wckey to run job under\n"
 "      --wrap[=command string] wrap commmand string in a sh script and submit\n"
 "      --switches=max-switches{@max-time-to-wait}\n"
 "                              Optimum switches and max time to wait for optimum\n"
@@ -3098,7 +3047,6 @@ static void _help(void)
 "                              with the geometry option\n"
 #endif
 "  -R, --no-rotate             disable geometry rotation\n"
-"      --reboot                reboot block before starting job\n"
 "      --conn-type=type        constraint on type of connection, MESH or TORUS\n"
 "                              if not set, then tries to fit TORUS else MESH\n"
 #ifndef HAVE_BGL

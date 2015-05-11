@@ -28,7 +28,7 @@
 #
 # You should have received a copy of the GNU General Public License along
 # with SLURM; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 ############################################################################
 source ./globals
 
@@ -81,7 +81,7 @@ make_bash_script $file_in2 "
 #
 # Spawn a job via sbatch
 #
-spawn $sbatch -N1 -t1 --output=$file_out $file_in
+spawn $sbatch -N1 -t1 --gres=craynetwork:0 --output=$file_out $file_in
 expect {
 	-re "Submitted batch job ($number)" {
 		set job_id $expect_out(1,string)
@@ -167,7 +167,7 @@ make_bash_script $file_in "
 #
 # Spawn a job via sbatch
 #
-spawn $sbatch -N1 -t1 --output=$file_out $file_in
+spawn $sbatch -N1 -t1 --gres=craynetwork:0 --output=$file_out $file_in
 expect {
 	-re "Submitted batch job ($number)" {
 		set job_id $expect_out(1,string)

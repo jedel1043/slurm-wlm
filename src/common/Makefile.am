@@ -18,7 +18,7 @@ build_unsetenv_src = unsetenv.c unsetenv.h
 extra_unsetenv_src =
 endif
 
-AM_CPPFLAGS     = -I$(top_srcdir) $(BG_INCLUDES) $(HWLOC_CPPFLAGS)
+AM_CPPFLAGS     = -I$(top_srcdir) $(BG_INCLUDES)
 
 noinst_PROGRAMS = libcommon.o libeio.o libspank.o
 # This is needed if compiling on windows
@@ -31,9 +31,6 @@ noinst_LTLIBRARIES = 			\
 	libspank.la
 
 libcommon_la_SOURCES = 			\
-	xcgroup_read_config.c xcgroup_read_config.h		\
-	xcgroup.c xcgroup.h 					\
-	xcpuinfo.c xcpuinfo.h 					\
 	cpu_frequency.c cpu_frequency.h \
 	assoc_mgr.c assoc_mgr.h 	\
 	xmalloc.c xmalloc.h 		\
@@ -54,6 +51,7 @@ libcommon_la_SOURCES = 			\
 	mpi.c mpi.h                     \
 	pack.c pack.h			\
 	parse_config.c parse_config.h	\
+	parse_value.c parse_value.h	\
 	parse_spec.c parse_spec.h	\
 	plugin.c plugin.h		\
 	plugrack.c plugrack.h		\
@@ -97,6 +95,7 @@ libcommon_la_SOURCES = 			\
 	slurm_acct_gather_infiniband.c slurm_acct_gather_infiniband.h \
 	slurm_acct_gather_filesystem.c slurm_acct_gather_filesystem.h \
 	slurm_jobcomp.c slurm_jobcomp.h	\
+	slurm_route.c slurm_route.h \
 	slurm_topology.c slurm_topology.h \
 	switch.c switch.h		\
 	arg_desc.c arg_desc.h		\
@@ -123,7 +122,10 @@ libcommon_la_SOURCES = 			\
 	proc_args.c proc_args.h		\
 	slurm_strcasestr.c slurm_strcasestr.h \
 	node_conf.h node_conf.c		\
-	gres.h gres.c
+	gres.h gres.c			\
+	entity.h entity.c		\
+	layout.h layout.c		\
+	layouts_mgr.h layouts_mgr.c
 
 EXTRA_libcommon_la_SOURCES = 		\
 	$(extra_unsetenv_src)		\
@@ -143,9 +145,9 @@ libspank_la_SOURCES = \
 	plugstack.c plugstack.h \
 	optz.c      optz.h
 
-libcommon_la_LIBADD   = $(DL_LIBS) $(HWLOC_LIBS)
+libcommon_la_LIBADD   = $(DL_LIBS)
 
-libcommon_la_LDFLAGS  = $(HWLOC_LDFLAGS) $(LIB_LDFLAGS) -module --export-dynamic
+libcommon_la_LDFLAGS  = $(LIB_LDFLAGS) -module --export-dynamic
 
 # This was made so we could export all symbols from libcommon
 # on multiple platforms

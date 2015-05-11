@@ -113,7 +113,7 @@ typedef enum {
 
 typedef enum {
 	SLURMDB_RESOURCE_NOTSET,
-	SLURMDB_RESOURCE_LICENSE,
+	SLURMDB_RESOURCE_LICENSE
 } slurmdb_resource_type_t;
 
 typedef enum {
@@ -291,7 +291,7 @@ typedef struct {
 	List resv_list;		/* list of char * */
 	List resvid_list;	/* list of char * */
 	List state_list;        /* list of char * */
-	List step_list;         /* list of jobacct_selected_step_t */
+	List step_list;         /* list of slurmdb_selected_step_t */
 	uint32_t timelimit_max; /* max timelimit */
 	uint32_t timelimit_min; /* min timelimit */
 	time_t usage_end;
@@ -401,10 +401,18 @@ typedef struct {
 
 /* slurmdb_association_cond_t is defined above alphabetical */
 
-typedef struct {
+typedef struct slurmdb_association_rec {
 	List accounting_list; 	   /* list of slurmdb_accounting_rec_t *'s */
 	char *acct;		   /* account/project associated to
 				    * association */
+	struct slurmdb_association_rec *assoc_next; /* next association with
+						       * same hash index
+						       * based off the
+						       * account/user
+						       * DOESN'T GET PACKED */
+	struct slurmdb_association_rec *assoc_next_id; /* next association with
+							* same hash index
+							* DOESN'T GET PACKED */
 	char *cluster;		   /* cluster associated to association */
 
 	uint32_t def_qos_id;       /* Which QOS id is this
@@ -577,9 +585,19 @@ typedef struct {
 } slurmdb_job_modify_cond_t;
 
 typedef struct {
-	uint32_t alloc_cpus;
-	uint32_t alloc_nodes;
 	char    *account;
+	uint32_t alloc_cpus;
+	char	*alloc_gres;
+	uint32_t alloc_nodes;
+	uint32_t array_job_id;	/* job_id of a job array or 0 if N/A */
+	uint32_t array_max_tasks; /* How many tasks of the array can be
+				     running at one time.
+				  */
+	uint32_t array_task_id;	/* task_id of a job array of NO_VAL
+				 * if N/A */
+	char    *array_task_str; /* If pending these are the array
+				    tasks this record represents.
+				 */
 	uint32_t associd;
 	char	*blockid;
 	char    *cluster;
@@ -599,9 +617,11 @@ typedef struct {
 	uint32_t priority;
 	uint32_t qosid;
 	uint32_t req_cpus;
+	char	*req_gres;
 	uint32_t req_mem;
 	uint32_t requid;
 	uint32_t resvid;
+	char *resv_name;
 	uint32_t show_full;
 	time_t start;
 	uint16_t	state;
@@ -616,6 +636,7 @@ typedef struct {
 	uint32_t tot_cpu_usec;
 	uint16_t track_steps;
 	uint32_t uid;
+	char 	*used_gres;
 	char    *user;
 	uint32_t user_cpu_sec;
 	uint32_t user_cpu_usec;
@@ -665,6 +686,8 @@ typedef struct {
 					submit with this qos at once */
 	uint32_t max_wall_pj; /* longest time this
 			       * qos can run a job */
+	uint32_t min_cpus_pj; /* min number of cpus a job can
+			       * allocate with this qos */
 
 	char *name;
 	bitstr_t *preempt_bitstr; /* other qos' this qos can preempt */
@@ -720,6 +743,8 @@ typedef struct {
 } slurmdb_reservation_rec_t;
 
 typedef struct {
+	uint32_t array_task_id;	/* task_id of a job array of NO_VAL
+				 * if N/A */
 	uint32_t jobid;
 	uint32_t stepid;
 } slurmdb_selected_step_t;
@@ -1199,6 +1224,13 @@ extern List slurmdb_coord_remove(void *db_conn, List acct_list,
 /************** extra get functions **************/
 
 /*
+ * reconfigure the slurmdbd
+ * RET: List of config_key_pairs_t *
+ * note List needs to be freed when called
+ */
+extern int slurmdb_reconfig(void *db_conn);
+
+/*
  * get info from the storage
  * RET: List of config_key_pair_t *
  * note List needs to be freed with slurm_list_destroy() when called
@@ -1247,8 +1279,66 @@ extern List slurmdb_reservations_get(void *db_conn,
  */
 extern List slurmdb_txn_get(void *db_conn, slurmdb_txn_cond_t *txn_cond);
 
+/*
+ * Get information about requested cluster(s). Similar to
+ * slurmdb_clusters_get, but should be used when setting up the
+ * working_cluster_rec.  It replaces the plugin_id_select with
+ * the position of the id in the select plugin array, as well as sets up the
+ * control_addr and dim_size parts of the structure.
+ *
+ * IN: cluster_names - comman separated string of cluster names
+ * RET: List of slurmdb_cluster_rec_t *
+ * note List needs to bbe freed with slurm_list_destroy() when called
+ */
+extern List slurmdb_get_info_cluster(char *cluster_names);
 
 /************** helper functions **************/
+extern void slurmdb_destroy_user_defs(void *object);
+extern void slurmdb_destroy_user_rec(void *object);
+extern void slurmdb_destroy_account_rec(void *object);
+extern void slurmdb_destroy_coord_rec(void *object);
+extern void slurmdb_destroy_clus_res_rec(void *object);
+extern void slurmdb_destroy_cluster_accounting_rec(void *object);
+extern void slurmdb_destroy_cluster_rec(void *object);
+extern void slurmdb_destroy_accounting_rec(void *object);
+extern void slurmdb_destroy_association_rec(void *object);
+extern void slurmdb_destroy_event_rec(void *object);
+extern void slurmdb_destroy_job_rec(void *object);
+extern void slurmdb_destroy_qos_rec(void *object);
+extern void slurmdb_destroy_reservation_rec(void *object);
+extern void slurmdb_destroy_step_rec(void *object);
+extern void slurmdb_destroy_res_rec(void *object);
+extern void slurmdb_destroy_txn_rec(void *object);
+extern void slurmdb_destroy_wckey_rec(void *object);
+extern void slurmdb_destroy_archive_rec(void *object);
+extern void slurmdb_destroy_report_assoc_rec(void *object);
+extern void slurmdb_destroy_report_user_rec(void *object);
+extern void slurmdb_destroy_report_cluster_rec(void *object);
+
+extern void slurmdb_destroy_user_cond(void *object);
+extern void slurmdb_destroy_account_cond(void *object);
+extern void slurmdb_destroy_cluster_cond(void *object);
+extern void slurmdb_destroy_association_cond(void *object);
+extern void slurmdb_destroy_event_cond(void *object);
+extern void slurmdb_destroy_job_cond(void *object);
+extern void slurmdb_destroy_job_modify_cond(void *object);
+extern void slurmdb_destroy_qos_cond(void *object);
+extern void slurmdb_destroy_reservation_cond(void *object);
+extern void slurmdb_destroy_res_cond(void *object);
+extern void slurmdb_destroy_txn_cond(void *object);
+extern void slurmdb_destroy_wckey_cond(void *object);
+extern void slurmdb_destroy_archive_cond(void *object);
+
+extern void slurmdb_destroy_update_object(void *object);
+extern void slurmdb_destroy_used_limits(void *object);
+extern void slurmdb_destroy_update_shares_rec(void *object);
+extern void slurmdb_destroy_print_tree(void *object);
+extern void slurmdb_destroy_hierarchical_rec(void *object);
+extern void slurmdb_destroy_selected_step(void *object);
+
+extern void slurmdb_destroy_report_job_grouping(void *object);
+extern void slurmdb_destroy_report_acct_grouping(void *object);
+extern void slurmdb_destroy_report_cluster_grouping(void *object);
 
 extern void slurmdb_init_association_rec(slurmdb_association_rec_t *assoc,
 					 bool free_it);
@@ -1266,6 +1356,7 @@ extern void slurmdb_init_cluster_cond(slurmdb_cluster_cond_t *cluster,
 				      bool free_it);
 extern void slurmdb_init_res_cond(slurmdb_res_cond_t *cluster,
 				  bool free_it);
+
 /* The next two functions have pointers to assoc_list so do not
  * destroy assoc_list before using the list returned from this function.
  */

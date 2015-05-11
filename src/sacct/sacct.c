@@ -45,6 +45,7 @@ void invalidSwitchCombo(char *good, char *bad);
 sacct_parameters_t params;
 print_field_t fields[] = {
 	{10, "AllocCPUS", print_fields_uint, PRINT_ALLOC_CPUS},
+	{12, "AllocGRES", print_fields_str, PRINT_ALLOC_GRES},
 	{10, "Account", print_fields_str, PRINT_ACCOUNT},
 	{7,  "AssocID", print_fields_uint, PRINT_ASSOCID},
 	{10, "AveCPU", print_fields_str, PRINT_AVECPU},
@@ -70,6 +71,7 @@ print_field_t fields[] = {
 	{6,  "GID", print_fields_uint, PRINT_GID},
 	{9,  "Group", print_fields_str, PRINT_GROUP},
 	{-12, "JobID", print_fields_str, PRINT_JOBID},
+	{-12, "JobIDRaw", print_fields_str, PRINT_JOBIDRAW},
 	{10, "JobName", print_fields_str, PRINT_JOBNAME},
 	{9,  "Layout", print_fields_str, PRINT_LAYOUT},
 	{12, "MaxDiskRead", print_fields_str, PRINT_MAXDISKREAD},
@@ -100,7 +102,10 @@ print_field_t fields[] = {
 	{6,  "QOSRAW", print_fields_uint, PRINT_QOSRAW},
 	{10, "ReqCPUFreq", print_fields_str, PRINT_REQ_CPUFREQ},
 	{8,  "ReqCPUS", print_fields_uint, PRINT_REQ_CPUS},
+	{12, "ReqGRES", print_fields_str, PRINT_REQ_GRES},
 	{10, "ReqMem", print_fields_str, PRINT_REQ_MEM},
+	{20, "Reservation",  print_fields_str, PRINT_RESERVATION},
+	{8,  "ReservationId",  print_fields_uint, PRINT_RESERVATION_ID},
 	{10, "Reserved", print_fields_time_from_secs, PRINT_RESV},
 	{10, "ResvCPU", print_fields_time_from_secs, PRINT_RESV_CPU},
 	{10, "ResvCPURAW", print_fields_uint, PRINT_RESV_CPU},

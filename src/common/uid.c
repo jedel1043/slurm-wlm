@@ -1,6 +1,5 @@
 /*****************************************************************************\
- * src/common/uid.c - uid/gid lookup utility functions
- * $Id$
+ *  src/common/uid.c - uid/gid lookup utility functions
  *****************************************************************************
  *  Copyright (C) 2002-2007 The Regents of the University of California.
  *  Copyright (C) 2008-2009 Lawrence Livermore National Security.
@@ -45,9 +44,19 @@
 #include <errno.h>
 #include <limits.h>
 
+#include "src/common/macros.h"
 #include "src/common/uid.h"
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
+
+typedef struct {
+    uid_t uid;
+    char *username;
+} uid_cache_entry_t;
+
+static pthread_mutex_t uid_lock = PTHREAD_MUTEX_INITIALIZER;
+static uid_cache_entry_t *uid_cache = NULL;
+static int uid_cache_used = 0;
 
 static int _getpwnam_r (const char *name, struct passwd *pwd, char *buf,
 		size_t bufsiz, struct passwd **result)
@@ -137,6 +146,49 @@ uid_to_string (uid_t uid)
 	else
 		ustring = xstrdup("nobody");
 	return ustring;
+}
+
+
+static int _uid_compare(const void *a, const void *b)
+{
+	uid_t ua = *(const uid_t *)a;
+	uid_t ub = *(const uid_t *)b;
+	return ua - ub;
+}
+
+extern void uid_cache_clear(void)
+{
+	int i;
+
+	slurm_mutex_lock(&uid_lock);
+	for (i = 0; i < uid_cache_used; i++)
+		xfree(uid_cache[i].username);
+	xfree(uid_cache);
+	uid_cache_used = 0;
+	slurm_mutex_unlock(&uid_lock); 
+}
+
+extern char *uid_to_string_cached(uid_t uid)
+{
+	uid_cache_entry_t *entry;
+	uid_cache_entry_t target = {uid, NULL};
+
+	slurm_mutex_lock(&uid_lock);
+	entry = bsearch(&target, uid_cache, uid_cache_used,
+			sizeof(uid_cache_entry_t), _uid_compare);
+	if (entry == NULL) {
+		uid_cache_entry_t new_entry = {uid, uid_to_string(uid)};
+		uid_cache_used++;
+		uid_cache = xrealloc(uid_cache,
+				     sizeof(uid_cache_entry_t)*uid_cache_used);
+		uid_cache[uid_cache_used-1] = new_entry;
+		qsort(uid_cache, uid_cache_used, sizeof(uid_cache_entry_t),
+		      _uid_compare);
+		slurm_mutex_unlock(&uid_lock); 
+		return new_entry.username;
+	}
+	slurm_mutex_unlock(&uid_lock); 
+	return entry->username;
 }
 
 gid_t

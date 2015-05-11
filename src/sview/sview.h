@@ -22,7 +22,7 @@
  *
  *  You should have received a copy of the GNU General Public License along
  *  with SLURM; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \****************************************************************************/
 
 #ifndef _SVIEW_H
@@ -284,7 +284,7 @@ typedef struct {
 	int inx;
 	GtkStateType last_state;
 	char *node_name;
-	int state;
+	uint32_t state;
 	GtkTable *table;
 	int table_x;
 	int table_y;
@@ -338,7 +338,6 @@ extern GMutex *sview_mutex;
 extern int global_row_count;
 extern gint last_event_x;
 extern gint last_event_y;
-extern int sview_max_cpus;
 extern GdkCursor* in_process_cursor;
 extern int cpus_per_node;
 extern int g_node_scaling;
@@ -597,6 +596,12 @@ extern gboolean left_button_pressed(GtkTreeView *tree_view,
 extern gboolean row_activated(GtkTreeView *tree_view, GtkTreePath *path,
 			      GtkTreeViewColumn *column,
 			      const signal_params_t *signal_params);
+extern gboolean row_expander(GtkTreeView *tree_view,
+			     gboolean arg1, gboolean arg2,
+			     const signal_params_t *signal_params);
+extern gboolean row_expand(GtkTreeView *tree_view,  GtkTreeIter *iter,
+			   GtkTreePath *path,
+			   const signal_params_t *signal_params);
 extern gboolean row_clicked(GtkTreeView *tree_view, GdkEventButton *event,
 			    const signal_params_t *signal_params);
 extern gboolean key_pressed(GtkTreeView *tree_view, GdkEventKey *event,

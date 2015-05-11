@@ -200,7 +200,7 @@ extern int select_p_select_nodeinfo_free(select_nodeinfo_t *nodeinfo);
 const char plugin_name[]       	= "Linear node selection plugin";
 const char plugin_type[]       	= "select/linear";
 const uint32_t plugin_id	= 102;
-const uint32_t plugin_version	= 110;
+const uint32_t plugin_version	= 120;
 
 static struct node_record *select_node_ptr = NULL;
 static int select_node_cnt = 0;
@@ -2837,10 +2837,10 @@ extern int select_p_job_test(struct job_record *job_ptr, bitstr_t *bitmap,
 		return EINVAL;
 	}
 
-	if (job_ptr->details->core_spec) {
+	if (job_ptr->details->core_spec != (uint16_t) NO_VAL) {
 		verbose("select/linear: job %u core_spec(%u) not supported",
 			job_ptr->job_id, job_ptr->details->core_spec);
-		job_ptr->details->core_spec = 0;
+		job_ptr->details->core_spec = (uint16_t) NO_VAL;
 	}
 
 	if (job_ptr->details->share_res)
@@ -3107,11 +3107,9 @@ extern int select_p_select_nodeinfo_pack(select_nodeinfo_t *nodeinfo,
 					 Buf buffer,
 					 uint16_t protocol_version)
 {
-	if (protocol_version >= SLURM_2_6_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
 		pack16(nodeinfo->alloc_cpus, buffer);
 		pack32(nodeinfo->alloc_memory, buffer);
-	} else {
-		pack16(nodeinfo->alloc_cpus, buffer);
 	}
 
 	return SLURM_SUCCESS;
@@ -3126,11 +3124,9 @@ extern int select_p_select_nodeinfo_unpack(select_nodeinfo_t **nodeinfo,
 	nodeinfo_ptr = select_p_select_nodeinfo_alloc();
 	*nodeinfo = nodeinfo_ptr;
 
-	if (protocol_version >= SLURM_2_6_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
 		safe_unpack16(&nodeinfo_ptr->alloc_cpus, buffer);
 		safe_unpack32(&nodeinfo_ptr->alloc_memory, buffer);
-	} else {
-		safe_unpack16(&nodeinfo_ptr->alloc_cpus, buffer);
 	}
 
 	return SLURM_SUCCESS;
@@ -3426,21 +3422,10 @@ extern int select_p_reconfigure(void)
 	return SLURM_SUCCESS;
 }
 
-/*
- * select_p_resv_test - Identify the nodes which "best" satisfy a reservation
- *	request. "best" is defined as either single set of consecutive nodes
- *	satisfying the request and leaving the minimum number of unused nodes
- *	OR the fewest number of consecutive node sets
- * IN/OUT avail_bitmap - nodes available for the reservation
- * IN node_cnt - count of required nodes
- * IN core_cnt - count of required cores per node
- * IN/OUT core_bitmap - cores which can not be used for this reservation
- * IN flags - reservation request flags
- * RET - nodes selected for use by the reservation
- */
-extern bitstr_t * select_p_resv_test(bitstr_t *avail_bitmap, uint32_t node_cnt,
-				     uint32_t *core_cnt, bitstr_t **core_bitmap,
-				     uint32_t flags)
+extern bitstr_t * select_p_resv_test(resv_desc_msg_t *resv_desc_ptr,
+				     uint32_t node_cnt,
+				     bitstr_t *avail_bitmap,
+				     bitstr_t **core_bitmap)
 {
 	bitstr_t **switches_bitmap;		/* nodes on this switch */
 	int       *switches_cpu_cnt;		/* total CPUs on switch */
@@ -3456,6 +3441,8 @@ extern bitstr_t * select_p_resv_test(bitstr_t *avail_bitmap, uint32_t node_cnt,
 	bool sufficient;
 
 	xassert(avail_bitmap);
+	xassert(resv_desc_ptr);
+
 	if (!switch_record_cnt || !switch_record_table)
 		return bit_pick_cnt(avail_bitmap, node_cnt);
 
@@ -3590,6 +3577,11 @@ extern void select_p_ba_fini(void)
 }
 
 extern int *select_p_ba_get_dims(void)
+{
+	return NULL;
+}
+
+extern bitstr_t *select_p_ba_cnodelist2bitmap(char *cnodelist)
 {
 	return NULL;
 }

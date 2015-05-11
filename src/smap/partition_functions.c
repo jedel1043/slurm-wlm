@@ -166,8 +166,6 @@ extern void get_slurm_part(void)
 		count++;
 
 	}
-	if (count == 128)
-		count = 0;
 	if (params.commandline && params.iterate)
 		printf("\n");
 
@@ -950,6 +948,9 @@ static int _make_nodelist(char *nodes, List nodelist)
 
 	if (!nodelist)
 		nodelist = list_create(_nodelist_del);
+
+	memset(start, params.cluster_dims, sizeof(int));
+	memset(end,   params.cluster_dims, sizeof(int));
 
 	while (nodes[j] != '\0') {
 		int mid = j   + params.cluster_dims + 1;

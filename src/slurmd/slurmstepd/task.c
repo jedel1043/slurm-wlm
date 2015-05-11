@@ -436,14 +436,14 @@ exec_task(stepd_step_rec_t *job, int i)
 
 	/* task-specific pre-launch activities */
 
-	if (spank_user_task (job, i) < 0) {
-		error ("Failed to invoke task plugin stack");
-		exit (1);
-	}
-
 	/* task plugin hook */
 	if (task_g_pre_launch(job)) {
 		error ("Failed task affinity setup");
+		exit (1);
+	}
+
+	if (spank_user_task (job, i) < 0) {
+		error ("Failed to invoke task plugin stack");
 		exit (1);
 	}
 
@@ -539,11 +539,9 @@ _make_tmpdir(stepd_step_rec_t *job)
 		 * still work with older systems we include this check.
 		 */
 
-#if defined(__FreeBSD__)
-#define	__GLIBC__ 		(1)
-#define __GLIBC_PREREQ(a,b)	(1)
-#endif
-#if defined __GLIBC__ && __GLIBC_PREREQ(2, 4)
+#if defined(HAVE_FACCESSAT)
+		else if (faccessat(AT_FDCWD, tmpdir, X_OK|W_OK, AT_EACCESS))
+#elif defined(HAVE_EACCESS)
 		else if (eaccess(tmpdir, X_OK|W_OK)) /* check permissions */
 #else
 		else if (euidaccess(tmpdir, X_OK|W_OK))

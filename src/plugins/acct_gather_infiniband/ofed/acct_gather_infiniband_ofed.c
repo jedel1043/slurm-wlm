@@ -138,7 +138,7 @@ static ofed_sens_t ofed_sens = {0,0,0,0,0,0,0,0};
 static uint8_t pc[1024];
 
 static slurm_ofed_conf_t ofed_conf;
-static uint32_t debug_flags = 0;
+static uint64_t debug_flags = 0;
 static pthread_mutex_t ofed_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static uint8_t *_slurm_pma_query_via(void *rcvbuf, ib_portid_t * dest, int port,
@@ -365,7 +365,7 @@ extern void acct_gather_infiniband_p_conf_set(s_p_hashtbl_t *tbl)
 	if (!_run_in_daemon())
 		return;
 
-	verbose("%s loaded", plugin_name);
+	debug("%s loaded", plugin_name);
 	ofed_sens.update_time = time(NULL);
 }
 

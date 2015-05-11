@@ -132,7 +132,7 @@ const char plugin_name[]        = "switch NRT plugin";
 const char plugin_type[]        = "switch/nrt";
 const uint32_t plugin_version   = 110;
 
-uint32_t debug_flags = 0;
+uint64_t debug_flags = 0;
 
 /*
  * init() is called when the plugin is loaded, before any other functions
@@ -140,7 +140,7 @@ uint32_t debug_flags = 0;
  */
 extern int init ( void )
 {
-	verbose("%s loaded", plugin_name);
+	debug("%s loaded", plugin_name);
 	debug_flags = slurm_get_debug_flags();
 
 	return SLURM_SUCCESS;
@@ -1046,4 +1046,24 @@ static void _spawn_state_save_thread(char *dir)
 		error("Could not start switch/nrt state saving pthread");
 
 	slurm_attr_destroy(&attr);
+}
+
+extern int switch_p_job_step_pre_suspend(stepd_step_rec_t *job)
+{
+	return SLURM_SUCCESS;
+}
+
+extern int switch_p_job_step_post_suspend(stepd_step_rec_t *job)
+{
+	return SLURM_SUCCESS;
+}
+
+extern int switch_p_job_step_pre_resume(stepd_step_rec_t *job)
+{
+	return SLURM_SUCCESS;
+}
+
+extern int switch_p_job_step_post_resume(stepd_step_rec_t *job)
+{
+	return SLURM_SUCCESS;
 }

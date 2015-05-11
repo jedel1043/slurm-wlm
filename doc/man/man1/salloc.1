@@ -1,4 +1,4 @@
-.TH "salloc" "1" "SLURM 2.6" "January 2013" "SLURM Commands"
+.TH "salloc" "1" "SLURM 14.11" "November 2014" "SLURM Commands"
 
 .SH "NAME"
 salloc \- Obtain a SLURM job allocation (a set of nodes), execute a command,
@@ -342,7 +342,7 @@ by the user root.
 .TP
 \fB\-\-gres\fR=<\fIlist\fR>
 Specifies a comma delimited list of generic consumable resources.
-The format of each entry on the list is "name[:count]".
+The format of each entry on the list is "name[[:type]:count]".
 The name is that of the consumable resource.
 The count is the number of those resources with a default value of 1.
 The specified resources will be allocated to the job on each node.
@@ -350,7 +350,8 @@ The available generic consumable resources is configurable by the system
 administrator.
 A list of available generic consumable resources will be printed and the
 command will exit if the option argument is "help".
-Examples of use include "\-\-gres=gpu:2,mic=1" and "\-\-gres=help".
+Examples of use include "\-\-gres=gpu:2,mic=1", "\-\-gres=gpu:kepler:2", and
+"\-\-gres=help".
 
 .TP
 \fB\-H, \-\-hold\fR
@@ -534,8 +535,12 @@ round\-robin fashion).
 .TP
 \fB\-\-mail\-type\fR=<\fItype\fR>
 Notify user by email when certain event types occur.
-Valid \fItype\fR values are BEGIN, END, FAIL, REQUEUE, and ALL (any state
-change). The user to be notified is indicated with \fB\-\-mail\-user\fR.
+Valid \fItype\fR values are BEGIN, END, FAIL, REQUEUE, ALL (equivalent to
+BEGIN, END, FAIL and REQUEUE), TIME_LIMIT, TIME_LIMIT_90 (reached 90 percent of
+time limit), TIME_LIMIT_80 (reached 80 percent of time limit), and TIME_LIMIT_50
+(reached 50 percent of time limit).
+Multiple \fItype\fR values may be specified in a comma separated list.
+The user to be notified is indicated with \fB\-\-mail\-user\fR.
 
 .TP
 \fB\-\-mail\-user\fR=<\fIuser\fR>
@@ -970,6 +975,12 @@ the SLURM configuration parameter, AccountingStorageEnforce, includes
 "qos" in it's definition.
 
 .TP
+\fB\-\-reboot\fR
+Force the allocated nodes to reboot before starting the job.
+This is only supported with some system configurations and will otherwise be
+silently ignored.
+
+.TP
 \fB\-\-reservation\fR=<\fIname\fR>
 Allocate resources for the job from the named reservation.
 
@@ -980,16 +991,20 @@ The resources to be shared can be nodes, sockets, cores, or hyperthreads
 depending upon configuration.
 The default shared behavior depends on system configuration and the partition's
 \fBShared\fR option takes precedence over the job's option.
-This option may result the allocation being granted sooner than if the \-\-share
-option was not set and allow higher system utilization, but application
-performance will likely suffer due to competition for resources.
+This option may result in the allocation being granted sooner than if the
+\-\-share option was not set and allow higher system utilization, but
+application performance will likely suffer due to competition for resources.
 Also see the \-\-exclusive option.
 
 .TP
 \fB\-S\fR, \fB\-\-core\-spec\fR=<\fInum\fR>
-Count of specialized cores per nodereserved by the job for system operations
+Count of specialized cores per node reserved by the job for system operations
 and not used by the application. The application will not use these cores,
-but will be charged for their allocation. Default value is zero.
+but will be charged for their allocation.
+Default value is dependent upon the node's configured CoreSpecCount value.
+If a value of zero is designated and the Slurm configuration option
+AllowSpecResourcesUsage is enabled, the job will be allowed to override
+CoreSpecCount and use the specialized resources on nodes it is allocated.
 
 .TP
 \fB\-\-signal\fR=<\fIsig_num\fR>[@<\fIsig_time\fR>]
@@ -1023,7 +1038,7 @@ Acceptable time formats include "minutes", "minutes:seconds",
 The job's maximum time delay may be limited by the system administrator using
 the \fBSchedulerParameters\fR configuration parameter with the
 \fBmax_switch_wait\fR parameter option.
-The default max\-time is the max_switch_wait SchedulerParameter.
+The default max\-time is the max_switch_wait SchedulerParameters.
 
 .TP
 \fB\-t\fR, \fB\-\-time\fR=<\fItime\fR>
@@ -1197,10 +1212,6 @@ By default the specified geometry can rotate in three dimensions.
 Path to ramdisk image for bluegene block.  BGL only.
 Default from \fIblugene.conf\fR if not set.
 
-.TP
-\fB\-\-reboot\fR
-Force the allocated nodes to reboot before starting the job.
-
 .SH "INPUT ENVIRONMENT VARIABLES"
 .PP
 Upon startup, salloc will read and handle the options set in the following
@@ -1315,6 +1326,9 @@ the executed program:
 .TP
 \fBBASIL_RESERVATION_ID\fR
 The reservation ID on Cray systems running ALPS/BASIL only.
+.TP
+\fBSLURM_CLUSTER_NAME\fR
+Name of the cluster on which the job is executing.
 .TP
 \fBSLURM_DISTRIBUTION\fR
 Same as \fB\-m, \-\-distribution\fR

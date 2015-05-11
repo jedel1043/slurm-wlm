@@ -94,6 +94,8 @@ EXTRA_DIST = \
 	test1.71			\
 	test1.72			\
 	test1.73			\
+	test1.74			\
+	test1.75			\
 	test1.80			\
 	test1.81			\
 	test1.82			\
@@ -121,6 +123,7 @@ EXTRA_DIST = \
 	test1.96			\
 	test1.96.prog.c			\
 	test1.97			\
+	test1.99			\
 	test2.1				\
 	test2.2				\
 	test2.3				\
@@ -165,6 +168,7 @@ EXTRA_DIST = \
 	inc3.11.7                      \
 	inc3.11.8                      \
 	test3.12			\
+	test3.13			\
 	test4.1				\
 	test4.2				\
 	test4.3				\
@@ -185,6 +189,8 @@ EXTRA_DIST = \
 	test5.6				\
 	test5.7				\
 	test5.8				\
+	test5.9				\
+	test5.10			\
 	test6.1				\
 	test6.2				\
 	test6.3				\
@@ -234,6 +240,8 @@ EXTRA_DIST = \
 	test7.15			\
 	test7.15.prog.c			\
 	test7.16			\
+	test7.17			\
+	test7.17.prog.c			\
 	test8.1				\
 	test8.2				\
 	test8.3				\
@@ -299,6 +307,7 @@ EXTRA_DIST = \
 	test12.6			\
 	test12.6.prog.c			\
 	test12.7			\
+	test12.8			\
 	test13.1			\
 	test13.2			\
 	test14.1			\
@@ -336,6 +345,7 @@ EXTRA_DIST = \
 	test15.24			\
 	test15.25			\
 	test15.26			\
+	test15.27			\
 	test16.1			\
 	test16.2			\
 	test16.3			\
@@ -375,6 +385,9 @@ EXTRA_DIST = \
 	test17.32			\
 	test17.33			\
 	test17.34			\
+	test17.36			\
+	test17.37			\
+	test17.38			\
 	test19.1			\
 	test19.2			\
 	test19.3			\
@@ -382,6 +395,8 @@ EXTRA_DIST = \
 	test19.5			\
 	test19.6			\
 	test19.7			\
+	test19.8			\
+	test19.9			\
 	test20.1			\
 	test20.2			\
 	test20.3			\
@@ -456,6 +471,10 @@ EXTRA_DIST = \
 	test24.1			\
 	test24.1.prog.c			\
 	test24.2			\
+	test24.3			\
+	test24.3.prog.c			\
+	test24.4			\
+	test24.4.prog.c			\
 	test25.1			\
 	test26.1			\
 	test26.2			\
@@ -493,6 +512,22 @@ EXTRA_DIST = \
 	test32.10			\
 	test32.11			\
 	test32.12			\
+	test33.1			\
+	test33.1.prog.c			\
+	etc.33.1.1/slurm.conf		\
+	etc.33.1.1/testcases		\
+	etc.33.1.1/topology.conf	\
+	etc.33.1.2/slurm.conf		\
+	etc.33.1.2/testcases		\
+	etc.33.1.2/topology.conf	\
+	etc.33.1.3/slurm.conf		\
+	etc.33.1.3/testcases		\
+	etc.33.1.3/topology.conf	\
+	etc.33.1.4/slurm.conf		\
+	etc.33.1.4/testcases		\
+	etc.33.1.4/topology.conf	\
+	test34.1			\
+	test34.2			\
 	usleep
 
 distclean-local:

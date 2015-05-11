@@ -55,9 +55,11 @@
 #include <time.h>
 
 #include "src/common/bitstring.h"
+#include "src/common/hostlist.h"
 #include "src/common/list.h"
 #include "src/common/slurm_protocol_defs.h"
 #include "src/common/slurm_protocol_socket_common.h"
+#include "src/common/xhash.h"
 
 #define CONFIG_MAGIC	0xc065eded
 #define FEATURE_MAGIC	0x34dfd8b5
@@ -66,10 +68,13 @@
 struct config_record {
 	uint32_t magic;		/* magic cookie to test data integrity */
 	uint16_t cpus;		/* count of processors running on the node */
+	char *cpu_spec_list;	/* arbitrary list of specialized cpus */
 	uint16_t boards;	/* count of boards configured */
 	uint16_t sockets;	/* number of sockets per node */
 	uint16_t cores;		/* number of cores per CPU */
+	uint16_t core_spec_cnt;	/* number of specialized cores */
 	uint16_t threads;	/* number of threads per core */
+	uint32_t mem_spec_limit; /* MB real memory for memory specialization */
 	uint32_t real_memory;	/* MB real memory on the node */
 	uint32_t tmp_disk;	/* MB total storage in TMP_FS file system */
 	uint32_t weight;	/* arbitrary priority of node for
@@ -94,7 +99,7 @@ struct node_record {
 	uint32_t magic;			/* magic cookie for data integrity */
 	char *name;			/* name of the node. NULL==defunct */
 	char *node_hostname;		/* hostname of the node */
-	uint16_t node_state;		/* enum node_states, ORed with
+	uint32_t node_state;		/* enum node_states, ORed with
 					 * NODE_STATE_NO_RESPOND if not
 					 * responding */
 	bool not_responding;		/* set if fails to respond,
@@ -108,8 +113,11 @@ struct node_record {
 	uint16_t boards; 		/* count of boards configured */
 	uint16_t sockets;		/* number of sockets per node */
 	uint16_t cores;			/* number of cores per CPU */
+	char *cpu_spec_list;		/* node's specialized cpus */
+	uint16_t core_spec_cnt;		/* number of specialized cores on node*/
 	uint16_t threads;		/* number of threads per core */
 	uint32_t real_memory;		/* MB real memory on the node */
+	uint32_t mem_spec_limit;	/* MB memory limit for specialization */
 	uint32_t tmp_disk;		/* MB total disk in TMP_FS */
 	uint32_t up_time;		/* seconds since node boot */
 	struct config_record *config_ptr;  /* configuration spec ptr */
@@ -161,9 +169,11 @@ struct node_record {
 	time_t cpu_load_time;		/* Time when cpu_load last set */
 	uint16_t protocol_version;	/* Slurm version number */
 	char *version;			/* Slurm version */
+	bitstr_t *node_spec_bitmap;	/* node cpu specialization bitmap */
 };
 extern struct node_record *node_record_table_ptr;  /* ptr to node records */
 extern int node_record_count;		/* count in node_record_table_ptr */
+extern xhash_t* node_hash_table;	/* hash table for node records */
 extern time_t last_node_update;		/* time of last node record update */
 
 extern uint16_t *cr_node_num_cores;
@@ -190,6 +200,15 @@ char * bitmap2node_name_sortable (bitstr_t *bitmap, bool sort);
  * NOTE: the caller must xfree the memory at node_list when no longer required
  */
 char * bitmap2node_name (bitstr_t *bitmap);
+
+/*
+ * bitmap2hostlist - given a bitmap, build a hostlist
+ * IN bitmap - bitmap pointer
+ * RET pointer to hostlist or NULL on error
+ * globals: node_record_table_ptr - pointer to node table
+ * NOTE: the caller must xfree the memory at node_list when no longer required
+ */
+hostlist_t bitmap2hostlist (bitstr_t *bitmap);
 
 /*
  * build_all_nodeline_info - get a array of slurm_conf_node_t structures
@@ -241,6 +260,15 @@ extern struct node_record *create_node_record (
 extern struct node_record *find_node_record (char *name);
 
 /*
+ * hostlist2bitmap - given a hostlist, build a bitmap representation
+ * IN hl          - hostlist
+ * IN best_effort - if set don't return an error on invalid node name entries
+ * OUT bitmap     - set to bitmap, may not have all bits set on error
+ * RET 0 if no error, otherwise EINVAL
+ */
+extern int hostlist2bitmap (hostlist_t hl, bool best_effort, bitstr_t **bitmap);
+
+/*
  * init_node_conf - initialize the node configuration tables and values.
  *	this should be called before creating any node or configuration
  *	entries.
@@ -283,6 +311,10 @@ extern void cr_fini_global_core_data(void);
 
 /*return the coremap index to the first core of the given node */
 extern uint32_t cr_get_coremap_offset(uint32_t node_index);
+
+/* Return a bitmap the size of the machine in cores. On a Bluegene
+ * system it will return a bitmap in cnodes. */
+extern bitstr_t *cr_create_cluster_core_bitmap(int core_mult);
 
 /* Given the number of tasks per core and the actual number of hw threads,
  * compute how many CPUs are "visible" and, hence, usable on the node.

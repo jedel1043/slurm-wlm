@@ -190,7 +190,7 @@
 #define LONG_OPT_DEBUG_SLURMD    0x14f
 #define LONG_OPT_TIME_MIN        0x150
 #define LONG_OPT_GRES            0x151
-#define LONG_OPT_ALPS            0x152
+
 #define LONG_OPT_REQ_SWITCH      0x153
 #define LONG_OPT_LAUNCHER_OPTS   0x154
 #define LONG_OPT_CPU_FREQ        0x155
@@ -409,7 +409,7 @@ static void _opt_default()
 	opt.cpu_bind = NULL;
 	opt.mem_bind_type = 0;
 	opt.mem_bind = NULL;
-	opt.core_spec = 0;
+	opt.core_spec = (uint16_t) NO_VAL;
 	opt.core_spec_set = false;
 	opt.time_limit = NO_VAL;
 	opt.time_limit_str = NULL;
@@ -880,7 +880,6 @@ static void _set_options(const int argc, char **argv)
 		{"disable-status", no_argument,      0, 'X'},
 		{"no-allocate",   no_argument,       0, 'Z'},
 		{"acctg-freq",       required_argument, 0, LONG_OPT_ACCTG_FREQ},
-		{"alps",             required_argument, 0, LONG_OPT_ALPS},
 		{"begin",            required_argument, 0, LONG_OPT_BEGIN},
 		{"blrts-image",      required_argument, 0, LONG_OPT_BLRTS_IMAGE},
 		{"checkpoint",       required_argument, 0, LONG_OPT_CHECKPOINT},
@@ -1163,7 +1162,8 @@ static void _set_options(const int argc, char **argv)
 			opt.shared = 1;
 			break;
 		case (int)'S':
-			opt.core_spec = _get_int(optarg, "core_spec", true);
+			opt.core_spec = _get_int(optarg, "core_spec",
+				false);
 			opt.core_spec_set = true;
 			break;
 		case (int)'t':
@@ -1216,7 +1216,10 @@ static void _set_options(const int argc, char **argv)
                         break;
 		case LONG_OPT_EXPORT:
 			xfree(opt.export_env);
-			opt.export_env = xstrdup(optarg);
+			if (!strcasecmp(optarg, "ALL"))
+				; /* Ignore "ALL", it is the default */
+			else
+				opt.export_env = xstrdup(optarg);
 			break;
                 case LONG_OPT_CPU_BIND:
 			if (slurm_verify_cpu_bind(optarg, &opt.cpu_bind,
@@ -1627,9 +1630,6 @@ static void _set_options(const int argc, char **argv)
 			}
 			xfree(opt.gres);
 			opt.gres = xstrdup(optarg);
-			break;
-		case LONG_OPT_ALPS:
-			error("Not running ALPS. --alps option ignored.");
 			break;
 		case LONG_OPT_REQ_SWITCH:
 			pos_delimit = strstr(optarg,"@");
@@ -2126,12 +2126,6 @@ static bool _opt_verify(void)
 		      MAX_THREADS);
 	}
 
-	if (opt.labelio && opt.unbuffered) {
-		error("Do not specify both -l (--label) and "
-		      "-u (--unbuffered)");
-		exit(error_exit);
-	}
-
 	/*
 	 * --wait always overrides hidden max_exit_timeout
 	 */
@@ -2521,9 +2515,9 @@ static void _usage(void)
 #ifdef HAVE_BG_L_P
 "            [--geometry=XxYxZ] "
 #else
-"            [--export=NONE] [--geometry=AxXxYxZ] "
+"            [--export=env_vars|NONE] [--geometry=AxXxYxZ] "
 #endif
-"[--conn-type=type] [--no-rotate] [--reboot]\n"
+"[--conn-type=type] [--no-rotate]\n"
 #ifdef HAVE_BGL
 "            [--blrts-image=path] [--linux-image=path]\n"
 "            [--mloader-image=path] [--ramdisk-image=path]\n"
@@ -2537,9 +2531,9 @@ static void _usage(void)
 "            [--task-prolog=fname] [--task-epilog=fname]\n"
 "            [--ctrl-comm-ifhn=addr] [--multi-prog]\n"
 "            [--switches=max-switches{@max-time-to-wait}]\n"
-"            [--core-spec=cores]\n"
+"            [--core-spec=cores] [--reboot]\n"
 "            [-w hosts...] [-x hosts...] executable [args...]\n"
-"            [--acctg-freq=<datatype>=<interval>");
+"            [--acctg-freq=<datatype>=<interval>\n");
 }
 
 static void _help(void)
@@ -2552,7 +2546,8 @@ static void _help(void)
 "Parallel run options:\n"
 "  -A, --account=name          charge job to specified account\n"
 "      --begin=time            defer job until HH:MM MM/DD/YY\n"
-"      --acctg-freq=<datatype>=<interval> accounting and profiling sampling\n" "                              intervals. Supported datatypes:\n"
+"      --acctg-freq=<datatype>=<interval> accounting and profiling sampling\n"
+"                              intervals. Supported datatypes:\n"
 "                              task=<interval> energy=<interval>\n"
 "                              network=<interval> filesystem=<interval>\n"
 "  -c, --cpus-per-task=ncpus   number of cpus required per task\n"
@@ -2562,6 +2557,8 @@ static void _help(void)
 "      --comment=name          arbitrary comment\n"
 "  -d, --dependency=type:jobid defer job until condition on jobid is satisfied\n"
 "  -D, --chdir=path            change remote current working directory\n"
+"      --export=env_vars|NONE  environment variables passed to launcher with\n"
+"                              optional values or NONE (pass no variables)\n"
 "  -e, --error=err             location of stderr redirection\n"
 "      --epilog=program        run \"program\" after launching job step\n"
 "  -E, --preserve-env          env vars for node and task counts override\n"
@@ -2608,6 +2605,7 @@ static void _help(void)
 "  -q, --quit-on-interrupt     quit on single Ctrl-C\n"
 "      --qos=qos               quality of service\n"
 "  -Q, --quiet                 quiet mode (suppress informational messages)\n"
+"      --reboot                reboot block before starting job\n"
 "  -r, --relative=n            run job step relative to node n of allocation\n"
 "      --restart-dir=dir       directory of checkpoint image files to restart\n"
 "                              from\n"
@@ -2626,6 +2624,7 @@ static void _help(void)
 "  -v, --verbose               verbose mode (multiple -v's increase verbosity)\n"
 "  -W, --wait=sec              seconds to wait after first task exits\n"
 "                              before killing job\n"
+"      --wckey=wckey           wckey to run job under\n"
 "  -X, --disable-status        Disable Ctrl-C status feature\n"
 "\n"
 "Constraint options:\n"
@@ -2693,13 +2692,11 @@ static void _help(void)
 #ifdef HAVE_BG_L_P
 "  -g, --geometry=XxYxZ        geometry constraints of the job\n"
 #else
-"      --export=NONE           do not pass environment variables to launcher\n"
 "  -g, --geometry=AxXxYxZ      Midplane geometry constraints of the job,\n"
 "                              sub-block allocations can not be allocated\n"
 "                              with the geometry option\n"
 #endif
 "  -R, --no-rotate             disable geometry rotation\n"
-"      --reboot                reboot block before starting job\n"
 #ifndef HAVE_BGL
 "                              If wanting to run in HTC mode (only for 1\n"
 "                              midplane and below).  You can use HTC_S for\n"

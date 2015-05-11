@@ -39,6 +39,7 @@
 \*****************************************************************************/
 
 #include "sacct.h"
+#include "src/common/cpu_frequency.h"
 #include "src/common/parse_time.h"
 #include "slurm.h"
 
@@ -118,8 +119,87 @@ static void _print_small_double(
 		snprintf(outbuf, buf_size, "0");
 }
 
+/* Translate bitmap representation from hex to decimal format, replacing
+ * array_task_str. */
+static void _xlate_task_str(slurmdb_job_rec_t *job_ptr)
+{
+	static int bitstr_len = -1;
+	int buf_size, len;
+	int i, i_first, i_last, i_prev, i_step = 0;
+	bitstr_t *task_bitmap;
+	char *in_buf = job_ptr->array_task_str;
+	char *out_buf = NULL;
+
+	if (!in_buf)
+		return;
+
+	i = strlen(in_buf);
+	task_bitmap = bit_alloc(i * 4);
+	bit_unfmt_hexmask(task_bitmap, in_buf);
+
+	/* Check first for a step function */
+	i_first = bit_ffs(task_bitmap);
+	i_last  = bit_fls(task_bitmap);
+	if (((i_last - i_first) > 10) &&
+	    !bit_test(task_bitmap, i_first + 1)) {
+		bool is_step = true;
+		i_prev = i_first;
+		for (i = i_first + 1; i <= i_last; i++) {
+			if (!bit_test(task_bitmap, i))
+				continue;
+			if (i_step == 0) {
+				i_step = i - i_prev;
+			} else if ((i - i_prev) != i_step) {
+				is_step = false;
+				break;
+			}
+			i_prev = i;
+		}
+		if (is_step) {
+			xstrfmtcat(out_buf, "%d-%d:%d",
+				   i_first, i_last, i_step);
+		}
+	}
+
+	if (bitstr_len > 0) {
+		/* Print the first bitstr_len bytes of the bitmap string */
+		buf_size = bitstr_len;
+		out_buf = xmalloc(buf_size);
+		bit_fmt(out_buf, buf_size, task_bitmap);
+		len = strlen(out_buf);
+		if (len > (buf_size - 3))
+			for (i = 0; i < 3; i++)
+				out_buf[buf_size - 2 - i] = '.';
+	} else {
+		/* Print the full bitmap's string representation.
+		 * For huge bitmaps this can take roughly one minute,
+		 * so let the client do the work */
+		buf_size = bit_size(task_bitmap) * 8;
+		while (1) {
+			out_buf = xmalloc(buf_size);
+			bit_fmt(out_buf, buf_size, task_bitmap);
+			len = strlen(out_buf);
+			if ((len > 0) && (len < (buf_size - 32)))
+				break;
+			xfree(out_buf);
+			buf_size *= 2;
+		}
+	}
+
+	if (job_ptr->array_max_tasks)
+		xstrfmtcat(out_buf, "%c%u", '%', job_ptr->array_max_tasks);
+
+	xfree(job_ptr->array_task_str);
+	job_ptr->array_task_str = out_buf;
+}
+
 void print_fields(type_t type, void *object)
 {
+	if (!object) {
+		fatal ("Job or step record is NULL");
+		return;
+	}
+
 	slurmdb_job_rec_t *job = (slurmdb_job_rec_t *)object;
 	slurmdb_step_rec_t *step = (slurmdb_step_rec_t *)object;
 	jobcomp_job_rec_t *job_comp = (jobcomp_job_rec_t *)object;
@@ -156,7 +236,7 @@ void print_fields(type_t type, void *object)
 
 	list_iterator_reset(print_fields_itr);
 	while((field = list_next(print_fields_itr))) {
-		char *tmp_char = NULL;
+		char *tmp_char = NULL, id[FORMAT_STRING_SIZE];
 		int tmp_int = NO_VAL, tmp_int2 = NO_VAL;
 		double tmp_dub = (double)NO_VAL;
 		uint32_t tmp_uint32 = (uint32_t)NO_VAL;
@@ -181,6 +261,23 @@ void print_fields(type_t type, void *object)
 			}
 			field->print_routine(field,
 					     tmp_int,
+					     (curr_inx == field_count));
+			break;
+		case PRINT_ALLOC_GRES:
+			switch(type) {
+			case JOB:
+				tmp_char = job->alloc_gres;
+				break;
+			case JOBSTEP:
+				tmp_char = step->job_ptr->alloc_gres;
+				break;
+			case JOBCOMP:
+			default:
+				tmp_char = NULL;
+				break;
+			}
+			field->print_routine(field,
+					     tmp_char,
 					     (curr_inx == field_count));
 			break;
 		case PRINT_ACCOUNT:
@@ -491,7 +588,6 @@ void print_fields(type_t type, void *object)
 					     (curr_inx == field_count));
 			break;
 		case PRINT_DERIVED_EC:
-			tmp_int = 0;
 			tmp_int2 = 0;
 			switch(type) {
 			case JOB:
@@ -641,6 +737,53 @@ void print_fields(type_t type, void *object)
 					     (curr_inx == field_count));
 			break;
 		case PRINT_JOBID:
+			if (type == JOBSTEP)
+				job = step->job_ptr;
+
+			if (job) {
+				if (job->array_task_str) {
+					_xlate_task_str(job);
+					snprintf(id, FORMAT_STRING_SIZE,
+						 "%u_[%s]",
+						 job->array_job_id,
+						 job->array_task_str);
+				} else if (job->array_task_id != NO_VAL)
+					snprintf(id, FORMAT_STRING_SIZE,
+						 "%u_%u",
+						 job->array_job_id,
+						 job->array_task_id);
+				else
+					snprintf(id, FORMAT_STRING_SIZE,
+						 "%u",
+						 job->jobid);
+			}
+
+			switch(type) {
+			case JOB:
+				tmp_char = xstrdup(id);
+				break;
+			case JOBSTEP:
+				if (step->stepid == NO_VAL)
+					tmp_char = xstrdup_printf(
+						"%s.batch", id);
+				else
+					tmp_char = xstrdup_printf(
+						"%s.%u",
+						id, step->stepid);
+				break;
+			case JOBCOMP:
+				tmp_char = xstrdup_printf("%u",
+							  job_comp->jobid);
+				break;
+			default:
+				break;
+			}
+			field->print_routine(field,
+					     tmp_char,
+					     (curr_inx == field_count));
+			xfree(tmp_char);
+			break;
+		case PRINT_JOBIDRAW:
 			switch(type) {
 			case JOB:
 				tmp_char = xstrdup_printf("%u", job->jobid);
@@ -1267,18 +1410,7 @@ void print_fields(type_t type, void *object)
 			default:
 				break;
 			}
-			if (tmp_dub == CPU_FREQ_LOW)
-				snprintf(outbuf, sizeof(outbuf), "Low");
-			else if (tmp_dub == CPU_FREQ_MEDIUM)
-				snprintf(outbuf, sizeof(outbuf), "Medium");
-			else if (tmp_dub == CPU_FREQ_HIGH)
-				snprintf(outbuf, sizeof(outbuf), "High");
-			else if (tmp_dub == CPU_FREQ_HIGHM1)
-				snprintf(outbuf, sizeof(outbuf), "Highm1");
-			else if (!fuzzy_equal(tmp_dub, NO_VAL))
-				convert_num_unit2((double)tmp_dub,
-						  outbuf, sizeof(outbuf),
-						  UNIT_KILO, 1000, false);
+			cpu_freq_to_string(outbuf, sizeof(outbuf), tmp_dub);
 			field->print_routine(field,
 					     outbuf,
 					     (curr_inx == field_count));
@@ -1300,6 +1432,23 @@ void print_fields(type_t type, void *object)
 			}
 			field->print_routine(field,
 					     tmp_int,
+					     (curr_inx == field_count));
+			break;
+		case PRINT_REQ_GRES:
+			switch(type) {
+			case JOB:
+				tmp_char = job->req_gres;
+				break;
+			case JOBSTEP:
+				tmp_char = step->job_ptr->req_gres;
+				break;
+			case JOBCOMP:
+			default:
+				tmp_char = NULL;
+				break;
+			}
+			field->print_routine(field,
+					     tmp_char,
 					     (curr_inx == field_count));
 			break;
 		case PRINT_REQ_MEM:
@@ -1333,6 +1482,53 @@ void print_fields(type_t type, void *object)
 			field->print_routine(field,
 					     outbuf,
 					     (curr_inx == field_count));
+			break;
+		case PRINT_RESERVATION:
+			switch(type) {
+			case JOB:
+				if (job->resv_name) {
+					tmp_char = job->resv_name;
+				} else {
+					tmp_char = NULL;
+				}
+				break;
+			case JOBSTEP:
+				tmp_char = NULL;
+				break;
+			case JOBCOMP:
+				tmp_char = NULL;
+				break;
+			default:
+				tmp_char = NULL;
+				break;
+			}
+			field->print_routine(field,
+						tmp_char,
+						(curr_inx == field_count));
+			break;
+		case PRINT_RESERVATION_ID:
+			switch(type) {
+			case JOB:
+				if (job->resvid)
+					tmp_uint32 = job->resvid;
+				else
+					tmp_uint32 = NO_VAL;
+				break;
+			case JOBSTEP:
+				tmp_uint32 = NO_VAL;
+				break;
+			case JOBCOMP:
+				tmp_uint32 = NO_VAL;
+				break;
+			default:
+				tmp_uint32 = NO_VAL;
+				break;
+			}
+			if (tmp_uint32 == (uint32_t)NO_VAL)
+				tmp_uint32 = NO_VAL;
+			field->print_routine(field,
+						tmp_uint32,
+						(curr_inx == field_count));
 			break;
 		case PRINT_RESV:
 			switch(type) {

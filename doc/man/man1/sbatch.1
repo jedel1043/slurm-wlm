@@ -1,4 +1,4 @@
-.TH "sbatch" "1" "SLURM 14.03" "August 2014" "SLURM Commands"
+.TH "sbatch" "1" "SLURM 14.11" "November 2014" "SLURM Commands"
 
 .SH "NAME"
 sbatch \- Submit a batch script to SLURM.
@@ -46,6 +46,10 @@ a range of values with a "\-" separator. For example, "\-\-array=0\-15" or
 "\-\-array=0,6,16\-32".
 A step function can also be specified with a suffix containing a colon and
 number. For example, "\-\-array=0\-15:4" is equivalent to "\-\-array=0,4,8,12".
+A maximum number of simultaneously running tasks from the job array may be
+specified using a "%" separator.
+For example "\-\-array=0\-15%4" will limit the number of simultaneously
+running tasks from this job array to 4.
 The minimum index value is 0.
 the maximum value is one less than the configuration parameter MaxArraySize.
 
@@ -344,7 +348,8 @@ Identify which environment variables are propagated to the batch job.
 Multiple environment variable names should be comma separated.
 Environment variable names may be specified to propagate the current
 value of those variables (e.g. "\-\-export=EDITOR") or specific values
-for the variables may be exported (e.g.. "\-\-export=EDITOR=/bin/vi").
+for the variables may be exported (e.g.. "\-\-export=EDITOR=/bin/vi")
+in addition to the environment variables that would otherwise be set.
 This option particularly important for jobs that are submitted on one cluster
 and execute on a different cluster (e.g. with different paths). By default all
 environment variables are propagated. If the argument is \fINONE\fR or
@@ -401,7 +406,7 @@ may be the group name or the numerical group ID.
 .TP
 \fB\-\-gres\fR=<\fIlist\fR>
 Specifies a comma delimited list of generic consumable resources.
-The format of each entry on the list is "name[:count]".
+The format of each entry on the list is "name[[:type]:count]".
 The name is that of the consumable resource.
 The count is the number of those resources with a default value of 1.
 The specified resources will be allocated to the job on each node.
@@ -409,7 +414,8 @@ The available generic consumable resources is configurable by the system
 administrator.
 A list of available generic consumable resources will be printed and the
 command will exit if the option argument is "help".
-Examples of use include "\-\-gres=gpu:2,mic=1" and "\-\-gres=help".
+Examples of use include "\-\-gres=gpu:2,mic=1", "\-\-gres=gpu:kepler:2", and
+"\-\-gres=help".
 
 .TP
 \fB\-H, \-\-hold\fR
@@ -520,6 +526,9 @@ License names can be followed by a colon and count
 (the default count is one).
 Multiple license names should be comma separated (e.g.
 "\-\-licenses=foo:4,bar").
+To submit jobs using remote licenses, those served by the slurmdbd, specify
+the name of the server providing the licenses.
+For example "\-\-license=nastran@slurmdb:12".
 
 .TP
 \fB\-M\fR, \fB\-\-clusters\fR=<\fIstring\fR>
@@ -621,8 +630,12 @@ round\-robin fashion).
 .TP
 \fB\-\-mail\-type\fR=<\fItype\fR>
 Notify user by email when certain event types occur.
-Valid \fItype\fR values are BEGIN, END, FAIL, REQUEUE, and ALL (any state
-change). The user to be notified is indicated with \fB\-\-mail\-user\fR.
+Valid \fItype\fR values are BEGIN, END, FAIL, REQUEUE, ALL (equivalent to
+BEGIN, END, FAIL and REQUEUE), TIME_LIMIT, TIME_LIMIT_90 (reached 90 percent of
+time limit), TIME_LIMIT_80 (reached 80 percent of time limit), and TIME_LIMIT_50
+(reached 50 percent of time limit).
+Multiple \fItype\fR values may be specified in a comma separated list.
+The user to be notified is indicated with \fB\-\-mail\-user\fR.
 
 .TP
 \fB\-\-mail\-user\fR=<\fIuser\fR>
@@ -634,7 +647,7 @@ The default value is the submitting user.
 \fB\-\-mem\fR=<\fIMB\fR>
 Specify the real memory required per node in MegaBytes.
 Default value is \fBDefMemPerNode\fR and the maximum value is
-\fBMaxMemPerNode\fR. If configured, both of parameters can be
+\fBMaxMemPerNode\fR. If configured, both parameters can be
 seen using the \fBscontrol show config\fR command.
 This parameter would generally be used if whole nodes
 are allocated to jobs (\fBSelectType=select/linear\fR).
@@ -650,7 +663,7 @@ the next periodic accounting sample.
 \fB\-\-mem\-per\-cpu\fR=<\fIMB\fR>
 Mimimum memory required per allocated CPU in MegaBytes.
 Default value is \fBDefMemPerCPU\fR and the maximum value is \fBMaxMemPerCPU\fR
-(see exception below). If configured, both of parameters can be
+(see exception below). If configured, both parameters can be
 seen using the \fBscontrol show config\fR command.
 Note that if the job's \fB\-\-mem\-per\-cpu\fR value exceeds the configured
 \fBMaxMemPerCPU\fR, then the user's limit will be treated as a memory limit
@@ -1117,6 +1130,12 @@ the SLURM configuration parameter, AccountingStorageEnforce, includes
 "qos" in it's definition.
 
 .TP
+\fB\-\-reboot\fR
+Force the allocated nodes to reboot before starting the job.
+This is only supported with some system configurations and will otherwise be
+silently ignored.
+
+.TP
 \fB\-\-requeue\fR
 Specifies that the batch job should be requeued after node failure.
 When a job is requeued, the batch script is initiated from its beginning.
@@ -1135,17 +1154,20 @@ The resources to be shared can be nodes, sockets, cores, or hyperthreads
 depending upon configuration.
 The default shared behavior depends on system configuration and the partition's
 \fBShared\fR option takes precedence over the job's option.
-This option may result the allocation being granted sooner than if the \-\-share
-option was not set and allow higher system utilization, but application
-performance will likely suffer due to competition for resources.
+This option may result in the allocation being granted sooner than if the
+\-\-share option was not set and allow higher system utilization, but
+application performance will likely suffer due to competition for resources.
 Also see the \-\-exclusive option.
 
 .TP
 \fB\-S\fR, \fB\-\-core\-spec\fR=<\fInum\fR>
 Count of specialized cores per node reserved by the job for system operations
 and not used by the application. The application will not use these cores,
-but will be charged for their allocation. Default value is zero.
-
+but will be charged for their allocation.
+Default value is dependent upon the node's configured CoreSpecCount value.
+If a value of zero is designated and the Slurm configuration option
+AllowSpecResourcesUsage is enabled, the job will be allowed to override
+CoreSpecCount and use the specialized resources on nodes it is allocated.
 
 .TP
 \fB\-\-signal\fR=[B:]<\fIsig_num\fR>[@<\fIsig_time\fR>]
@@ -1182,7 +1204,7 @@ Acceptable time formats include "minutes", "minutes:seconds",
 The job's maximum time delay may be limited by the system administrator using
 the \fBSchedulerParameters\fR configuration parameter with the
 \fBmax_switch_wait\fR parameter option.
-The default max\-time is the max_switch_wait SchedulerParameter.
+The default max\-time is the max_switch_wait SchedulerParameters.
 
 .TP
 \fB\-t\fR, \fB\-\-time\fR=<\fItime\fR>
@@ -1369,10 +1391,6 @@ By default the specified geometry can rotate in three dimensions.
 Path to ramdisk image for bluegene block.  BGL only.
 Default from \fIblugene.conf\fR if not set.
 
-.TP
-\fB\-\-reboot\fR
-Force the allocated nodes to reboot before starting the job.
-
 .SH "INPUT ENVIRONMENT VARIABLES"
 .PP
 Upon startup, sbatch will read and handle the options set in the following
@@ -1546,6 +1564,9 @@ Job array's master job ID number.
 \fBSLURM_CHECKPOINT_IMAGE_DIR\fR
 Directory into which checkpoint images should  be written if specified
 on the execute line.
+.TP
+\fBSLURM_CLUSTER_NAME\fR
+Name of the cluster on which the job is executing.
 .TP
 \fBSLURM_CPUS_ON_NODE\fR
 Number of CPUS on the allocated node.

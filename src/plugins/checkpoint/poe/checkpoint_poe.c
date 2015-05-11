@@ -349,7 +349,7 @@ extern int slurm_ckpt_pack_job(check_jobinfo_t jobinfo, Buf buffer,
 		set_buf_offset(buffer, x);
 		pack32(z - y, buffer);
 		set_buf_offset(buffer, z);
-	} else if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
+	} else if (protocol_version >= SLURM_2_6_PROTOCOL_VERSION) {
 		pack16(check_ptr->disabled, buffer);
 		pack16(check_ptr->node_cnt, buffer);
 		pack16(check_ptr->reply_cnt, buffer);
@@ -389,7 +389,7 @@ extern int slurm_ckpt_unpack_job(check_jobinfo_t jobinfo, Buf buffer,
 					       &uint32_tmp, buffer);
 			safe_unpack_time(&check_ptr->time_stamp, buffer);
 		}
-	} else if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
+	} else if (protocol_version >= SLURM_2_6_PROTOCOL_VERSION) {
 		safe_unpack16(&check_ptr->disabled, buffer);
 		safe_unpack16(&check_ptr->node_cnt, buffer);
 		safe_unpack16(&check_ptr->reply_cnt, buffer);
@@ -436,6 +436,11 @@ static void _send_sig(uint32_t job_id, uint32_t step_id, uint16_t signal,
 	agent_args->msg_args		= kill_tasks_msg;
 	agent_args->hostlist = hostlist_create(node_name);
 	agent_args->node_count		= 1;
+
+	if ((node_ptr = find_node_record(node_name)))
+		agent_args->protocol_version = node_ptr->protocol_version;
+
+	hostlist_iterator_destroy(hi);
 
 	agent_queue_request(agent_args);
 }
@@ -493,8 +498,11 @@ static int _step_sig(struct step_record * step_ptr, uint16_t wait,
 static void _my_sleep(int secs)
 {
 	struct timespec ts = {0, 0};
+	struct timeval now;
 
-	ts.tv_sec = time(NULL) + secs;
+	gettimeofday(&now, NULL);
+	ts.tv_sec = now.tv_sec + secs;
+	ts.tv_nsec = now.tv_usec * 1000;
 	pthread_mutex_lock(&ckpt_agent_mutex);
 	if (!ckpt_agent_stop)
 		pthread_cond_timedwait(&ckpt_agent_cond,&ckpt_agent_mutex,&ts);

@@ -48,6 +48,7 @@
 
 #include "slurm/slurm.h"
 
+#include "src/common/cpu_frequency.h"
 #include "src/common/node_select.h"
 #include "src/common/parse_time.h"
 #include "src/common/slurm_protocol_api.h"
@@ -243,9 +244,9 @@ slurm_sprint_job_step_info ( job_step_info_t * job_step_ptr,
 	}
 
 	snprintf(tmp_line, sizeof(tmp_line),
-		"Nodes=%s Tasks=%u Name=%s Network=%s",
-		 tmp_node_cnt, job_step_ptr->num_tasks, job_step_ptr->name,
-		job_step_ptr->network);
+		"Nodes=%s CPUs=%u Tasks=%u Name=%s Network=%s",
+		 tmp_node_cnt, job_step_ptr->num_cpus, job_step_ptr->num_tasks,
+		 job_step_ptr->name, job_step_ptr->network);
 	xstrcat(out, tmp_line);
 	if (one_liner)
 		xstrcat(out, " ");
@@ -268,28 +269,9 @@ slurm_sprint_job_step_info ( job_step_info_t * job_step_ptr,
 		snprintf(tmp_line, sizeof(tmp_line),
 			 "CPUFreqReq=Default\n\n");
 	} else if (job_step_ptr->cpu_freq & CPU_FREQ_RANGE_FLAG) {
-		switch (job_step_ptr->cpu_freq)
-		{
-		case CPU_FREQ_LOW :
-			snprintf(tmp_line, sizeof(tmp_line),
-				 "CPUFreqReq=Low\n\n");
-			break;
-		case CPU_FREQ_MEDIUM :
-			snprintf(tmp_line, sizeof(tmp_line),
-				 "CPUFreqReq=Medium\n\n");
-			break;
-		case CPU_FREQ_HIGH :
-			snprintf(tmp_line, sizeof(tmp_line),
-				 "CPUFreqReq=High\n\n");
-			break;
-		case CPU_FREQ_HIGHM1 :
-			snprintf(tmp_line, sizeof(tmp_line),
-				 "CPUFreqReq=HighM1\n\n");
-			break;
-		default :
-			snprintf(tmp_line, sizeof(tmp_line),
-				 "CPUFreqReq=Unknown\n\n");
-		}
+		char buf[32];
+		cpu_freq_to_string(buf, sizeof(buf), job_step_ptr->cpu_freq);
+		snprintf(tmp_line, sizeof(tmp_line), "CPUFreqReq=%s\n\n", buf);
 	} else {
 		snprintf(tmp_line, sizeof(tmp_line),
 			 "CPUFreqReq=%u\n\n", job_step_ptr->cpu_freq);

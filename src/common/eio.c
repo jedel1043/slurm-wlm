@@ -54,6 +54,22 @@
 #include "src/common/xassert.h"
 #include "src/common/xmalloc.h"
 
+/*
+ * Define slurm-specific aliases for use by plugins, see slurm_xlator.h
+ * for details.
+ */
+strong_alias(eio_handle_create,		slurm_eio_handle_create);
+strong_alias(eio_handle_destroy,	slurm_eio_handle_destroy);
+strong_alias(eio_handle_mainloop,	slurm_eio_handle_mainloop);
+strong_alias(eio_message_socket_readable, slurm_eio_message_socket_readable);
+strong_alias(eio_message_socket_accept,	slurm_eio_message_socket_accept);
+strong_alias(eio_new_obj,		slurm_eio_new_obj);
+strong_alias(eio_obj_create,		slurm_eio_obj_create);
+strong_alias(eio_obj_destroy,		slurm_eio_obj_destroy);
+strong_alias(eio_remove_obj,		slurm_eio_remove_obj);
+strong_alias(eio_signal_shutdown,	slurm_eio_signal_shutdown);
+strong_alias(eio_signal_wakeup,		slurm_eio_signal_wakeup);
+
 /* How many seconds to wait after eio_signal_shutdown() is called before
  * terminating the job and abandoning any I/O remaining to be processed */
 #define EIO_SHUTDOWN_WAIT 180
@@ -362,6 +378,11 @@ _poll_setup_pollfds(struct pollfd *pfds, eio_obj_t *map[], List l)
 	unsigned int  nfds = 0;
 	bool          readable, writable;
 
+	if (!pfds) {	/* Fix for CLANG false positive */
+		fatal("pollfd data structure is null");
+		return nfds;
+	}
+
 	while ((obj = list_next(i))) {
 		writable = _is_writable(obj);
 		readable = _is_readable(obj);
@@ -420,10 +441,8 @@ _poll_handle_event(short revents, eio_obj_t *obj, List objList)
 			(*obj->ops->handle_error) (obj, objList);
 		} else if (obj->ops->handle_read) {
 			(*obj->ops->handle_read) (obj, objList);
-			read_called = true;
 		} else if (obj->ops->handle_write) {
 			(*obj->ops->handle_write) (obj, objList);
-			write_called = true;
 		} else {
 			debug("No handler for %s on fd %d",
 			      revents & POLLERR ? "POLLERR" : "POLLNVAL",
@@ -456,7 +475,6 @@ _poll_handle_event(short revents, eio_obj_t *obj, List objList)
 		if (obj->ops->handle_read) {
 			if (!read_called) {
 				(*obj->ops->handle_read ) (obj, objList);
-				read_called = true;
 			}
 		} else {
 			debug("No handler for POLLIN");
@@ -468,7 +486,6 @@ _poll_handle_event(short revents, eio_obj_t *obj, List objList)
 		if (obj->ops->handle_write) {
 			if (!write_called) {
 				(*obj->ops->handle_write) (obj, objList);
-				write_called = true;
 			}
 		} else {
 			debug("No handler for POLLOUT");
@@ -543,3 +560,24 @@ void eio_new_obj(eio_handle_t *eio, eio_obj_t *obj)
 	list_enqueue(eio->new_objs, obj);
 	eio_signal_wakeup(eio);
 }
+
+bool eio_remove_obj(eio_obj_t *obj, List objs)
+{
+	ListIterator i;
+	eio_obj_t *obj1;
+	bool ret = false;
+
+	xassert(obj != NULL);
+
+	i  = list_iterator_create(objs);
+	while ((obj1 = list_next(i))) {
+		if (obj1 == obj) {
+			list_delete_item(i);
+			ret = true;
+			break;
+		}
+	}
+	list_iterator_destroy(i);
+	return ret;
+}
+

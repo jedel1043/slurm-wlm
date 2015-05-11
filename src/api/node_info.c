@@ -57,9 +57,10 @@
 
 #include "slurm/slurm.h"
 
+#include "src/common/node_select.h"
 #include "src/common/parse_time.h"
-#include "src/common/slurm_auth.h"
 #include "src/common/slurm_acct_gather_energy.h"
+#include "src/common/slurm_auth.h"
 #include "src/common/slurm_ext_sensors.h"
 #include "src/common/slurm_protocol_api.h"
 #include "src/common/uid.h"
@@ -125,7 +126,7 @@ char *
 slurm_sprint_node_table (node_info_t * node_ptr,
 			 int node_scaling, int one_liner )
 {
-	uint16_t my_state = node_ptr->node_state;
+	uint32_t my_state = node_ptr->node_state;
 	char *cloud_str = "", *comp_str = "", *drain_str = "", *power_str = "";
 	char load_str[32], tmp_line[512], time_str[32];
 	char *out = NULL, *reason_str = NULL, *select_reason_str = NULL;
@@ -230,7 +231,7 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 		xstrcat(out, "\n   ");
 
 	/****** Line 3 ******/
-	snprintf(tmp_line, sizeof(tmp_line), "Gres=%s",node_ptr->gres);
+	snprintf(tmp_line, sizeof(tmp_line), "Gres=%s", node_ptr->gres);
 	xstrcat(out, tmp_line);
 	if (one_liner)
 		xstrcat(out, " ");
@@ -238,6 +239,28 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 		xstrcat(out, "\n   ");
 
 	/****** Line 4 (optional) ******/
+	if (node_ptr->gres_drain) {
+		snprintf(tmp_line, sizeof(tmp_line), "GresDrain=%s",
+			 node_ptr->gres_drain);
+		xstrcat(out, tmp_line);
+		if (one_liner)
+			xstrcat(out, " ");
+		else
+			xstrcat(out, "\n   ");
+	}
+
+	/****** Line 5 (optional) ******/
+	if (node_ptr->gres_used) {
+		snprintf(tmp_line, sizeof(tmp_line), "GresUsed=%s",
+			 node_ptr->gres_used);
+		xstrcat(out, tmp_line);
+		if (one_liner)
+			xstrcat(out, " ");
+		else
+			xstrcat(out, "\n   ");
+	}
+
+	/****** Line 6 (optional) ******/
 	if (node_ptr->node_hostname || node_ptr->node_addr) {
 		snprintf(tmp_line, sizeof(tmp_line),
 			 "NodeAddr=%s NodeHostName=%s Version=%s",
@@ -250,7 +273,7 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 			xstrcat(out, "\n   ");
 	}
 
-	/****** Line 5 ******/
+	/****** Line 7 ******/
 	if (node_ptr->os) {
 		snprintf(tmp_line, sizeof(tmp_line), "OS=%s ", node_ptr->os);
 		xstrcat(out, tmp_line);
@@ -269,7 +292,31 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 	else
 		xstrcat(out, "\n   ");
 
-	/****** Line 6 ******/
+	/****** core & memory specialization Line (optional) ******/
+	if (node_ptr->core_spec_cnt || node_ptr->cpu_spec_list ||
+	    node_ptr->mem_spec_limit) {
+		if (node_ptr->core_spec_cnt) {
+			snprintf(tmp_line, sizeof(tmp_line),
+				 "CoreSpecCount=%u ", node_ptr->core_spec_cnt);
+			xstrcat(out, tmp_line);
+		}
+		if (node_ptr->cpu_spec_list) {
+			snprintf(tmp_line, sizeof(tmp_line), "CPUSpecList=%s ",
+				 node_ptr->cpu_spec_list);
+			xstrcat(out, tmp_line);
+		}
+		if (node_ptr->mem_spec_limit) {
+			snprintf(tmp_line, sizeof(tmp_line), "MemSpecLimit=%u",
+				 node_ptr->mem_spec_limit);
+			xstrcat(out, tmp_line);
+		}
+		if (one_liner)
+			xstrcat(out, " ");
+		else
+			xstrcat(out, "\n   ");
+	}
+
+	/****** Line 8 ******/
 
 	snprintf(tmp_line, sizeof(tmp_line),
 		 "State=%s%s%s%s%s ThreadsPerCore=%u TmpDisk=%u Weight=%u",
@@ -282,7 +329,7 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 	else
 		xstrcat(out, "\n   ");
 
-	/****** Line 7 ******/
+	/****** Line 9 ******/
 	if (node_ptr->boot_time) {
 		slurm_make_time_str ((time_t *)&node_ptr->boot_time,
 				     time_str, sizeof(time_str));
@@ -349,7 +396,7 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 	else
 		xstrcat(out, "\n   ");
 
-	/****** Line 8 ******/
+	/****** Line 12 ******/
 	if (node_ptr->reason && node_ptr->reason[0])
 		xstrcat(reason_str, node_ptr->reason);
 	slurm_get_select_nodeinfo(node_ptr->select_nodeinfo,
@@ -397,6 +444,26 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 	return out;
 }
 
+static void _set_node_mixed(node_info_msg_t *resp)
+{
+	node_info_t *node_ptr = NULL;
+	uint16_t used_cpus = 0;
+	int i;
+
+	if (!resp)
+		return;
+
+	for (i = 0, node_ptr = resp->node_array;
+	     i < resp->record_count; i++, node_ptr++) {
+		select_g_select_nodeinfo_get(node_ptr->select_nodeinfo,
+					     SELECT_NODEDATA_SUBCNT,
+					     NODE_STATE_ALLOCATED, &used_cpus);
+		if ((used_cpus != 0) && (used_cpus != node_ptr->cpus)) {
+			node_ptr->node_state &= NODE_STATE_FLAGS;
+			node_ptr->node_state |= NODE_STATE_MIXED;
+		}
+	}
+}
 
 /*
  * slurm_load_node - issue RPC to get slurm all node configuration information
@@ -428,6 +495,8 @@ extern int slurm_load_node (time_t update_time,
 	switch (resp_msg.msg_type) {
 	case RESPONSE_NODE_INFO:
 		*resp = (node_info_msg_t *) resp_msg.data;
+		if (show_flags & SHOW_MIXED)
+			_set_node_mixed(*resp);
 		break;
 	case RESPONSE_SLURM_RC:
 		rc = ((return_code_msg_t *) resp_msg.data)->return_code;
@@ -474,6 +543,8 @@ extern int slurm_load_node_single (node_info_msg_t **resp,
 	switch (resp_msg.msg_type) {
 	case RESPONSE_NODE_INFO:
 		*resp = (node_info_msg_t *) resp_msg.data;
+		if (show_flags & SHOW_MIXED)
+			_set_node_mixed(*resp);
 		break;
 	case RESPONSE_SLURM_RC:
 		rc = ((return_code_msg_t *) resp_msg.data)->return_code;

@@ -65,6 +65,10 @@
 #  include "config.h"
 #endif
 
+#if HAVE_SYS_PRCTL_H
+#include <sys/prctl.h>
+#endif
+
 #include <errno.h>
 #include <pthread.h>
 #include <pwd.h>
@@ -215,12 +219,20 @@ void *agent(void *args)
 {
 	int i, delay, rc, retries = 0;
 	pthread_attr_t attr_wdog;
-	pthread_t thread_wdog;
+	pthread_t thread_wdog = 0;
 	agent_arg_t *agent_arg_ptr = args;
 	agent_info_t *agent_info_ptr = NULL;
 	thd_t *thread_ptr;
 	task_info_t *task_specific_ptr;
 	time_t begin_time;
+	bool spawn_retry_agent = false;
+
+#if HAVE_SYS_PRCTL_H
+	if (prctl(PR_SET_NAME, "slurmctld_agent", NULL, NULL, NULL) < 0) {
+		error("%s: cannot set my name to %s %m",
+		      __func__, "slurmctld_agent");
+	}
+#endif
 
 #if 0
 	info("Agent_cnt is %d of %d with msg_type %d",
@@ -263,7 +275,7 @@ void *agent(void *args)
 	    (&attr_wdog, PTHREAD_CREATE_JOINABLE))
 		error("pthread_attr_setdetachstate error %m");
 	while (pthread_create(&thread_wdog, &attr_wdog, _wdog,
-				(void *) agent_info_ptr)) {
+			      (void *) agent_info_ptr)) {
 		error("pthread_create error %m");
 		if (++retries > MAX_RETRIES)
 			fatal("Can't create pthread");
@@ -316,7 +328,7 @@ void *agent(void *args)
 		slurm_mutex_unlock(&agent_info_ptr->thread_mutex);
 	}
 
-	/* wait for termination of remaining threads */
+	/* Wait for termination of remaining threads */
 	pthread_join(thread_wdog, NULL);
 	delay = (int) difftime(time(NULL), begin_time);
 	if (delay > (slurm_get_msg_timeout() * 2)) {
@@ -346,11 +358,14 @@ void *agent(void *args)
 		agent_cnt = 0;
 	}
 
-	if (agent_cnt && agent_cnt < MAX_AGENT_CNT)
-		agent_retry(RPC_RETRY_INTERVAL, true);
+	if (agent_cnt && (agent_cnt < MAX_AGENT_CNT))
+		spawn_retry_agent = true;
 
 	pthread_cond_broadcast(&agent_cnt_cond);
 	slurm_mutex_unlock(&agent_cnt_mutex);
+
+	if (spawn_retry_agent)
+		agent_retry(RPC_RETRY_INTERVAL, true);
 
 	return NULL;
 }
@@ -1199,10 +1214,14 @@ extern int agent_retry (int min_wait, bool mail_too)
 			last_msg_time = now;
 		}
 	}
+
+	slurm_mutex_lock(&agent_cnt_mutex);
 	if (agent_cnt >= MAX_AGENT_CNT) {	/* too much work already */
+		slurm_mutex_unlock(&agent_cnt_mutex);
 		slurm_mutex_unlock(&retry_mutex);
 		return list_size;
 	}
+	slurm_mutex_unlock(&agent_cnt_mutex);
 
 	if (retry_list) {
 		/* first try to find a new (never tried) record */
@@ -1387,7 +1406,13 @@ void agent_purge(void)
 }
 extern int get_agent_count(void)
 {
-	return agent_cnt;
+	int cnt;
+
+	slurm_mutex_lock(&agent_cnt_mutex);
+	cnt = agent_cnt;
+	slurm_mutex_unlock(&agent_cnt_mutex);
+
+	return cnt;
 }
 
 static void _purge_agent_args(agent_arg_t *agent_arg_ptr)
@@ -1488,6 +1513,14 @@ static char *_mail_type_str(uint16_t mail_type)
 		return "Failed";
 	if (mail_type == MAIL_JOB_REQUEUE)
 		return "Requeued";
+	if (mail_type == MAIL_JOB_TIME100)
+		return "Reached time limit";
+	if (mail_type == MAIL_JOB_TIME90)
+		return "Reached 90% of time limit";
+	if (mail_type == MAIL_JOB_TIME80)
+		return "Reached 80% of time limit";
+	if (mail_type == MAIL_JOB_TIME50)
+		return "Reached 50% of time limit";
 	return "unknown";
 }
 
@@ -1502,6 +1535,7 @@ static void _set_job_time(struct job_record *job_ptr, uint16_t mail_type,
 		interval = job_ptr->start_time - job_ptr->details->submit_time;
 		snprintf(buf, buf_len, ", Queued time ");
 		secs2time_str(interval, buf+14, buf_len-14);
+		return;
 	}
 
 	if (((mail_type == MAIL_JOB_END) || (mail_type == MAIL_JOB_FAIL) ||
@@ -1512,6 +1546,20 @@ static void _set_job_time(struct job_record *job_ptr, uint16_t mail_type,
 			interval += job_ptr->pre_sus_time;
 		} else
 			interval = job_ptr->end_time - job_ptr->start_time;
+		snprintf(buf, buf_len, ", Run time ");
+		secs2time_str(interval, buf+11, buf_len-11);
+		return;
+	}
+
+	if (((mail_type == MAIL_JOB_TIME100) ||
+	     (mail_type == MAIL_JOB_TIME90)  ||
+	     (mail_type == MAIL_JOB_TIME80)  ||
+	     (mail_type == MAIL_JOB_TIME50)) && job_ptr->start_time) {
+		if (job_ptr->suspend_time) {
+			interval  = time(NULL) - job_ptr->suspend_time;
+			interval += job_ptr->pre_sus_time;
+		} else
+			interval = time(NULL) - job_ptr->start_time;
 		snprintf(buf, buf_len, ", Run time ");
 		secs2time_str(interval, buf+11, buf_len-11);
 	}

@@ -88,8 +88,8 @@ static void _preempt_signal(struct job_record *job_ptr, uint32_t grace_time)
 				(job_ptr->preempt_time + (time_t)grace_time));
 
 	/* Signal the job at the beginning of preemption GraceTime */
-//	job_signal(job_ptr->job_id, SIGCONT, 0, 0, 0);
-//	job_signal(job_ptr->job_id, SIGTERM, 0, 0, 0);
+	job_signal(job_ptr->job_id, SIGCONT, 0, 0, 0);
+	job_signal(job_ptr->job_id, SIGTERM, 0, 0, 0);
 }
 /* *********************************************************************** */
 /*  TAG(                    slurm_job_check_grace                       )  */
@@ -110,9 +110,10 @@ extern int slurm_job_check_grace(struct job_record *job_ptr)
 
 	if (last_update_time != slurmctld_conf.last_update) {
 		char *preempt_type = slurm_get_preempt_type();
-		if ((strcmp(preempt_type, "preempt/partition_prio") == 0))
+		if (!strcmp(preempt_type, "preempt/partition_prio"))
 			preempt_mode = 1;
-		else if ((strcmp(preempt_type, "preempt/qos") == 0))
+		else if (!strcmp(preempt_type, "preempt/qos") ||
+			 !strcmp(preempt_type, "preempt/job_prio"))
 			preempt_mode = 2;
 		else
 			preempt_mode = 0;

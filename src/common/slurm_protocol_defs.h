@@ -148,6 +148,7 @@
 	(_X->node_state & NODE_STATE_MAINT)
 
 #define THIS_FILE ((strrchr(__FILE__, '/') ?: __FILE__ - 1) + 1)
+#define YEAR_MINUTES 365 * 24 * 60
 
 /* These defines have to be here to avoid circular dependancy with
  * switch.h
@@ -237,8 +238,8 @@ typedef enum {
 	RESPONCE_SPANK_ENVIRONMENT,
 	REQUEST_STATS_INFO,
 	RESPONSE_STATS_INFO,
-	REQUEST_STATS_RESET,
-	RESPONSE_STATS_RESET,
+	REQUEST_STATS_RESET,		/* VESTIGIAL, UNUSED */
+	RESPONSE_STATS_RESET,		/* VESTIGIAL, UNUSED */
 	REQUEST_JOB_USER_INFO,
 	REQUEST_NODE_INFO_SINGLE,
 
@@ -310,6 +311,9 @@ typedef enum {
 	REQUEST_FORWARD_DATA,
 	REQUEST_COMPLETE_BATCH_JOB,
 	REQUEST_SUSPEND_INT,
+	REQUEST_KILL_JOB,       /* 5032 */
+	REQUEST_KILL_JOBSTEP,
+	RESPONSE_JOB_ARRAY_ERRORS,
 
 	REQUEST_LAUNCH_TASKS = 6001,
 	RESPONSE_LAUNCH_TASKS,
@@ -463,7 +467,10 @@ typedef struct association_shares_object {
 	double usage_efctv;	/* effective, normalized usage */
 	double usage_norm;	/* normalized usage */
 	uint64_t usage_raw;	/* measure of resource usage */
-
+	double fs_factor;	/* fairshare factor */
+	double level_fs;	/* fairshare factor at this level. stored on an
+				 * assoc as a long double, but that is not
+				 * needed for display in sshare */
 	uint16_t user;          /* 1 if user association 0 if account
 				 * association */
 } association_shares_object_t;
@@ -502,6 +509,7 @@ typedef struct priority_factors_response_msg {
 
 typedef struct job_step_kill_msg {
 	uint32_t job_id;
+	char *sjob_id;
 	uint32_t job_step_id;
 	uint16_t signal;
 	uint16_t flags;
@@ -590,8 +598,8 @@ typedef struct complete_prolog {
 typedef struct step_complete_msg {
 	uint32_t job_id;
 	uint32_t job_step_id;
-	uint32_t range_first;
-	uint32_t range_last;
+	uint32_t range_first;	/* First node rank within job step's alloc */
+	uint32_t range_last;	/* Last node rank within job step's alloc */
  	uint32_t step_rc;	/* largest task return code */
 	jobacctinfo_t *jobacct;
 } step_complete_msg_t;
@@ -628,8 +636,8 @@ typedef struct last_update_msg {
 } last_update_msg_t;
 
 typedef struct set_debug_flags_msg {
-	uint32_t debug_flags_minus;
-	uint32_t debug_flags_plus;
+	uint64_t debug_flags_minus;
+	uint64_t debug_flags_plus;
 } set_debug_flags_msg_t;
 
 typedef struct set_debug_level_msg {
@@ -778,6 +786,7 @@ typedef struct return_code2_msg {
  * from getting the MPIRUN_PARTITION at that time. It is needed for
  * the job epilog. */
 
+#define SIG_REQUEUED	993	/* Dummy signal value to job requeue */
 #define SIG_PREEMPTED	994	/* Dummy signal value for job preemption */
 #define SIG_DEBUG_WAKE	995	/* Dummy signal value to wake procs stopped
 				 * for debugger */
@@ -854,8 +863,16 @@ typedef struct batch_job_launch_msg {
 	uint32_t gid;
 	uint32_t ntasks;	/* number of tasks in this job         */
 	uint32_t num_cpu_groups;/* elements in below cpu arrays */
-	uint16_t cpu_bind_type;	/* Internal for slurmd/task_affinity   */
-	char     *cpu_bind;	/* Internal for slurmd/task_affinity   */
+	uint16_t cpu_bind_type;	/* This currently does not do anything
+				 * but here in case we wanted to bind
+				 * the batch step differently than
+				 * using all the cpus in the
+				 * allocation. */
+	char     *cpu_bind;	/* This currently does not do anything
+				 * but here in case we wanted to bind
+				 * the batch step differently than
+				 * using all the cpus in the
+				 * allocation. */
 	uint16_t *cpus_per_node;/* cpus per node */
 	uint32_t *cpu_count_reps;/* how many nodes have same cpu count */
 	uint16_t cpus_per_task;	/* number of CPUs requested per task */
@@ -995,10 +1012,10 @@ typedef struct forward_data_msg {
 
 /* suspend_msg_t variant for internal slurm daemon communications */
 typedef struct suspend_int_msg {
-	uint16_t op;            /* suspend operation, see enum suspend_opts */
+	uint8_t  indf_susp;     /* non-zero if being suspended indefinitely */
 	uint16_t job_core_spec;	/* Count of specialized cores */
 	uint32_t job_id;        /* slurm job_id */
-	uint8_t  indf_susp;     /* non-zero if being suspended indefinitely */
+	uint16_t op;            /* suspend operation, see enum suspend_opts */
 	void *   switch_info;	/* opaque data for switch plugin */
 } suspend_int_msg_t;
 
@@ -1019,10 +1036,11 @@ typedef struct slurm_node_registration_status_msg {
 	uint16_t cores;
 	uint16_t cpus;
 	uint32_t cpu_load;	/* CPU load * 100 */
+	char *cpu_spec_list;	/* list of specialized CPUs */
 	acct_gather_energy_t *energy;
 	Buf gres_info;		/* generic resource info */
-	uint32_t hash_val;      /* hash value of slurm.conf file
-				   existing on node */
+	uint32_t hash_val;      /* hash value of slurm.conf and included files
+				 * existing on node */
 	uint32_t job_count;	/* number of associate job_id's */
 	uint32_t *job_id;	/* IDs of running job (if any) */
 	char *node_name;
@@ -1043,7 +1061,8 @@ typedef struct slurm_node_registration_status_msg {
 } slurm_node_registration_status_msg_t;
 
 typedef struct requeue_msg {
-	uint32_t job_id;       /* slurm job_id */
+	uint32_t job_id;	/* slurm job ID (number) */
+	char *   job_id_str;	/* slurm job ID (string) */
 	uint32_t state;        /* JobExitRequeue | Hold */
 } requeue_msg_t;
 
@@ -1243,7 +1262,6 @@ extern void slurm_free_spank_env_responce_msg(spank_env_responce_msg_t *msg);
 extern void slurm_free_requeue_msg(requeue_msg_t *);
 extern int slurm_free_msg_data(slurm_msg_type_t type, void *data);
 extern void slurm_free_license_info_request_msg(license_info_request_msg_t *msg);
-
 extern uint32_t slurm_get_return_code(slurm_msg_type_t type, void *data);
 
 extern char *preempt_mode_string(uint16_t preempt_mode);
@@ -1254,14 +1272,14 @@ extern uint16_t log_string2num(char *name);
 
 /* Convert HealthCheckNodeState numeric value to a string.
  * Caller must xfree() the return value */
-extern char *health_check_node_state_str(uint16_t node_state);
+extern char *health_check_node_state_str(uint32_t node_state);
 
 extern char *job_reason_string(enum job_state_reason inx);
 extern char *job_state_string(uint16_t inx);
 extern char *job_state_string_compact(uint16_t inx);
 extern int   job_state_num(const char *state_name);
-extern char *node_state_string(uint16_t inx);
-extern char *node_state_string_compact(uint16_t inx);
+extern char *node_state_string(uint32_t inx);
+extern char *node_state_string_compact(uint32_t inx);
 extern void  private_data_string(uint16_t private_data, char *str, int str_len);
 extern void  accounting_enforce_string(uint16_t enforce,
 				       char *str, int str_len);
@@ -1287,7 +1305,10 @@ extern bool valid_spank_job_env(char **spank_job_env,
 extern char *trigger_res_type(uint16_t res_type);
 extern char *trigger_type(uint32_t trig_type);
 
-/* user needs to xfree after */
+/* user needs to xfree return value */
+extern char *priority_flags_string(uint16_t priority_flags);
+
+/* user needs to xfree return value */
 extern char *reservation_flags_string(uint32_t flags);
 
 /* Return ctime like string without the newline.

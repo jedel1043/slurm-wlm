@@ -73,7 +73,8 @@ static bg_record_t *_find_matching_block(List block_list,
 					 int *allow, int check_image,
 					 int overlap_check,
 					 List overlapped_list,
-					 uint16_t query_mode);
+					 uint16_t query_mode,
+					 bitstr_t *exc_core_bitmap);
 static int _check_for_booted_overlapping_blocks(
 	List block_list, ListIterator bg_record_itr,
 	bg_record_t *bg_record, int overlap_check, List overlapped_list,
@@ -88,7 +89,8 @@ static int _find_best_block_match(List block_list, int *blocks_added,
 				  uint32_t min_nodes,
 				  uint32_t max_nodes, uint32_t req_nodes,
 				  bg_record_t** found_bg_record,
-				  uint16_t query_mode, int avail_cpus);
+				  uint16_t query_mode, int avail_cpus,
+				  bitstr_t *exc_core_bitmap);
 static int _sync_block_lists(List full_list, List incomp_list);
 
 /*
@@ -284,7 +286,8 @@ static bg_record_t *_find_matching_block(List block_list,
 					 int *allow, int check_image,
 					 int overlap_check,
 					 List overlapped_list,
-					 uint16_t query_mode)
+					 uint16_t query_mode,
+					 bitstr_t *exc_core_bitmap)
 {
 	bg_record_t *bg_record = NULL;
 	ListIterator itr = NULL;
@@ -345,9 +348,11 @@ static bg_record_t *_find_matching_block(List block_list,
 					     "on it.",
 					     bg_record->bg_block_id);
 				continue;
-			} else if ((bg_record->job_running == BLOCK_ERROR_STATE)
-				   || (bg_record->state
-				       & BG_BLOCK_ERROR_FLAG)) {
+			} else if (!SELECT_IGN_ERR(query_mode) &&
+				   ((bg_record->job_running
+				     == BLOCK_ERROR_STATE)
+				    || (bg_record->state
+					& BG_BLOCK_ERROR_FLAG))) {
 				/* block is messed up some how
 				 * (BLOCK_ERROR_STATE_FLAG)
 				 * ignore it or if state == BG_BLOCK_ERROR */
@@ -372,7 +377,8 @@ static bg_record_t *_find_matching_block(List block_list,
 					     bg_record->job_ptr->user_id,
 					     bg_record->job_ptr->job_id);
 				continue;
-			} else if (bg_record->err_ratio) {
+			} else if (!SELECT_IGN_ERR(query_mode) &&
+				   bg_record->err_ratio) {
 				bg_record_t *found_record = NULL;
 				slurm_mutex_lock(&block_state_mutex);
 
@@ -498,9 +504,10 @@ static bg_record_t *_find_matching_block(List block_list,
 				char *temp2 = bitmap2node_name(
 					slurm_block_bitmap);
 				info("bg block %s has nodes not "
-				     "usable by this job %s available "
-				     "midplanes were %s",
-				     bg_record->bg_block_id, temp, temp2);
+				     "usable by this request available "
+				     "midplanes are %s but this block "
+				     "doesn't fit in the list, it uses %s",
+				     bg_record->bg_block_id, temp2, temp);
 				xfree(temp);
 				xfree(temp2);
 			}
@@ -651,7 +658,7 @@ static bg_record_t *_find_matching_block(List block_list,
 		if (bg_conf->sub_blocks && bg_record->mp_count == 1) {
 			select_jobinfo_t tmp_jobinfo, *jobinfo =
 				job_ptr->select_jobinfo->data;
-			bitstr_t *total_bitmap;
+			bitstr_t *total_bitmap = NULL;
 			bool need_free = false;
 			ba_mp_t *ba_mp = list_peek(bg_record->ba_mp_list);
 
@@ -659,12 +666,34 @@ static bg_record_t *_find_matching_block(List block_list,
 			xassert(ba_mp->cnode_bitmap);
 			xassert(ba_mp->cnode_usable_bitmap);
 
-			if (bg_record->err_ratio) {
+			if (bg_record->err_ratio &&
+			    !SELECT_IGN_ERR(query_mode)) {
 				xassert(ba_mp->cnode_err_bitmap);
-				total_bitmap = bit_copy(ba_mp->cnode_bitmap);
+				if (!total_bitmap)
+					total_bitmap = bit_copy(
+						ba_mp->cnode_bitmap);
 				bit_or(total_bitmap, ba_mp->cnode_err_bitmap);
 				need_free = true;
-			} else
+			}
+
+			if (exc_core_bitmap) {
+				int offset = cr_get_coremap_offset(
+					ba_mp->index);
+				int i;
+
+				if (!total_bitmap)
+					total_bitmap =
+						bit_copy(ba_mp->cnode_bitmap);
+				/* Remove the cnodes we were told to
+				 * avoid if any.
+				 */
+				for (i=0; i < bit_size(total_bitmap); i++)
+					if (bit_test(exc_core_bitmap, i+offset))
+						bit_set(total_bitmap, i);
+				need_free = true;
+			}
+
+			if (!total_bitmap)
 				total_bitmap = ba_mp->cnode_bitmap;
 
 			memset(&tmp_jobinfo, 0, sizeof(select_jobinfo_t));
@@ -688,17 +717,16 @@ static bg_record_t *_find_matching_block(List block_list,
 				FREE_NULL_BITMAP(total_bitmap);
 			/* Clear up what we just found if not running now. */
 			if (SELECT_IS_MODE_RUN_NOW(query_mode)
-			    || SELECT_IS_PREEMPT_SET(query_mode)) {
+			    || SELECT_IS_PREEMPT_SET(query_mode)
+			    || SELECT_IS_MODE_RESV(query_mode)) {
 				jobinfo->cnode_cnt = tmp_jobinfo.cnode_cnt;
 				jobinfo->dim_cnt = tmp_jobinfo.dim_cnt;
 
-				if (jobinfo->units_avail)
-					FREE_NULL_BITMAP(jobinfo->units_avail);
+				FREE_NULL_BITMAP(jobinfo->units_avail);
 				jobinfo->units_avail = tmp_jobinfo.units_avail;
 				tmp_jobinfo.units_avail = NULL;
 
-				if (jobinfo->units_used)
-					FREE_NULL_BITMAP(jobinfo->units_used);
+				FREE_NULL_BITMAP(jobinfo->units_used);
 				jobinfo->units_used = tmp_jobinfo.units_used;
 				tmp_jobinfo.units_used = NULL;
 
@@ -711,12 +739,41 @@ static bg_record_t *_find_matching_block(List block_list,
 				memcpy(jobinfo->start_loc,
 				       tmp_jobinfo.start_loc,
 				       sizeof(jobinfo->start_loc));
-
 			}
 
 			FREE_NULL_BITMAP(tmp_jobinfo.units_avail);
 			FREE_NULL_BITMAP(tmp_jobinfo.units_used);
 			xfree(tmp_jobinfo.ionode_str);
+		} else if (exc_core_bitmap
+			   && (bg_record->cpu_cnt < bg_conf->cpus_per_mp)) {
+			select_jobinfo_t *jobinfo =
+				job_ptr->select_jobinfo->data;
+			ba_mp_t *ba_mp = list_peek(bg_record->ba_mp_list);
+			int offset;
+			int i;
+
+			xassert(ba_mp);
+			xassert(ba_mp->cnode_bitmap);
+
+			offset = cr_get_coremap_offset(ba_mp->index);
+
+			/* Remove the cnodes we were told to avoid if any. */
+			for (i=0; i < bg_conf->mp_cnode_cnt; i++)
+				if (bit_test(exc_core_bitmap, i+offset)
+				    && !bit_test(ba_mp->cnode_bitmap, i))
+					break;
+			if (i != bg_conf->mp_cnode_cnt) {
+				if (bg_conf->slurm_debug_flags
+				    & DEBUG_FLAG_BG_PICK)
+					info("Can't use block %s, it is "
+					     "partially unavailable for "
+					     "this request",
+				     bg_record->bg_block_id);
+				continue;
+			}
+
+			FREE_NULL_BITMAP(jobinfo->units_used);
+			jobinfo->units_used = bit_copy(ba_mp->cnode_bitmap);
 		}
 
 		if (bg_conf->slurm_debug_flags & DEBUG_FLAG_BG_PICK)
@@ -779,7 +836,6 @@ static int _check_for_booted_overlapping_blocks(
 	bg_record_t *found_record = NULL;
 	ListIterator itr = NULL;
 	int rc = 0;
-	int overlap = 0;
 	bool is_test = SELECT_IS_TEST(query_mode);
 
 	/* this test only is for actually picking a block not testing */
@@ -791,6 +847,7 @@ static int _check_for_booted_overlapping_blocks(
 	*/
 	itr = list_iterator_create(block_list);
 	while ((found_record = (bg_record_t*)list_next(itr)) != NULL) {
+		int overlap;
 		if ((!found_record->bg_block_id)
 		    || (bg_record == found_record)) {
 			if (bg_conf->slurm_debug_flags & DEBUG_FLAG_BG_PICK)
@@ -805,7 +862,6 @@ static int _check_for_booted_overlapping_blocks(
 		slurm_mutex_unlock(&block_state_mutex);
 
 		if (overlap) {
-			overlap = 0;
 			/* make the available time on this block
 			 * (bg_record) the max of this found_record's job
 			 * or the one already set if in overlapped_block_list
@@ -1075,7 +1131,12 @@ static int _dynamically_request(List block_list, int *blocks_added,
 						error("_dynamically_request: "
 						      "unable to configure "
 						      "block");
-						rc = SLURM_ERROR;
+						/* Clang reports this
+						 * is never read since
+						 * (blocks_added) is
+						 * never set the rc is
+						 * set below there */
+						/* rc = SLURM_ERROR; */
 						break;
 					}
 					list_append(block_list, bg_record);
@@ -1146,7 +1207,8 @@ static int _find_best_block_match(List block_list,
 				  uint32_t min_nodes, uint32_t max_nodes,
 				  uint32_t req_nodes,
 				  bg_record_t** found_bg_record,
-				  uint16_t query_mode, int avail_cpus)
+				  uint16_t query_mode, int avail_cpus,
+				  bitstr_t *exc_core_bitmap)
 {
 	bg_record_t *bg_record = NULL;
 	uint16_t req_geometry[SYSTEM_DIMENSIONS];
@@ -1223,10 +1285,11 @@ static int _find_best_block_match(List block_list,
 			       "should be %u from %s",
 			       min_nodes, target_size,
 			       tmp_geo);
-			min_nodes = target_size;
+			/* min_nodes isn't used anywhere after this so
+			   don't set it.
+			*/
+			/* min_nodes = target_size; */
 		}
-		if (!req_nodes)
-			req_nodes = min_nodes;
 	} else {
 		req_geometry[0] = (uint16_t)NO_VAL;
 		target_size = min_nodes;
@@ -1277,7 +1340,8 @@ static int _find_best_block_match(List block_list,
 						 &allow, check_image,
 						 overlap_check,
 						 overlapped_list,
-						 query_mode);
+						 query_mode,
+						 exc_core_bitmap);
 		/* this could get altered in _find_matching_block so we
 		   need to reset it */
 		memcpy(request.geometry, req_geometry, sizeof(req_geometry));
@@ -1746,7 +1810,8 @@ extern int submit_job(struct job_record *job_ptr, bitstr_t *slurm_block_bitmap,
 		      uint32_t min_nodes, uint32_t max_nodes,
 		      uint32_t req_nodes, uint16_t mode,
 		      List preemptee_candidates,
-		      List *preemptee_job_list)
+		      List *preemptee_job_list,
+		      bitstr_t *exc_core_bitmap)
 {
 	int rc = SLURM_SUCCESS;
 	bg_record_t* bg_record = NULL;
@@ -1763,10 +1828,10 @@ extern int submit_job(struct job_record *job_ptr, bitstr_t *slurm_block_bitmap,
 	if (!job_ptr->details)
 		return EINVAL;
 
-	if (job_ptr->details->core_spec) {
+	if (job_ptr->details->core_spec != (uint16_t) NO_VAL) {
 		verbose("select/bluegene: job %u core_spec(%u) not supported",
 			job_ptr->job_id, job_ptr->details->core_spec);
-		job_ptr->details->core_spec = 0;
+		job_ptr->details->core_spec = (uint16_t) NO_VAL;
 	}
 
 	if (preemptee_candidates && preemptee_job_list
@@ -1856,7 +1921,8 @@ extern int submit_job(struct job_record *job_ptr, bitstr_t *slurm_block_bitmap,
 	rc = _find_best_block_match(block_list, &blocks_added,
 				    job_ptr, slurm_block_bitmap, min_nodes,
 				    max_nodes, req_nodes,
-				    &bg_record, local_mode, avail_cpus);
+				    &bg_record, local_mode, avail_cpus,
+				    exc_core_bitmap);
 
 	if (rc != SLURM_SUCCESS && SELECT_IS_PREEMPT_SET(local_mode)) {
 		ListIterator itr;
@@ -1950,7 +2016,8 @@ extern int submit_job(struct job_record *job_ptr, bitstr_t *slurm_block_bitmap,
 				     block_list, &blocks_added,
 				     job_ptr, slurm_block_bitmap,
 				     min_nodes, max_nodes, req_nodes,
-				     &bg_record, local_mode, avail_cpus))
+				     &bg_record, local_mode, avail_cpus,
+				     exc_core_bitmap))
 			    == SLURM_SUCCESS)
 				break;
 		}
@@ -1967,7 +2034,8 @@ extern int submit_job(struct job_record *job_ptr, bitstr_t *slurm_block_bitmap,
 				block_list, &blocks_added,
 				job_ptr, slurm_block_bitmap,
 				min_nodes, max_nodes, req_nodes,
-				&bg_record, local_mode, avail_cpus);
+				&bg_record, local_mode, avail_cpus,
+				exc_core_bitmap);
 		}
 	}
 
@@ -1984,7 +2052,8 @@ extern int submit_job(struct job_record *job_ptr, bitstr_t *slurm_block_bitmap,
 		 */
 		if (bg_record->job_ptr && bg_record->job_ptr->end_time) {
 			max_end_time = bg_record->job_ptr->end_time;
-		} else if (bg_record->job_running == BLOCK_ERROR_STATE)
+		} else if (!SELECT_IGN_ERR(local_mode)
+			   && bg_record->job_running == BLOCK_ERROR_STATE)
 			max_end_time = INFINITE;
 		else if (bg_record->job_list
 			 && list_count(bg_record->job_list)) {

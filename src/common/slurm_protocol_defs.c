@@ -5,7 +5,7 @@
  *****************************************************************************
  *  Copyright (C) 2002-2007 The Regents of the University of California.
  *  Copyright (C) 2008-2010 Lawrence Livermore National Security.
- *  Portions Copyright (C) 2010 SchedMD <http://www.schedmd.com>.
+ *  Portions Copyright (C) 2010-2014 SchedMD <http://www.schedmd.com>.
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
  *  Written by Kevin Tew <tew1@llnl.gov> et. al.
  *  CODE-OCEC-09-009. All rights reserved.
@@ -51,19 +51,19 @@
 #include <stdio.h>
 #include <ctype.h>
 
+#include "src/common/forward.h"
+#include "src/common/job_options.h"
 #include "src/common/log.h"
 #include "src/common/node_select.h"
 #include "src/common/slurm_accounting_storage.h"
+#include "src/common/slurm_acct_gather_energy.h"
 #include "src/common/slurm_cred.h"
+#include "src/common/slurm_ext_sensors.h"
+#include "src/common/slurm_jobacct_gather.h"
 #include "src/common/slurm_protocol_defs.h"
 #include "src/common/switch.h"
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
-#include "src/common/job_options.h"
-#include "src/common/forward.h"
-#include "src/common/slurm_jobacct_gather.h"
-#include "src/common/slurm_ext_sensors.h"
-#include "src/common/slurm_acct_gather_energy.h"
 #include "src/plugins/select/bluegene/bg_enums.h"
 
 /*
@@ -354,6 +354,7 @@ extern void slurm_free_job_id_response_msg(job_id_response_msg_t * msg)
 
 extern void slurm_free_job_step_kill_msg(job_step_kill_msg_t * msg)
 {
+	xfree(msg->sjob_id);
 	xfree(msg);
 }
 
@@ -417,6 +418,7 @@ extern void slurm_free_job_desc_msg(job_desc_msg_t * msg)
 		xfree(msg->std_err);
 		xfree(msg->exc_nodes);
 		xfree(msg->features);
+		xfree(msg->job_id_str);
 		xfree(msg->gres);
 		xfree(msg->std_in);
 		xfree(msg->licenses);
@@ -528,6 +530,9 @@ extern void slurm_free_job_info_members(job_info_t * job)
 	if (job) {
 		xfree(job->account);
 		xfree(job->alloc_node);
+		if (job->array_bitmap)
+			bit_free((bitstr_t *) job->array_bitmap);
+		xfree(job->array_task_str);
 		xfree(job->batch_host);
 		xfree(job->batch_script);
 		xfree(job->command);
@@ -542,6 +547,7 @@ extern void slurm_free_job_info_members(job_info_t * job)
 		xfree(job->network);
 		xfree(job->node_inx);
 		xfree(job->nodes);
+		xfree(job->sched_nodes);
 		xfree(job->partition);
 		xfree(job->qos);
 		xfree(job->req_node_inx);
@@ -583,6 +589,7 @@ extern void slurm_free_node_registration_status_msg(
 {
 	if (msg) {
 		xfree(msg->arch);
+		xfree(msg->cpu_spec_list);
 		if (msg->energy)
 			acct_gather_energy_destroy(msg->energy);
 		if (msg->gres_info)
@@ -944,13 +951,19 @@ extern void slurm_free_checkpoint_resp_msg(checkpoint_resp_msg_t *msg)
 }
 extern void slurm_free_suspend_msg(suspend_msg_t *msg)
 {
-	xfree(msg);
+	if (msg) {
+		xfree(msg->job_id_str);
+		xfree(msg);
+	}
 }
 
 extern void
 slurm_free_requeue_msg(requeue_msg_t *msg)
 {
-	xfree(msg);
+	if (msg) {
+		xfree(msg->job_id_str);
+		xfree(msg);
+	}
 }
 
 extern void slurm_free_suspend_int_msg(suspend_int_msg_t *msg)
@@ -963,7 +976,15 @@ extern void slurm_free_suspend_int_msg(suspend_int_msg_t *msg)
 
 extern void slurm_free_stats_response_msg(stats_info_response_msg_t *msg)
 {
-	xfree(msg);
+	if (msg) {
+		xfree(msg->rpc_type_id);
+		xfree(msg->rpc_type_cnt);
+		xfree(msg->rpc_type_time);
+		xfree(msg->rpc_user_id);
+		xfree(msg->rpc_user_cnt);
+		xfree(msg->rpc_user_time);
+		xfree(msg);
+	}
 }
 
 extern void slurm_free_spank_env_request_msg(spank_env_request_msg_t *msg)
@@ -981,9 +1002,25 @@ extern void slurm_free_spank_env_responce_msg(spank_env_responce_msg_t *msg)
 	xfree(msg);
 }
 
+/* Free job array oriented response with individual return codes by task ID */
+extern void slurm_free_job_array_resp(job_array_resp_msg_t *msg)
+{
+	uint32_t i;
+
+	if (msg) {
+		for (i = 0; i < msg->job_array_count; i++)
+			xfree(msg->job_array_id[i]);
+		xfree(msg->job_array_id);
+		xfree(msg->error_code);
+		xfree(msg);
+	}
+}
+
 /* Given a job's reason for waiting, return a descriptive string */
 extern char *job_reason_string(enum job_state_reason inx)
 {
+	static char val[32];
+
 	switch (inx) {
 	case WAIT_NO_REASON:
 		return "None";
@@ -1061,8 +1098,77 @@ extern char *job_reason_string(enum job_state_reason inx)
 		return "QOSNotAllowed";
 	case WAIT_ACCOUNT:
 		return "AccountNotAllowed";
+	case WAIT_DEP_INVALID:
+		return "DependencyNeverSatisfied";
+	case WAIT_QOS_GRP_CPU:
+		return "QOSGrpCpuLimit";
+	case WAIT_QOS_GRP_CPU_MIN:
+		return "QOSGrpCPUMinsLimit";
+	case WAIT_QOS_GRP_CPU_RUN_MIN:
+		return "QOSGrpCPURunMinsLimit";
+	case WAIT_QOS_GRP_JOB:
+		return"QOSGrpJobsLimit";
+	case WAIT_QOS_GRP_MEMORY:
+		return "QOSGrpMemoryLimit";
+	case WAIT_QOS_GRP_NODES:
+		return "QOSGrpNodesLimit";
+	case WAIT_QOS_GRP_SUB_JOB:
+		return "QOSGrpSubmitJobsLimit";
+	case WAIT_QOS_GRP_WALL:
+		return "QOSGrpWallLimit";
+	case WAIT_QOS_MAX_CPUS_PER_JOB:
+		return "QOSMaxCpusPerJobLimit";
+	case WAIT_QOS_MAX_CPU_MINS_PER_JOB:
+		return "QOSMaxCpusMinsPerJobLimit";
+	case WAIT_QOS_MAX_NODE_PER_JOB:
+		return "QOSMaxNodesPerJobLimit";
+	case WAIT_QOS_MAX_WALL_PER_JOB:
+		return "QOSMaxWallDurationPerJobLimit";
+	case WAIT_QOS_MAX_CPU_PER_USER:
+		return "QOSMaxCpusPerUserLimit";
+	case WAIT_QOS_MAX_JOB_PER_USER:
+		return "QOSMaxJobsPerUserLimit";
+	case WAIT_QOS_MAX_NODE_PER_USER:
+		return "QOSMaxNodesPerUserLimit";
+	case WAIT_QOS_MAX_SUB_JOB:
+		return "QOSMaxSubmitJobPerUserLimit";
+	case WAIT_QOS_MIN_CPUS:
+		return "QOSMinCPUsNotSatisfied";
+	case WAIT_ASSOC_GRP_CPU:
+		return "AssocGrpCpuLimit";
+	case WAIT_ASSOC_GRP_CPU_MIN:
+		return "AssocGrpCPUMinsLimit";
+	case WAIT_ASSOC_GRP_CPU_RUN_MIN:
+		return "AssocGrpCPURunMinsLimit";
+	case WAIT_ASSOC_GRP_JOB:
+		return"AssocGrpJobsLimit";
+	case WAIT_ASSOC_GRP_MEMORY:
+		return "AssocGrpMemoryLimit";
+	case WAIT_ASSOC_GRP_NODES:
+		return "AssocGrpNodesLimit";
+	case WAIT_ASSOC_GRP_SUB_JOB:
+		return "AssocGrpSubmitJobsLimit";
+	case WAIT_ASSOC_GRP_WALL:
+		return "AssocGrpWallLimit";
+	case WAIT_ASSOC_MAX_JOBS:
+		return "AssocMaxJobsLimit";
+	case WAIT_ASSOC_MAX_CPUS_PER_JOB:
+		return "AssocMaxCpusPerJobLimit";
+	case WAIT_ASSOC_MAX_CPU_MINS_PER_JOB:
+		return "AssocMaxCpusMinsPerJobLimit";
+	case WAIT_ASSOC_MAX_NODE_PER_JOB:
+		return "AssocMaxNodesPerJobLimit";
+	case WAIT_ASSOC_MAX_WALL_PER_JOB:
+		return "AssocMaxWallDurationPerJobLimit";
+	case WAIT_ASSOC_MAX_SUB_JOB:
+		return "AssocMaxSubmitJobLimit";
+	case WAIT_MAX_REQUEUE:
+		return "JobHoldMaxRequeue";
+	case WAIT_ARRAY_TASK_LIMIT:
+		return "JobArrayTaskLimit";
 	default:
-		return "?";
+		snprintf(val, sizeof(val), "%d", inx);
+		return val;
 	}
 }
 
@@ -1368,17 +1474,25 @@ extern char *trigger_res_type(uint16_t res_type)
 
 /* Convert HealthCheckNodeState numeric value to a string.
  * Caller must xfree() the return value */
-extern char *health_check_node_state_str(uint16_t node_state)
+extern char *health_check_node_state_str(uint32_t node_state)
 {
 	char *state_str = NULL;
 
-	if (node_state == HEALTH_CHECK_NODE_ANY) {
+	if (node_state & HEALTH_CHECK_CYCLE)
+		state_str = xstrdup("CYCLE");
+	else
+		state_str = xstrdup("");
+
+	if ((node_state & HEALTH_CHECK_NODE_ANY) == HEALTH_CHECK_NODE_ANY) {
+		if (state_str[0])
+			xstrcat(state_str, ",");
 		state_str = xstrdup("ANY");
 		return state_str;
 	}
 
-	state_str = xstrdup("");
 	if (node_state & HEALTH_CHECK_NODE_IDLE)
+		if (state_str[0])
+			xstrcat(state_str, ",");
 		xstrcat(state_str, "IDLE");
 	if (node_state & HEALTH_CHECK_NODE_ALLOC) {
 		if (state_str[0])
@@ -1440,6 +1554,7 @@ extern char *trigger_type(uint32_t trig_type)
 		return "unknown";
 }
 
+/* user needs to xfree return value */
 extern char *reservation_flags_string(uint32_t flags)
 {
 	char *flag_str = xstrdup("");
@@ -1521,10 +1636,46 @@ extern char *reservation_flags_string(uint32_t flags)
 			xstrcat(flag_str, ",");
 		xstrcat(flag_str, "FIRST_CORES");
 	}
+	if (flags & RESERVE_FLAG_TIME_FLOAT) {
+		if (flag_str[0])
+			xstrcat(flag_str, ",");
+		xstrcat(flag_str, "TIME_FLOAT");
+	}
 	return flag_str;
 }
 
-extern char *node_state_string(uint16_t inx)
+/* user needs to xfree return value */
+extern char *priority_flags_string(uint16_t priority_flags)
+{
+	char *flag_str = xstrdup("");
+
+	if (priority_flags & PRIORITY_FLAGS_ACCRUE_ALWAYS)
+		xstrcat(flag_str, "ACCRUE_ALWAYS");
+	if (priority_flags & PRIORITY_FLAGS_SIZE_RELATIVE) {
+		if (flag_str[0])
+			xstrcat(flag_str, ",");
+		xstrcat(flag_str, "SMALL_RELATIVE_TO_TIME");
+	}
+	if (priority_flags & PRIORITY_FLAGS_CALCULATE_RUNNING) {
+		if (flag_str[0])
+			xstrcat(flag_str, ",");
+		xstrcat(flag_str, "CALCULATE_RUNNING");
+	}
+	if (priority_flags & PRIORITY_FLAGS_TICKET_BASED) {
+		if (flag_str[0])
+			xstrcat(flag_str, ",");
+		xstrcat(flag_str, "TICKET_BASED");
+	}
+	if (priority_flags & PRIORITY_FLAGS_DEPTH_OBLIVIOUS) {
+		if (flag_str[0])
+			xstrcat(flag_str, ",");
+		xstrcat(flag_str, "DEPTH_OBLIVIOUS");
+	}
+
+	return flag_str;
+}
+
+extern char *node_state_string(uint32_t inx)
 {
 	int  base            = (inx & NODE_STATE_BASE);
 	bool comp_flag       = (inx & NODE_STATE_COMPLETING);
@@ -1589,6 +1740,8 @@ extern char *node_state_string(uint16_t inx)
 	}
 
 	if (base == NODE_STATE_ALLOCATED) {
+		if (maint_flag)
+			return "ALLOCATED$";
 		if (power_up_flag)
 			return "ALLOCATED#";
 		if (power_down_flag)
@@ -1605,6 +1758,8 @@ extern char *node_state_string(uint16_t inx)
 		return "COMPLETING";
 	}
 	if (base == NODE_STATE_IDLE) {
+		if (maint_flag)
+			return "IDLE$";
 		if (power_up_flag)
 			return "IDLE#";
 		if (power_down_flag)
@@ -1618,6 +1773,8 @@ extern char *node_state_string(uint16_t inx)
 		return "IDLE";
 	}
 	if (base == NODE_STATE_ERROR) {
+		if (maint_flag)
+			return "ERROR$";
 		if (power_up_flag)
 			return "ERROR#";
 		if (power_down_flag)
@@ -1627,6 +1784,8 @@ extern char *node_state_string(uint16_t inx)
 		return "ERROR";
 	}
 	if (base == NODE_STATE_MIXED) {
+		if (maint_flag)
+			return "MIXED$";
 		if (power_up_flag)
 			return "MIXED#";
 		if (power_down_flag)
@@ -1650,7 +1809,7 @@ extern char *node_state_string(uint16_t inx)
 	return "?";
 }
 
-extern char *node_state_string_compact(uint16_t inx)
+extern char *node_state_string_compact(uint32_t inx)
 {
 	bool comp_flag       = (inx & NODE_STATE_COMPLETING);
 	bool drain_flag      = (inx & NODE_STATE_DRAIN);
@@ -1663,7 +1822,7 @@ extern char *node_state_string_compact(uint16_t inx)
 	bool power_down_flag = (inx & NODE_STATE_POWER_SAVE);
 	bool power_up_flag   = (inx & NODE_STATE_POWER_UP);
 
-	inx = (uint16_t) (inx & NODE_STATE_BASE);
+	inx = (inx & NODE_STATE_BASE);
 
 	if (maint_flag) {
 		if ((inx == NODE_STATE_ALLOCATED) || (inx == NODE_STATE_MIXED))
@@ -1731,6 +1890,8 @@ extern char *node_state_string_compact(uint16_t inx)
 		return "COMP";
 	}
 	if (inx == NODE_STATE_IDLE) {
+		if (maint_flag)
+			return "IDLE$";
 		if (power_up_flag)
 			return "IDLE#";
 		if (power_down_flag)
@@ -1744,6 +1905,8 @@ extern char *node_state_string_compact(uint16_t inx)
 		return "IDLE";
 	}
 	if (inx == NODE_STATE_ERROR) {
+		if (maint_flag)
+			return "ERR$";
 		if (power_up_flag)
 			return "ERR#";
 		if (power_down_flag)
@@ -1753,6 +1916,8 @@ extern char *node_state_string_compact(uint16_t inx)
 		return "ERR";
 	}
 	if (inx == NODE_STATE_MIXED) {
+		if (maint_flag)
+			return "MIX$";
 		if (power_up_flag)
 			return "MIX#";
 		if (power_down_flag)
@@ -1781,13 +1946,26 @@ extern void private_data_string(uint16_t private_data, char *str, int str_len)
 {
 	if (str_len > 0)
 		str[0] = '\0';
-	if (str_len < 55) {
+	if (str_len < 62) {
 		error("private_data_string: output buffer too small");
 		return;
 	}
 
-	if (private_data & PRIVATE_DATA_JOBS)
-		strcat(str, "jobs"); //4 len
+	if (private_data & PRIVATE_DATA_ACCOUNTS) {
+		if (str[0])
+			strcat(str, ",");
+		strcat(str, "accounts"); //9 len
+	}
+	if (private_data & PRIVATE_CLOUD_NODES) {
+		if (str[0])
+			strcat(str, ",");
+		strcat(str, "cloud"); //6 len
+	}
+	if (private_data & PRIVATE_DATA_JOBS) {
+		if (str[0])
+			strcat(str, ",");
+		strcat(str, "jobs"); //5 len
+	}
 	if (private_data & PRIVATE_DATA_NODES) {
 		if (str[0])
 			strcat(str, ",");
@@ -1797,6 +1975,11 @@ extern void private_data_string(uint16_t private_data, char *str, int str_len)
 		if (str[0])
 			strcat(str, ",");
 		strcat(str, "partitions"); //11 len
+	}
+	if (private_data & PRIVATE_DATA_RESERVATIONS) {
+		if (str[0])
+			strcat(str, ",");
+		strcat(str, "reservations"); //13 len
 	}
 	if (private_data & PRIVATE_DATA_USAGE) {
 		if (str[0])
@@ -1808,17 +1991,8 @@ extern void private_data_string(uint16_t private_data, char *str, int str_len)
 			strcat(str, ",");
 		strcat(str, "users"); //6 len
 	}
-	if (private_data & PRIVATE_DATA_ACCOUNTS) {
-		if (str[0])
-			strcat(str, ",");
-		strcat(str, "accounts"); //9 len
-	}
-	if (private_data & PRIVATE_DATA_RESERVATIONS) {
-		if (str[0])
-			strcat(str, ",");
-		strcat(str, "reservations"); //13 len
-	}
-	// total len 55
+
+	// total len 62
 
 	if (str[0] == '\0')
 		strcat(str, "none");
@@ -2313,10 +2487,13 @@ extern void slurm_free_node_info_members(node_info_t * node)
 {
 	if (node) {
 		xfree(node->arch);
+		xfree(node->cpu_spec_list);
 		acct_gather_energy_destroy(node->energy);
 		ext_sensors_destroy(node->ext_sensors);
 		xfree(node->features);
 		xfree(node->gres);
+		xfree(node->gres_drain);
+		xfree(node->gres_used);
 		xfree(node->name);
 		xfree(node->node_addr);
 		xfree(node->node_hostname);
@@ -2325,6 +2502,7 @@ extern void slurm_free_node_info_members(node_info_t * node)
 		select_g_select_nodeinfo_free(node->select_nodeinfo);
 		node->select_nodeinfo = NULL;
 		xfree(node->version);
+		/* Do NOT free node, it is an element of an array */
 	}
 }
 
@@ -2866,6 +3044,9 @@ extern int slurm_free_msg_data(slurm_msg_type_t type, void *data)
 	case RESPONSE_PING_SLURMD:
 		slurm_free_ping_slurmd_resp(data);
 		break;
+	case RESPONSE_JOB_ARRAY_ERRORS:
+		slurm_free_job_array_resp(data);
+		break;
 	default:
 		error("invalid type trying to be freed %u", type);
 		break;
@@ -3001,340 +3182,342 @@ rpc_num2string(uint16_t opcode)
 	static char buf[16];
 
 	switch (opcode) {
-		case REQUEST_NODE_REGISTRATION_STATUS:
-			return "REQUEST_NODE_REGISTRATION_STATUS";
-		case MESSAGE_NODE_REGISTRATION_STATUS:
-			return "MESSAGE_NODE_REGISTRATION_STATUS";
-		case REQUEST_RECONFIGURE:
-			return "REQUEST_RECONFIGURE";
-		case RESPONSE_RECONFIGURE:
-			return "RESPONSE_RECONFIGURE";
-		case REQUEST_SHUTDOWN:
-			return "REQUEST_SHUTDOWN";
-		case REQUEST_SHUTDOWN_IMMEDIATE:
-			return "REQUEST_SHUTDOWN_IMMEDIATE";
-		case RESPONSE_SHUTDOWN:
-			return "RESPONSE_SHUTDOWN";
-		case REQUEST_PING:
-			return "REQUEST_PING";
-		case REQUEST_CONTROL:
-			return "REQUEST_CONTROL";
-		case REQUEST_SET_DEBUG_LEVEL:
-			return "REQUEST_SET_DEBUG_LEVEL";
-		case REQUEST_HEALTH_CHECK:
-			return "REQUEST_HEALTH_CHECK";
-		case REQUEST_TAKEOVER:
-			return "REQUEST_TAKEOVER";
-		case REQUEST_SET_SCHEDLOG_LEVEL:
-			return "REQUEST_SET_SCHEDLOG_LEVEL";
-		case REQUEST_SET_DEBUG_FLAGS:
-			return "REQUEST_SET_DEBUG_FLAGS";
-		case REQUEST_REBOOT_NODES:
-			return "REQUEST_REBOOT_NODES";
-		case RESPONSE_PING_SLURMD:
-			return "RESPONSE_PING_SLURMD";
-		case REQUEST_ACCT_GATHER_UPDATE:
-			return "REQUEST_ACCT_GATHER_UPDATE";
-		case RESPONSE_ACCT_GATHER_UPDATE:
-			return "RESPONSE_ACCT_GATHER_UPDATE";
-		case REQUEST_ACCT_GATHER_ENERGY:
-			return "REQUEST_ACCT_GATHER_ENERGY";
-		case RESPONSE_ACCT_GATHER_ENERGY:
-			return "RESPONSE_ACCT_GATHER_ENERGY";
-		case REQUEST_LICENSE_INFO:
-			return "REQUEST_LICENSE_INFO";
-		case RESPONSE_LICENSE_INFO:
-			return "RESPONSE_LICENSE_INFO";
-		case REQUEST_BUILD_INFO:
-			return "REQUEST_BUILD_INFO";
-		case RESPONSE_BUILD_INFO:
-			return "RESPONSE_BUILD_INFO";
-		case REQUEST_JOB_INFO:
-			return "REQUEST_JOB_INFO";
-		case RESPONSE_JOB_INFO:
-			return "RESPONSE_JOB_INFO";
-		case REQUEST_JOB_STEP_INFO:
-			return "REQUEST_JOB_STEP_INFO";
-		case RESPONSE_JOB_STEP_INFO:
-			return "RESPONSE_JOB_STEP_INFO";
-		case REQUEST_NODE_INFO:
-			return "REQUEST_NODE_INFO";
-		case RESPONSE_NODE_INFO:
-			return "RESPONSE_NODE_INFO";
-		case REQUEST_PARTITION_INFO:
-			return "REQUEST_PARTITION_INFO";
-		case RESPONSE_PARTITION_INFO:
-			return "RESPONSE_PARTITION_INFO";
-		case REQUEST_ACCTING_INFO:
-			return "REQUEST_ACCTING_INFO";
-		case RESPONSE_ACCOUNTING_INFO:
-			return "RESPONSE_ACCOUNTING_INFO";
-		case REQUEST_JOB_ID:
-			return "REQUEST_JOB_ID";
-		case RESPONSE_JOB_ID:
-			return "RESPONSE_JOB_ID";
-		case REQUEST_BLOCK_INFO:
-			return "REQUEST_BLOCK_INFO";
-		case RESPONSE_BLOCK_INFO:
-			return "RESPONSE_BLOCK_INFO";
-		case REQUEST_TRIGGER_SET:
-			return "REQUEST_TRIGGER_SET";
-		case REQUEST_TRIGGER_GET:
-			return "REQUEST_TRIGGER_GET";
-		case REQUEST_TRIGGER_CLEAR:
-			return "REQUEST_TRIGGER_CLEAR";
-		case RESPONSE_TRIGGER_GET:
-			return "RESPONSE_TRIGGER_GET";
-		case REQUEST_JOB_INFO_SINGLE:
-			return "REQUEST_JOB_INFO_SINGLE";
-		case REQUEST_SHARE_INFO:
-			return "REQUEST_SHARE_INFO";
-		case RESPONSE_SHARE_INFO:
-			return "RESPONSE_SHARE_INFO";
-		case REQUEST_RESERVATION_INFO:
-			return "REQUEST_RESERVATION_INFO";
-		case RESPONSE_RESERVATION_INFO:
-			return "RESPONSE_RESERVATION_INFO";
-		case REQUEST_PRIORITY_FACTORS:
-			return "REQUEST_PRIORITY_FACTORS";
-		case RESPONSE_PRIORITY_FACTORS:
-			return "RESPONSE_PRIORITY_FACTORS";
-		case REQUEST_TOPO_INFO:
-			return "REQUEST_TOPO_INFO";
-		case RESPONSE_TOPO_INFO:
-			return "RESPONSE_TOPO_INFO";
-		case REQUEST_TRIGGER_PULL:
-			return "REQUEST_TRIGGER_PULL";
-		case REQUEST_FRONT_END_INFO:
-			return "REQUEST_FRONT_END_INFO";
-		case RESPONSE_FRONT_END_INFO:
-			return "RESPONSE_FRONT_END_INFO";
-		case REQUEST_SPANK_ENVIRONMENT:
-			return "REQUEST_SPANK_ENVIRONMENT";
-		case RESPONCE_SPANK_ENVIRONMENT:
-			return "RESPONCE_SPANK_ENVIRONMENT";
-		case REQUEST_STATS_INFO:
-			return "REQUEST_STATS_INFO";
-		case RESPONSE_STATS_INFO:
-			return "RESPONSE_STATS_INFO";
-		case REQUEST_STATS_RESET:
-			return "REQUEST_STATS_RESET";
-		case RESPONSE_STATS_RESET:
-			return "RESPONSE_STATS_RESET";
-		case REQUEST_JOB_USER_INFO:
-			return "REQUEST_JOB_USER_INFO";
-		case REQUEST_NODE_INFO_SINGLE:
-			return "REQUEST_NODE_INFO_SINGLE";
-		case REQUEST_UPDATE_JOB:
-			return "REQUEST_UPDATE_JOB";
-		case REQUEST_UPDATE_NODE:
-			return "REQUEST_UPDATE_NODE";
-		case REQUEST_CREATE_PARTITION:
-			return "REQUEST_CREATE_PARTITION";
-		case REQUEST_DELETE_PARTITION:
-			return "REQUEST_DELETE_PARTITION";
-		case REQUEST_UPDATE_PARTITION:
-			return "REQUEST_UPDATE_PARTITION";
-		case REQUEST_CREATE_RESERVATION:
-			return "REQUEST_CREATE_RESERVATION";
-		case RESPONSE_CREATE_RESERVATION:
-			return "RESPONSE_CREATE_RESERVATION";
-		case REQUEST_DELETE_RESERVATION:
-			return "REQUEST_DELETE_RESERVATION";
-		case REQUEST_UPDATE_RESERVATION:
-			return "REQUEST_UPDATE_RESERVATION";
-		case REQUEST_UPDATE_BLOCK:
-			return "REQUEST_UPDATE_BLOCK";
-		case REQUEST_UPDATE_FRONT_END:
-			return "REQUEST_UPDATE_FRONT_END";
-		case REQUEST_RESOURCE_ALLOCATION:
-			return "REQUEST_RESOURCE_ALLOCATION";
-		case RESPONSE_RESOURCE_ALLOCATION:
-			return "RESPONSE_RESOURCE_ALLOCATION";
-		case REQUEST_SUBMIT_BATCH_JOB:
-			return "REQUEST_SUBMIT_BATCH_JOB";
-		case RESPONSE_SUBMIT_BATCH_JOB:
-			return "RESPONSE_SUBMIT_BATCH_JOB";
-		case REQUEST_BATCH_JOB_LAUNCH:
-			return "REQUEST_BATCH_JOB_LAUNCH";
-		case REQUEST_CANCEL_JOB:
-			return "REQUEST_CANCEL_JOB";
-		case RESPONSE_CANCEL_JOB:
-			return "RESPONSE_CANCEL_JOB";
-		case REQUEST_JOB_RESOURCE:
-			return "REQUEST_JOB_RESOURCE";
-		case RESPONSE_JOB_RESOURCE:
-			return "RESPONSE_JOB_RESOURCE";
-		case REQUEST_JOB_ATTACH:
-			return "REQUEST_JOB_ATTACH";
-		case RESPONSE_JOB_ATTACH:
-			return "RESPONSE_JOB_ATTACH";
-		case REQUEST_JOB_WILL_RUN:
-			return "REQUEST_JOB_WILL_RUN";
-		case RESPONSE_JOB_WILL_RUN:
-			return "RESPONSE_JOB_WILL_RUN";
-		case REQUEST_JOB_ALLOCATION_INFO:
-			return "REQUEST_JOB_ALLOCATION_INFO";
-		case RESPONSE_JOB_ALLOCATION_INFO:
-			return "RESPONSE_JOB_ALLOCATION_INFO";
-		case REQUEST_JOB_ALLOCATION_INFO_LITE:
-			return "REQUEST_JOB_ALLOCATION_INFO_LITE";
-		case RESPONSE_JOB_ALLOCATION_INFO_LITE:
-			return "RESPONSE_JOB_ALLOCATION_INFO_LITE";
-		case REQUEST_UPDATE_JOB_TIME:
-			return "REQUEST_UPDATE_JOB_TIME";
-		case REQUEST_JOB_READY:
-			return "REQUEST_JOB_READY";
-		case RESPONSE_JOB_READY:
-			return "RESPONSE_JOB_READY";
-		case REQUEST_JOB_END_TIME:
-			return "REQUEST_JOB_END_TIME";
-		case REQUEST_JOB_NOTIFY:
-			return "REQUEST_JOB_NOTIFY";
-		case REQUEST_JOB_SBCAST_CRED:
-			return "REQUEST_JOB_SBCAST_CRED";
-		case RESPONSE_JOB_SBCAST_CRED:
-			return "RESPONSE_JOB_SBCAST_CRED";
-		case REQUEST_JOB_STEP_CREATE:
-			return "REQUEST_JOB_STEP_CREATE";
-		case RESPONSE_JOB_STEP_CREATE:
-			return "RESPONSE_JOB_STEP_CREATE";
-		case REQUEST_RUN_JOB_STEP:
-			return "REQUEST_RUN_JOB_STEP";
-		case RESPONSE_RUN_JOB_STEP:
-			return "RESPONSE_RUN_JOB_STEP";
-		case REQUEST_CANCEL_JOB_STEP:
-			return "REQUEST_CANCEL_JOB_STEP";
-		case RESPONSE_CANCEL_JOB_STEP:
-			return "RESPONSE_CANCEL_JOB_STEP";
-		case REQUEST_UPDATE_JOB_STEP:
-			return "REQUEST_UPDATE_JOB_STEP";
-		case DEFUNCT_RESPONSE_COMPLETE_JOB_STEP:
-			return "DEFUNCT_RESPONSE_COMPLETE_JOB_STEP";
-		case REQUEST_CHECKPOINT:
-			return "REQUEST_CHECKPOINT";
-		case RESPONSE_CHECKPOINT:
-			return "RESPONSE_CHECKPOINT";
-		case REQUEST_CHECKPOINT_COMP:
-			return "REQUEST_CHECKPOINT_COMP";
-		case REQUEST_CHECKPOINT_TASK_COMP:
-			return "REQUEST_CHECKPOINT_TASK_COMP";
-		case RESPONSE_CHECKPOINT_COMP:
-			return "RESPONSE_CHECKPOINT_COMP";
-		case REQUEST_SUSPEND:
-			return "REQUEST_SUSPEND";
-		case RESPONSE_SUSPEND:
-			return "RESPONSE_SUSPEND";
-		case REQUEST_STEP_COMPLETE:
-			return "REQUEST_STEP_COMPLETE";
-		case REQUEST_COMPLETE_JOB_ALLOCATION:
-			return "REQUEST_COMPLETE_JOB_ALLOCATION";
-		case REQUEST_COMPLETE_BATCH_SCRIPT:
-			return "REQUEST_COMPLETE_BATCH_SCRIPT";
-		case REQUEST_JOB_STEP_STAT:
-			return "REQUEST_JOB_STEP_STAT";
-		case RESPONSE_JOB_STEP_STAT:
-			return "RESPONSE_JOB_STEP_STAT";
-		case REQUEST_STEP_LAYOUT:
-			return "REQUEST_STEP_LAYOUT";
-		case RESPONSE_STEP_LAYOUT:
-			return "RESPONSE_STEP_LAYOUT";
-		case REQUEST_JOB_REQUEUE:
-			return "REQUEST_JOB_REQUEUE";
-		case REQUEST_DAEMON_STATUS:
-			return "REQUEST_DAEMON_STATUS";
-		case RESPONSE_SLURMD_STATUS:
-			return "RESPONSE_SLURMD_STATUS";
-		case RESPONSE_SLURMCTLD_STATUS:
-			return "RESPONSE_SLURMCTLD_STATUS";
-		case REQUEST_JOB_STEP_PIDS:
-			return "REQUEST_JOB_STEP_PIDS";
-		case RESPONSE_JOB_STEP_PIDS:
-			return "RESPONSE_JOB_STEP_PIDS";
-		case REQUEST_FORWARD_DATA:
-			return "REQUEST_FORWARD_DATA";
-		case REQUEST_COMPLETE_BATCH_JOB:
-			return "REQUEST_COMPLETE_BATCH_JOB";
-		case REQUEST_SUSPEND_INT:
-			return "REQUEST_SUSPEND_INT";
-		case REQUEST_LAUNCH_TASKS:
-			return "REQUEST_LAUNCH_TASKS";
-		case RESPONSE_LAUNCH_TASKS:
-			return "RESPONSE_LAUNCH_TASKS";
-		case MESSAGE_TASK_EXIT:
-			return "MESSAGE_TASK_EXIT";
-		case REQUEST_SIGNAL_TASKS:
-			return "REQUEST_SIGNAL_TASKS";
-		case REQUEST_CHECKPOINT_TASKS:
-			return "REQUEST_CHECKPOINT_TASKS";
-		case REQUEST_TERMINATE_TASKS:
-			return "REQUEST_TERMINATE_TASKS";
-		case REQUEST_REATTACH_TASKS:
-			return "REQUEST_REATTACH_TASKS";
-		case RESPONSE_REATTACH_TASKS:
-			return "RESPONSE_REATTACH_TASKS";
-		case REQUEST_KILL_TIMELIMIT:
-			return "REQUEST_KILL_TIMELIMIT";
-		case REQUEST_SIGNAL_JOB:
-			return "REQUEST_SIGNAL_JOB";
-		case REQUEST_TERMINATE_JOB:
-			return "REQUEST_TERMINATE_JOB";
-		case MESSAGE_EPILOG_COMPLETE:
-			return "MESSAGE_EPILOG_COMPLETE";
-		case REQUEST_ABORT_JOB:
-			return "REQUEST_ABORT_JOB";
-		case REQUEST_FILE_BCAST:
-			return "REQUEST_FILE_BCAST";
-		case TASK_USER_MANAGED_IO_STREAM:
-			return "TASK_USER_MANAGED_IO_STREAM";
-		case REQUEST_KILL_PREEMPTED:
-			return "REQUEST_KILL_PREEMPTED";
-		case REQUEST_LAUNCH_PROLOG:
-			return "REQUEST_LAUNCH_PROLOG";
-		case REQUEST_COMPLETE_PROLOG:
-			return "REQUEST_COMPLETE_PROLOG";
-		case RESPONSE_PROLOG_EXECUTING:
-			return "RESPONSE_PROLOG_EXECUTING";
-		case SRUN_PING:
-			return "SRUN_PING";
-		case SRUN_TIMEOUT:
-			return "SRUN_TIMEOUT";
-		case SRUN_NODE_FAIL:
-			return "SRUN_NODE_FAIL";
-		case SRUN_JOB_COMPLETE:
-			return "SRUN_JOB_COMPLETE";
-		case SRUN_USER_MSG:
-			return "SRUN_USER_MSG";
-		case SRUN_EXEC:
-			return "SRUN_EXEC";
-		case SRUN_STEP_MISSING:
-			return "SRUN_STEP_MISSING";
-		case SRUN_REQUEST_SUSPEND:
-			return "SRUN_REQUEST_SUSPEND";
-		case SRUN_STEP_SIGNAL:
-			return "SRUN_STEP_SIGNAL";
-		case PMI_KVS_PUT_REQ:
-			return "PMI_KVS_PUT_REQ";
-		case PMI_KVS_PUT_RESP:
-			return "PMI_KVS_PUT_RESP";
-		case PMI_KVS_GET_REQ:
-			return "PMI_KVS_GET_REQ";
-		case PMI_KVS_GET_RESP:
-			return "PMI_KVS_GET_RESP";
-		case RESPONSE_SLURM_RC:
-			return "RESPONSE_SLURM_RC";
-		case RESPONSE_SLURM_RC_MSG:
-			return "RESPONSE_SLURM_RC_MSG";
-		case RESPONSE_FORWARD_FAILED:
-			return "RESPONSE_FORWARD_FAILED";
-		case ACCOUNTING_UPDATE_MSG:
-			return "ACCOUNTING_UPDATE_MSG";
-		case ACCOUNTING_FIRST_REG:
-			return "ACCOUNTING_FIRST_REG";
-		case ACCOUNTING_REGISTER_CTLD:
-			return "ACCOUNTING_REGISTER_CTLD";
-		default:
-			(void) snprintf(buf, sizeof(buf), "%u", opcode);
-			return buf;
+	case REQUEST_NODE_REGISTRATION_STATUS:
+		return "REQUEST_NODE_REGISTRATION_STATUS";
+	case MESSAGE_NODE_REGISTRATION_STATUS:
+		return "MESSAGE_NODE_REGISTRATION_STATUS";
+	case REQUEST_RECONFIGURE:
+		return "REQUEST_RECONFIGURE";
+	case RESPONSE_RECONFIGURE:
+		return "RESPONSE_RECONFIGURE";
+	case REQUEST_SHUTDOWN:
+		return "REQUEST_SHUTDOWN";
+	case REQUEST_SHUTDOWN_IMMEDIATE:
+		return "REQUEST_SHUTDOWN_IMMEDIATE";
+	case RESPONSE_SHUTDOWN:
+		return "RESPONSE_SHUTDOWN";
+	case REQUEST_PING:
+		return "REQUEST_PING";
+	case REQUEST_CONTROL:
+		return "REQUEST_CONTROL";
+	case REQUEST_SET_DEBUG_LEVEL:
+		return "REQUEST_SET_DEBUG_LEVEL";
+	case REQUEST_HEALTH_CHECK:
+		return "REQUEST_HEALTH_CHECK";
+	case REQUEST_TAKEOVER:
+		return "REQUEST_TAKEOVER";
+	case REQUEST_SET_SCHEDLOG_LEVEL:
+		return "REQUEST_SET_SCHEDLOG_LEVEL";
+	case REQUEST_SET_DEBUG_FLAGS:
+		return "REQUEST_SET_DEBUG_FLAGS";
+	case REQUEST_REBOOT_NODES:
+		return "REQUEST_REBOOT_NODES";
+	case RESPONSE_PING_SLURMD:
+		return "RESPONSE_PING_SLURMD";
+	case REQUEST_ACCT_GATHER_UPDATE:
+		return "REQUEST_ACCT_GATHER_UPDATE";
+	case RESPONSE_ACCT_GATHER_UPDATE:
+		return "RESPONSE_ACCT_GATHER_UPDATE";
+	case REQUEST_ACCT_GATHER_ENERGY:
+		return "REQUEST_ACCT_GATHER_ENERGY";
+	case RESPONSE_ACCT_GATHER_ENERGY:
+		return "RESPONSE_ACCT_GATHER_ENERGY";
+	case REQUEST_LICENSE_INFO:
+		return "REQUEST_LICENSE_INFO";
+	case RESPONSE_LICENSE_INFO:
+		return "RESPONSE_LICENSE_INFO";
+	case REQUEST_BUILD_INFO:
+		return "REQUEST_BUILD_INFO";
+	case RESPONSE_BUILD_INFO:
+		return "RESPONSE_BUILD_INFO";
+	case REQUEST_JOB_INFO:
+		return "REQUEST_JOB_INFO";
+	case RESPONSE_JOB_INFO:
+		return "RESPONSE_JOB_INFO";
+	case REQUEST_JOB_STEP_INFO:
+		return "REQUEST_JOB_STEP_INFO";
+	case RESPONSE_JOB_STEP_INFO:
+		return "RESPONSE_JOB_STEP_INFO";
+	case REQUEST_NODE_INFO:
+		return "REQUEST_NODE_INFO";
+	case RESPONSE_NODE_INFO:
+		return "RESPONSE_NODE_INFO";
+	case REQUEST_PARTITION_INFO:
+		return "REQUEST_PARTITION_INFO";
+	case RESPONSE_PARTITION_INFO:
+		return "RESPONSE_PARTITION_INFO";
+	case REQUEST_ACCTING_INFO:
+		return "REQUEST_ACCTING_INFO";
+	case RESPONSE_ACCOUNTING_INFO:
+		return "RESPONSE_ACCOUNTING_INFO";
+	case REQUEST_JOB_ID:
+		return "REQUEST_JOB_ID";
+	case RESPONSE_JOB_ID:
+		return "RESPONSE_JOB_ID";
+	case REQUEST_BLOCK_INFO:
+		return "REQUEST_BLOCK_INFO";
+	case RESPONSE_BLOCK_INFO:
+		return "RESPONSE_BLOCK_INFO";
+	case REQUEST_TRIGGER_SET:
+		return "REQUEST_TRIGGER_SET";
+	case REQUEST_TRIGGER_GET:
+		return "REQUEST_TRIGGER_GET";
+	case REQUEST_TRIGGER_CLEAR:
+		return "REQUEST_TRIGGER_CLEAR";
+	case RESPONSE_TRIGGER_GET:
+		return "RESPONSE_TRIGGER_GET";
+	case REQUEST_JOB_INFO_SINGLE:
+		return "REQUEST_JOB_INFO_SINGLE";
+	case REQUEST_SHARE_INFO:
+		return "REQUEST_SHARE_INFO";
+	case RESPONSE_SHARE_INFO:
+		return "RESPONSE_SHARE_INFO";
+	case REQUEST_RESERVATION_INFO:
+		return "REQUEST_RESERVATION_INFO";
+	case RESPONSE_RESERVATION_INFO:
+		return "RESPONSE_RESERVATION_INFO";
+	case REQUEST_PRIORITY_FACTORS:
+		return "REQUEST_PRIORITY_FACTORS";
+	case RESPONSE_PRIORITY_FACTORS:
+		return "RESPONSE_PRIORITY_FACTORS";
+	case REQUEST_TOPO_INFO:
+		return "REQUEST_TOPO_INFO";
+	case RESPONSE_TOPO_INFO:
+		return "RESPONSE_TOPO_INFO";
+	case REQUEST_TRIGGER_PULL:
+		return "REQUEST_TRIGGER_PULL";
+	case REQUEST_FRONT_END_INFO:
+		return "REQUEST_FRONT_END_INFO";
+	case RESPONSE_FRONT_END_INFO:
+		return "RESPONSE_FRONT_END_INFO";
+	case REQUEST_SPANK_ENVIRONMENT:
+		return "REQUEST_SPANK_ENVIRONMENT";
+	case RESPONCE_SPANK_ENVIRONMENT:
+		return "RESPONCE_SPANK_ENVIRONMENT";
+	case REQUEST_STATS_INFO:
+		return "REQUEST_STATS_INFO";
+	case RESPONSE_STATS_INFO:
+		return "RESPONSE_STATS_INFO";
+	case REQUEST_STATS_RESET:
+		return "REQUEST_STATS_RESET";
+	case RESPONSE_STATS_RESET:
+		return "RESPONSE_STATS_RESET";
+	case REQUEST_JOB_USER_INFO:
+		return "REQUEST_JOB_USER_INFO";
+	case REQUEST_NODE_INFO_SINGLE:
+		return "REQUEST_NODE_INFO_SINGLE";
+	case REQUEST_UPDATE_JOB:
+		return "REQUEST_UPDATE_JOB";
+	case REQUEST_UPDATE_NODE:
+		return "REQUEST_UPDATE_NODE";
+	case REQUEST_CREATE_PARTITION:
+		return "REQUEST_CREATE_PARTITION";
+	case REQUEST_DELETE_PARTITION:
+		return "REQUEST_DELETE_PARTITION";
+	case REQUEST_UPDATE_PARTITION:
+		return "REQUEST_UPDATE_PARTITION";
+	case REQUEST_CREATE_RESERVATION:
+		return "REQUEST_CREATE_RESERVATION";
+	case RESPONSE_CREATE_RESERVATION:
+		return "RESPONSE_CREATE_RESERVATION";
+	case REQUEST_DELETE_RESERVATION:
+		return "REQUEST_DELETE_RESERVATION";
+	case REQUEST_UPDATE_RESERVATION:
+		return "REQUEST_UPDATE_RESERVATION";
+	case REQUEST_UPDATE_BLOCK:
+		return "REQUEST_UPDATE_BLOCK";
+	case REQUEST_UPDATE_FRONT_END:
+		return "REQUEST_UPDATE_FRONT_END";
+	case REQUEST_RESOURCE_ALLOCATION:
+		return "REQUEST_RESOURCE_ALLOCATION";
+	case RESPONSE_RESOURCE_ALLOCATION:
+		return "RESPONSE_RESOURCE_ALLOCATION";
+	case REQUEST_SUBMIT_BATCH_JOB:
+		return "REQUEST_SUBMIT_BATCH_JOB";
+	case RESPONSE_SUBMIT_BATCH_JOB:
+		return "RESPONSE_SUBMIT_BATCH_JOB";
+	case REQUEST_BATCH_JOB_LAUNCH:
+		return "REQUEST_BATCH_JOB_LAUNCH";
+	case REQUEST_CANCEL_JOB:
+		return "REQUEST_CANCEL_JOB";
+	case RESPONSE_CANCEL_JOB:
+		return "RESPONSE_CANCEL_JOB";
+	case REQUEST_JOB_RESOURCE:
+		return "REQUEST_JOB_RESOURCE";
+	case RESPONSE_JOB_RESOURCE:
+		return "RESPONSE_JOB_RESOURCE";
+	case REQUEST_JOB_ATTACH:
+		return "REQUEST_JOB_ATTACH";
+	case RESPONSE_JOB_ATTACH:
+		return "RESPONSE_JOB_ATTACH";
+	case REQUEST_JOB_WILL_RUN:
+		return "REQUEST_JOB_WILL_RUN";
+	case RESPONSE_JOB_WILL_RUN:
+		return "RESPONSE_JOB_WILL_RUN";
+	case REQUEST_JOB_ALLOCATION_INFO:
+		return "REQUEST_JOB_ALLOCATION_INFO";
+	case RESPONSE_JOB_ALLOCATION_INFO:
+		return "RESPONSE_JOB_ALLOCATION_INFO";
+	case REQUEST_JOB_ALLOCATION_INFO_LITE:
+		return "REQUEST_JOB_ALLOCATION_INFO_LITE";
+	case RESPONSE_JOB_ALLOCATION_INFO_LITE:
+		return "RESPONSE_JOB_ALLOCATION_INFO_LITE";
+	case REQUEST_UPDATE_JOB_TIME:
+		return "REQUEST_UPDATE_JOB_TIME";
+	case REQUEST_JOB_READY:
+		return "REQUEST_JOB_READY";
+	case RESPONSE_JOB_READY:
+		return "RESPONSE_JOB_READY";
+	case REQUEST_JOB_END_TIME:
+		return "REQUEST_JOB_END_TIME";
+	case REQUEST_JOB_NOTIFY:
+		return "REQUEST_JOB_NOTIFY";
+	case REQUEST_JOB_SBCAST_CRED:
+		return "REQUEST_JOB_SBCAST_CRED";
+	case RESPONSE_JOB_SBCAST_CRED:
+		return "RESPONSE_JOB_SBCAST_CRED";
+	case REQUEST_JOB_STEP_CREATE:
+		return "REQUEST_JOB_STEP_CREATE";
+	case RESPONSE_JOB_STEP_CREATE:
+		return "RESPONSE_JOB_STEP_CREATE";
+	case REQUEST_RUN_JOB_STEP:
+		return "REQUEST_RUN_JOB_STEP";
+	case RESPONSE_RUN_JOB_STEP:
+		return "RESPONSE_RUN_JOB_STEP";
+	case REQUEST_CANCEL_JOB_STEP:
+		return "REQUEST_CANCEL_JOB_STEP";
+	case RESPONSE_CANCEL_JOB_STEP:
+		return "RESPONSE_CANCEL_JOB_STEP";
+	case REQUEST_UPDATE_JOB_STEP:
+		return "REQUEST_UPDATE_JOB_STEP";
+	case DEFUNCT_RESPONSE_COMPLETE_JOB_STEP:
+		return "DEFUNCT_RESPONSE_COMPLETE_JOB_STEP";
+	case REQUEST_CHECKPOINT:
+		return "REQUEST_CHECKPOINT";
+	case RESPONSE_CHECKPOINT:
+		return "RESPONSE_CHECKPOINT";
+	case REQUEST_CHECKPOINT_COMP:
+		return "REQUEST_CHECKPOINT_COMP";
+	case REQUEST_CHECKPOINT_TASK_COMP:
+		return "REQUEST_CHECKPOINT_TASK_COMP";
+	case RESPONSE_CHECKPOINT_COMP:
+		return "RESPONSE_CHECKPOINT_COMP";
+	case REQUEST_SUSPEND:
+		return "REQUEST_SUSPEND";
+	case RESPONSE_SUSPEND:
+		return "RESPONSE_SUSPEND";
+	case REQUEST_STEP_COMPLETE:
+		return "REQUEST_STEP_COMPLETE";
+	case REQUEST_COMPLETE_JOB_ALLOCATION:
+		return "REQUEST_COMPLETE_JOB_ALLOCATION";
+	case REQUEST_COMPLETE_BATCH_SCRIPT:
+		return "REQUEST_COMPLETE_BATCH_SCRIPT";
+	case REQUEST_JOB_STEP_STAT:
+		return "REQUEST_JOB_STEP_STAT";
+	case RESPONSE_JOB_STEP_STAT:
+		return "RESPONSE_JOB_STEP_STAT";
+	case REQUEST_STEP_LAYOUT:
+		return "REQUEST_STEP_LAYOUT";
+	case RESPONSE_STEP_LAYOUT:
+		return "RESPONSE_STEP_LAYOUT";
+	case REQUEST_JOB_REQUEUE:
+		return "REQUEST_JOB_REQUEUE";
+	case REQUEST_DAEMON_STATUS:
+		return "REQUEST_DAEMON_STATUS";
+	case RESPONSE_SLURMD_STATUS:
+		return "RESPONSE_SLURMD_STATUS";
+	case RESPONSE_SLURMCTLD_STATUS:
+		return "RESPONSE_SLURMCTLD_STATUS";
+	case REQUEST_JOB_STEP_PIDS:
+		return "REQUEST_JOB_STEP_PIDS";
+	case RESPONSE_JOB_STEP_PIDS:
+		return "RESPONSE_JOB_STEP_PIDS";
+	case REQUEST_FORWARD_DATA:
+		return "REQUEST_FORWARD_DATA";
+	case REQUEST_COMPLETE_BATCH_JOB:
+		return "REQUEST_COMPLETE_BATCH_JOB";
+	case REQUEST_SUSPEND_INT:
+		return "REQUEST_SUSPEND_INT";
+	case REQUEST_KILL_JOB:
+		return "REQUEST_KILL_JOB";
+	case REQUEST_LAUNCH_TASKS:
+		return "REQUEST_LAUNCH_TASKS";
+	case RESPONSE_LAUNCH_TASKS:
+		return "RESPONSE_LAUNCH_TASKS";
+	case MESSAGE_TASK_EXIT:
+		return "MESSAGE_TASK_EXIT";
+	case REQUEST_SIGNAL_TASKS:
+		return "REQUEST_SIGNAL_TASKS";
+	case REQUEST_CHECKPOINT_TASKS:
+		return "REQUEST_CHECKPOINT_TASKS";
+	case REQUEST_TERMINATE_TASKS:
+		return "REQUEST_TERMINATE_TASKS";
+	case REQUEST_REATTACH_TASKS:
+		return "REQUEST_REATTACH_TASKS";
+	case RESPONSE_REATTACH_TASKS:
+		return "RESPONSE_REATTACH_TASKS";
+	case REQUEST_KILL_TIMELIMIT:
+		return "REQUEST_KILL_TIMELIMIT";
+	case REQUEST_SIGNAL_JOB:
+		return "REQUEST_SIGNAL_JOB";
+	case REQUEST_TERMINATE_JOB:
+		return "REQUEST_TERMINATE_JOB";
+	case MESSAGE_EPILOG_COMPLETE:
+		return "MESSAGE_EPILOG_COMPLETE";
+	case REQUEST_ABORT_JOB:
+		return "REQUEST_ABORT_JOB";
+	case REQUEST_FILE_BCAST:
+		return "REQUEST_FILE_BCAST";
+	case TASK_USER_MANAGED_IO_STREAM:
+		return "TASK_USER_MANAGED_IO_STREAM";
+	case REQUEST_KILL_PREEMPTED:
+		return "REQUEST_KILL_PREEMPTED";
+	case REQUEST_LAUNCH_PROLOG:
+		return "REQUEST_LAUNCH_PROLOG";
+	case REQUEST_COMPLETE_PROLOG:
+		return "REQUEST_COMPLETE_PROLOG";
+	case RESPONSE_PROLOG_EXECUTING:
+		return "RESPONSE_PROLOG_EXECUTING";
+	case SRUN_PING:
+		return "SRUN_PING";
+	case SRUN_TIMEOUT:
+		return "SRUN_TIMEOUT";
+	case SRUN_NODE_FAIL:
+		return "SRUN_NODE_FAIL";
+	case SRUN_JOB_COMPLETE:
+		return "SRUN_JOB_COMPLETE";
+	case SRUN_USER_MSG:
+		return "SRUN_USER_MSG";
+	case SRUN_EXEC:
+		return "SRUN_EXEC";
+	case SRUN_STEP_MISSING:
+		return "SRUN_STEP_MISSING";
+	case SRUN_REQUEST_SUSPEND:
+		return "SRUN_REQUEST_SUSPEND";
+	case SRUN_STEP_SIGNAL:
+		return "SRUN_STEP_SIGNAL";
+	case PMI_KVS_PUT_REQ:
+		return "PMI_KVS_PUT_REQ";
+	case PMI_KVS_PUT_RESP:
+		return "PMI_KVS_PUT_RESP";
+	case PMI_KVS_GET_REQ:
+		return "PMI_KVS_GET_REQ";
+	case PMI_KVS_GET_RESP:
+		return "PMI_KVS_GET_RESP";
+	case RESPONSE_SLURM_RC:
+		return "RESPONSE_SLURM_RC";
+	case RESPONSE_SLURM_RC_MSG:
+		return "RESPONSE_SLURM_RC_MSG";
+	case RESPONSE_FORWARD_FAILED:
+		return "RESPONSE_FORWARD_FAILED";
+	case ACCOUNTING_UPDATE_MSG:
+		return "ACCOUNTING_UPDATE_MSG";
+	case ACCOUNTING_FIRST_REG:
+		return "ACCOUNTING_FIRST_REG";
+	case ACCOUNTING_REGISTER_CTLD:
+		return "ACCOUNTING_REGISTER_CTLD";
+	default:
+		(void) snprintf(buf, sizeof(buf), "%u", opcode);
+		return buf;
 	}
 }

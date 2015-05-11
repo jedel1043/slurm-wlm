@@ -15,6 +15,7 @@
 # --with bluegene    %_with_bluegene    1    build bluegene RPM
 # --with cray        %_with_cray        1    build for a Cray system without ALPS
 # --with cray_alps   %_with_cray_alps   1    build for a Cray system with ALPS
+# --with cray_network %_with_cray_network 1  build for a non-Cray system with a Cray network
 # --with debug       %_with_debug       1    enable extra debugging within Slurm
 # --with lua         %_with_lua         1    build Slurm lua bindings (proctrack only for now)
 # --without munge    %_without_munge    1    don't build auth-munge RPM
@@ -43,6 +44,7 @@
 %slurm_without_opt bluegene
 %slurm_without_opt cray
 %slurm_without_opt cray_alps
+%slurm_without_opt cray_network
 %slurm_without_opt debug
 %slurm_without_opt sun_const
 %slurm_without_opt salloc_background
@@ -73,20 +75,9 @@
 %slurm_with_opt aix
 %endif
 
-# Build with sgijob plugin and mysql (for slurmdbd) on CHAOS systems
-%if %{?chaos}0
-%slurm_with_opt mysql
-%slurm_with_opt lua
-%slurm_with_opt partial_attach
-%else
 %slurm_without_opt sgijob
 %slurm_without_opt lua
 %slurm_without_opt partial-attach
-%endif
-
-%if %{?chaos}0 && 0%{?chaos} < 5
-%slurm_with_opt sgijob
-%endif
 
 %if %{slurm_with cray_alps}
 %slurm_with_opt sgijob
@@ -124,12 +115,6 @@ BuildRequires:	SUNWgcc
 BuildRequires:	SUNWgnome-common-devel
 %endif
 
-%if %{?chaos}0
-BuildRequires: gtk2-devel >= 2.7.1
-BuildRequires: ncurses-devel
-BuildRequires: pkgconfig
-%endif
-
 # not sure if this is always an actual rpm or not so leaving the requirement out
 #%if %{slurm_with blcr}
 #BuildRequires: blcr
@@ -161,6 +146,16 @@ BuildRequires: cray-libjob-devel
 BuildRequires: gtk2-devel
 BuildRequires: glib2-devel
 BuildRequires: pkg-config
+%endif
+
+%if %{slurm_with cray_network}
+BuildRequires: mysql-devel
+BuildRequires: cray-libalpscomm_cn-devel
+BuildRequires: cray-libalpscomm_sn-devel
+BuildRequires: hwloc-devel
+BuildRequires: gtk2-devel
+BuildRequires: glib2-devel
+BuildRequires: pkgconfig
 %endif
 
 %ifnos aix5.3
@@ -434,6 +429,7 @@ Gives the ability for Slurm to use Berkeley Lab Checkpoint/Restart
 	%{?with_munge:--with-munge=%{?with_munge}}\
 	%{?with_blcr:--with-blcr=%{?with_blcr}}\
 	%{?slurm_with_cray:--enable-native-cray}\
+	%{?slurm_with_cray_network:--enable-cray-network}\
 	%{?slurm_with_salloc_background:--enable-salloc-background} \
 	%{!?slurm_with_readline:--without-readline} \
 	%{?slurm_with_multiple_slurmd:--enable-multiple-slurmd} \
@@ -456,9 +452,14 @@ DESTDIR="$RPM_BUILD_ROOT" make install-contrib
       ln -s ../../etc/init.d/slurm    $RPM_BUILD_ROOT/usr/sbin/rcslurm
       ln -s ../../etc/init.d/slurmdbd $RPM_BUILD_ROOT/usr/sbin/rcslurmdbd
    fi
+   if [ -d /usr/lib/systemd/system ]; then
+      install -D -m755 etc/slurmctld.service $RPM_BUILD_ROOT/usr/lib/systemd/system/slurmctld.service
+      install -D -m755 etc/slurmd.service    $RPM_BUILD_ROOT/usr/lib/systemd/system/slurmd.service
+      install -D -m755 etc/slurmdbd.service  $RPM_BUILD_ROOT/usr/lib/systemd/system/slurmdbd.service
+   fi
 %endif
 
-# Do not package Slurm's version of libpmi on Cray systems.
+# Do not package Slurm's version of libpmi on Cray systems with ALPS.
 # Cray's version of libpmi should be used.
 %if %{slurm_with cray} || %{slurm_with cray_alps}
    %if %{slurm_with cray_alps}
@@ -580,6 +581,10 @@ test -f $RPM_BUILD_ROOT/etc/init.d/slurm			&&
   echo /etc/init.d/slurm				>> $LIST
 test -f $RPM_BUILD_ROOT/usr/sbin/rcslurm			&&
   echo /usr/sbin/rcslurm				>> $LIST
+test -f $RPM_BUILD_ROOT/lib/systemd/system/slurmctld.service	&&
+  echo /lib/systemd/system/slurmctld.service		>> $LIST
+test -f $RPM_BUILD_ROOT/lib/systemd/system/slurmd.service	&&
+  echo /lib/systemd/system/slurmd.service		>> $LIST
 
 test -f $RPM_BUILD_ROOT/opt/modulefiles/slurm/%{version}-%{release} &&
   echo /opt/modulefiles/slurm/%{version}-%{release} >> $LIST
@@ -651,6 +656,8 @@ test -f $RPM_BUILD_ROOT/etc/init.d/slurmdbd			&&
   echo /etc/init.d/slurmdbd				>> $LIST
 test -f $RPM_BUILD_ROOT/usr/sbin/rcslurmdbd			&&
   echo /usr/sbin/rcslurmdbd				>> $LIST
+test -f $RPM_BUILD_ROOT/lib/systemd/system/slurmdbd.service	&&
+  echo /lib/systemd/system/slurmdbd.service		>> $LIST
 
 LIST=./sql.files
 touch $LIST
@@ -893,6 +900,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/slurm/mpi_pmi2.so
 %endif
 %{_libdir}/slurm/mpi_none.so
+%{_libdir}/slurm/preempt_job_prio.so
 %{_libdir}/slurm/preempt_none.so
 %{_libdir}/slurm/preempt_partition_prio.so
 %{_libdir}/slurm/preempt_qos.so
@@ -901,6 +909,8 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/slurm/proctrack_cgroup.so
 %{_libdir}/slurm/proctrack_linuxproc.so
 %{_libdir}/slurm/proctrack_pgid.so
+%{_libdir}/slurm/route_default.so
+%{_libdir}/slurm/route_topology.so
 %{_libdir}/slurm/sched_backfill.so
 %{_libdir}/slurm/sched_builtin.so
 %{_libdir}/slurm/sched_hold.so

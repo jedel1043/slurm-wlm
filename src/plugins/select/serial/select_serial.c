@@ -114,12 +114,12 @@ uint32_t *cr_node_cores_offset;
 const char plugin_name[] = "Serial Job Resource Selection plugin";
 const char plugin_type[] = "select/serial";
 const uint32_t plugin_id      = 106;
-const uint32_t plugin_version = 110;
+const uint32_t plugin_version = 120;
 const uint32_t pstate_version = 7;	/* version control on saved state */
 
 uint16_t cr_type = CR_CPU; /* cr_type is overwritten in init() */
 
-uint32_t select_debug_flags;
+uint64_t select_debug_flags;
 uint16_t select_fast_schedule;
 
 struct part_res_record *select_part_record = NULL;
@@ -551,7 +551,7 @@ static void _build_row_bitmaps(struct part_res_record *p_ptr,
 		return;
 	}
 
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 		info("DEBUG: _build_row_bitmaps (before):");
 		_dump_part(p_ptr);
 	}
@@ -609,7 +609,7 @@ static void _build_row_bitmaps(struct part_res_record *p_ptr,
 		}
 	}
 
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 		for (i = 0; i < num_jobs; i++) {
 			char cstr[64], nstr[64];
 			if (tmpjobs[i]->core_bitmap) {
@@ -652,7 +652,7 @@ static void _build_row_bitmaps(struct part_res_record *p_ptr,
 		 * Thus, we'll restore the original layout here */
 		debug3("cons_res: build_row_bitmap: dangling job found");
 
-		if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+		if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 			info("DEBUG: _build_row_bitmaps (post-algorithm):");
 			_dump_part(p_ptr);
 		}
@@ -676,7 +676,7 @@ static void _build_row_bitmaps(struct part_res_record *p_ptr,
 		}
 	}
 
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 		info("DEBUG: _build_row_bitmaps (after):");
 		_dump_part(p_ptr);
 	}
@@ -745,7 +745,7 @@ static int _add_job_to_res(struct job_record *job_ptr, int action)
 	debug3("select/serial: _add_job_to_res: job %u act %d ",
 	       job_ptr->job_id, action);
 
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND)
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE)
 		_dump_job_res(job);
 
 	i_first = bit_ffs(job->node_bitmap);
@@ -835,7 +835,7 @@ static int _add_job_to_res(struct job_record *job_ptr, int action)
 				select_node_usage[i].node_state +=
 					job->node_req;
 		}
-		if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+		if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 			info("select/serial: _add_job_to_res (after):");
 			_dump_part(p_ptr);
 		}
@@ -877,7 +877,7 @@ static int _rm_job_from_res(struct part_res_record *part_record_ptr,
 
 	debug3("select/serial: _rm_job_from_res: job %u action %d",
 	       job_ptr->job_id, action);
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND)
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE)
 		_dump_job_res(job);
 
 	i_first = bit_ffs(job->node_bitmap);
@@ -1435,7 +1435,8 @@ extern int select_p_node_init(struct node_record *node_ptr, int node_cnt)
 
 	info("cons_res: select_p_node_init");
 	if ((cr_type & (CR_CPU | CR_CORE)) == 0) {
-		fatal("Invalid SelectTypeParameter: %s",
+		fatal("Invalid SelectTypeParameter: %s, "
+		      "You need at least CR_(CPU|CORE)*",
 		      select_type_param_string(cr_type));
 	}
 	if (node_ptr == NULL) {
@@ -1505,8 +1506,8 @@ static bool _is_job_spec_serial(struct job_record *job_ptr)
 
 	if (details_ptr) {
 		if (job_ptr->details->share_res == 0) {
-			info("Clearing exclusive flag for job %u",
-			     job_ptr->job_id);
+			debug("Clearing exclusive flag for job %u",
+			      job_ptr->job_id);
 			job_ptr->details->share_res  = 1;
 			job_ptr->details->whole_node = 0;
 		}
@@ -1595,13 +1596,13 @@ extern int select_p_job_test(struct job_record *job_ptr, bitstr_t * bitmap,
 {
 	int rc = EINVAL;
 	uint16_t job_node_share;
-	bool debug_cpu_bind = false, debug_check = false;
+	static bool debug_cpu_bind = false, debug_check = false;
 
 	xassert(bitmap);
 
 	if (!debug_check) {
 		debug_check = true;
-		if (slurm_get_debug_flags() & DEBUG_FLAG_CPU_BIND)
+		if (slurm_get_debug_flags() & DEBUG_FLAG_SELECT_TYPE)
 			debug_cpu_bind = true;
 	}
 
@@ -1613,15 +1614,15 @@ extern int select_p_job_test(struct job_record *job_ptr, bitstr_t * bitmap,
 		return SLURM_ERROR;
 	}
 
-	if (job_ptr->details->core_spec) {
+	if (job_ptr->details->core_spec != (uint16_t) NO_VAL) {
 		verbose("select/serial: job %u core_spec(%u) not supported",
 			job_ptr->job_id, job_ptr->details->core_spec);
-		job_ptr->details->core_spec = 0;
+		job_ptr->details->core_spec = (uint16_t) NO_VAL;
 	}
 
 	job_node_share = _get_job_node_share(job_ptr);
 
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 		info("select/serial: select_p_job_test: job %u node_share %u "
 		     "mode %d avail_n %u",
 		     job_ptr->job_id, job_node_share, mode,
@@ -1639,7 +1640,7 @@ extern int select_p_job_test(struct job_record *job_ptr, bitstr_t * bitmap,
 	} else
 		fatal("select_p_job_test: Mode %d is invalid", mode);
 
-	if (select_debug_flags & DEBUG_FLAG_CPU_BIND) {
+	if (select_debug_flags & DEBUG_FLAG_SELECT_TYPE) {
 		if (job_ptr->job_resrcs)
 			log_job_resources(job_ptr->job_id, job_ptr->job_resrcs);
 		else {
@@ -2127,21 +2128,10 @@ extern int select_p_reconfigure(void)
 	return SLURM_SUCCESS;
 }
 
-/*
- * select_p_resv_test - Identify the nodes which "best" satisfy a reservation
- *	request. "best" is defined as either single set of consecutive nodes
- *	satisfying the request and leaving the minimum number of unused nodes
- *	OR the fewest number of consecutive node sets
- * IN/OUT avail_bitmap - nodes available for the reservation
- * IN node_cnt - count of required nodes
- * IN core_cnt - count of required cores per node
- * IN/OUT core_bitmap - cores which can not be used for this reservation
- * IN flags - reservation request flags
- * RET - nodes selected for use by the reservation
- */
-extern bitstr_t * select_p_resv_test(bitstr_t *avail_bitmap, uint32_t node_cnt,
-				     uint32_t *core_cnt, bitstr_t **core_bitmap,
-				     uint32_t flags)
+extern bitstr_t * select_p_resv_test(resv_desc_msg_t *resv_desc_ptr,
+				     uint32_t node_cnt,
+				     bitstr_t *avail_bitmap,
+				     bitstr_t **core_bitmap)
 {
 	int i, j;
 	int core_inx = 0, node_cores;
@@ -2149,8 +2139,14 @@ extern bitstr_t * select_p_resv_test(bitstr_t *avail_bitmap, uint32_t node_cnt,
 	int rem_cores = 0;
 	bitstr_t *new_bitmap;
 	bool enforce_node_cnt = (node_cnt != 0);
+	uint32_t *core_cnt;
+	uint32_t flags;
 
 	xassert(avail_bitmap);
+	xassert(resv_desc_ptr);
+
+	core_cnt = resv_desc_ptr->core_cnt;
+	flags = resv_desc_ptr->flags;
 
 	if (flags & RESERVE_FLAG_FIRST_CORES) {
 		debug("select/serial: Reservation flag FIRST_CORES not "
@@ -2218,6 +2214,11 @@ extern void select_p_ba_fini(void)
 }
 
 extern int *select_p_ba_get_dims(void)
+{
+	return NULL;
+}
+
+extern bitstr_t *select_p_ba_cnodelist2bitmap(char *cnodelist)
 {
 	return NULL;
 }

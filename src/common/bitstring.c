@@ -107,6 +107,8 @@ strong_alias(bit_set,		slurm_bit_set);
 strong_alias(bit_clear,		slurm_bit_clear);
 strong_alias(bit_nclear,	slurm_bit_nclear);
 strong_alias(bit_nset,		slurm_bit_nset);
+strong_alias(bit_set_all,	slurm_bit_set_all);
+strong_alias(bit_clear_all,	slurm_bit_clear_all);
 strong_alias(bit_ffc,		slurm_bit_ffc);
 strong_alias(bit_ffs,		slurm_bit_ffs);
 strong_alias(bit_free,		slurm_bit_free);
@@ -118,6 +120,7 @@ strong_alias(bit_or,		slurm_bit_or);
 strong_alias(bit_set_count,	slurm_bit_set_count);
 strong_alias(bit_set_count_range, slurm_bit_set_count_range);
 strong_alias(bit_clear_count,	slurm_bit_clear_count);
+strong_alias(bit_clear_count_range, slurm_bit_clear_count_range);
 strong_alias(bit_nset_max_count,slurm_bit_nset_max_count);
 strong_alias(bit_rotate_copy,	slurm_bit_rotate_copy);
 strong_alias(bit_rotate,	slurm_bit_rotate);
@@ -296,6 +299,26 @@ bit_nclear(bitstr_t *b, bitoff_t start, bitoff_t stop)
 		assert((stop-start+1) % 8 == 0);
 		memset(_bit_byteaddr(b, start), 0, (stop-start+1) / 8);
 	}
+}
+
+/*
+ * Set all bits in bitstring
+ *   b (IN)		target bitstring
+ */
+void
+bit_set_all(bitstr_t *b)
+{
+	bit_nset(b, 0, bit_size(b)-1);
+}
+
+/*
+ * Clear all bits in bitstring
+ *   b (IN)		target bitstring
+ */
+void
+bit_clear_all(bitstr_t *b)
+{
+	bit_nclear(b, 0, bit_size(b)-1);
 }
 
 /*
@@ -799,6 +822,25 @@ bit_clear_count(bitstr_t *b)
 {
 	_assert_bitstr_valid(b);
 	return (_bitstr_bits(b) - bit_set_count(b));
+}
+
+/*
+ * Count the number of bits clear in a range of bitstring.
+ *   b (IN)		bitstring to check
+ *   start (IN) first bit to check
+ *   end (IN)	last bit to check+1
+ *   RETURN		count of set bits
+ */
+int32_t
+bit_clear_count_range(bitstr_t *b, int32_t start, int32_t end)
+{
+	_assert_bitstr_valid(b);
+	int diff = end - start;
+
+	if (diff < 1)
+		return 0;
+
+	return (diff - bit_set_count_range(b, start, end));
 }
 
 /* Return the count of the largest number of contiguous bits set in b.

@@ -49,10 +49,6 @@
 #include "src/slurmd/slurmd/slurmd.h"
 
 #include "src/common/xstring.h"
-#include "src/common/xcgroup_read_config.h"
-#include "src/common/xcgroup.h"
-#include "src/common/xcpuinfo.h"
-
 #include "src/common/gres.h"
 #include "src/common/list.h"
 
@@ -145,11 +141,9 @@ extern int task_cgroup_devices_create(stepd_step_rec_t *job)
 	char *gres_name[PATH_MAX];
 	char *gres_cgroup[PATH_MAX], *dev_path[PATH_MAX];
 	char *allowed_devices[PATH_MAX], *allowed_dev_major[PATH_MAX];
-
 	int *gres_bit_alloc = NULL;
 	int *gres_step_bit_alloc = NULL;
 	int *gres_count = NULL;
-
 	xcgroup_t devices_cg;
 	uint32_t jobid = job->jobid;
 	uint32_t stepid = job->stepid;
@@ -191,11 +185,24 @@ extern int task_cgroup_devices_create(stepd_step_rec_t *job)
 
 	/* build job step cgroup relative path (should not be) */
 	if ( *jobstep_cgroup_path == '\0' ) {
-		if ( snprintf(jobstep_cgroup_path,PATH_MAX, "%s/step_%u",
-			      job_cgroup_path,stepid) >= PATH_MAX ) {
-			error("task/cgroup: unable to build job step %u "
-			      "devices cg relative path : %m",stepid);
-			return SLURM_ERROR;
+		int cc;
+
+		if (stepid == NO_VAL) {
+			cc = snprintf(jobstep_cgroup_path, PATH_MAX,
+				      "%s/step_batch", job_cgroup_path);
+			if (cc >= PATH_MAX) {
+				error("task/cgroup: unable to build "
+				      "step batch devices cg path : %m");
+
+			}
+		} else {
+
+			if (snprintf(jobstep_cgroup_path,PATH_MAX, "%s/step_%u",
+				     job_cgroup_path,stepid) >= PATH_MAX ) {
+				error("task/cgroup: unable to build job step %u "
+				      "devices cg relative path : %m",stepid);
+				return SLURM_ERROR;
+			}
 		}
 	}
 

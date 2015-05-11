@@ -55,17 +55,22 @@ typedef struct {
  * enum below also t1 is job_table */
 char *job_req_inx[] = {
 	"t1.account",
+	"t1.array_max_tasks",
+	"t1.array_task_str",
 	"t1.cpus_alloc",
 	"t1.cpus_req",
 	"t1.derived_ec",
 	"t1.derived_es",
 	"t1.exit_code",
+	"t1.id_array_job",
+	"t1.id_array_task",
 	"t1.id_assoc",
 	"t1.id_block",
 	"t1.id_group",
 	"t1.id_job",
 	"t1.id_qos",
 	"t1.id_resv",
+	"t3.resv_name",
 	"t1.id_user",
 	"t1.id_wckey",
 	"t1.job_db_inx",
@@ -86,6 +91,9 @@ char *job_req_inx[] = {
 	"t1.timelimit",
 	"t1.track_steps",
 	"t1.wckey",
+	"t1.gres_alloc",
+	"t1.gres_req",
+	"t1.gres_used",
 	"t2.acct",
 	"t2.lft",
 	"t2.user"
@@ -93,17 +101,22 @@ char *job_req_inx[] = {
 
 enum {
 	JOB_REQ_ACCOUNT1,
+	JOB_REQ_ARRAY_MAX,
+	JOB_REQ_ARRAY_STR,
 	JOB_REQ_ALLOC_CPUS,
 	JOB_REQ_REQ_CPUS,
 	JOB_REQ_DERIVED_EC,
 	JOB_REQ_DERIVED_ES,
 	JOB_REQ_EXIT_CODE,
+	JOB_REQ_ARRAYJOBID,
+	JOB_REQ_ARRAYTASKID,
 	JOB_REQ_ASSOCID,
 	JOB_REQ_BLOCKID,
 	JOB_REQ_GID,
 	JOB_REQ_JOBID,
 	JOB_REQ_QOS,
 	JOB_REQ_RESVID,
+	JOB_REQ_RESV_NAME,
 	JOB_REQ_UID,
 	JOB_REQ_WCKEYID,
 	JOB_REQ_ID,
@@ -124,6 +137,9 @@ enum {
 	JOB_REQ_TIMELIMIT,
 	JOB_REQ_TRACKSTEPS,
 	JOB_REQ_WCKEY,
+	JOB_REQ_GRES_ALLOC,
+	JOB_REQ_GRES_REQ,
+	JOB_REQ_GRES_USED,
 	JOB_REQ_ACCOUNT,
 	JOB_REQ_LFT,
 	JOB_REQ_USER_NAME,
@@ -374,8 +390,8 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 			}
 			list_iterator_destroy(itr);
 		}
-		debug3("%d(%s:%d) query\n%s",
-		       mysql_conn->conn, THIS_FILE, __LINE__, query);
+		if (debug_flags & DEBUG_FLAG_DB_JOB)
+			DB_DEBUG(mysql_conn->conn, "query\n%s", query);
 		if (!(result = mysql_db_query_ret(
 			      mysql_conn, query, 0))) {
 			xfree(extra);
@@ -426,9 +442,12 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 
 	query = xstrdup_printf("select %s from \"%s_%s\" as t1 "
 			       "left join \"%s_%s\" as t2 "
-			       "on t1.id_assoc=t2.id_assoc",
+			       "on t1.id_assoc=t2.id_assoc "
+			       "left join \"%s_%s\" as t3 "
+			       " on t1.id_resv=t3.id_resv ",
 			       job_fields, cluster_name, job_table,
-			       cluster_name, assoc_table);
+			       cluster_name, assoc_table,
+			       cluster_name, resv_table);
 	if (extra) {
 		xstrcat(query, extra);
 		xfree(extra);
@@ -440,8 +459,8 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 	*/
 	xstrcat(query, " group by id_job, time_submit desc");
 
-	debug3("%d(%s:%d) query\n%s",
-	       mysql_conn->conn, THIS_FILE, __LINE__, query);
+	if (debug_flags & DEBUG_FLAG_DB_JOB)
+		DB_DEBUG(mysql_conn->conn, "query\n%s", query);
 	if (!(result = mysql_db_query_ret(mysql_conn, query, 0))) {
 		xfree(query);
 		rc = SLURM_ERROR;
@@ -498,9 +517,19 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 		last_id = curr_id;
 
 		job->alloc_cpus = slurm_atoul(row[JOB_REQ_ALLOC_CPUS]);
+		if (row[JOB_REQ_GRES_ALLOC])
+			job->alloc_gres = xstrdup(row[JOB_REQ_GRES_ALLOC]);
+		else
+			job->alloc_gres = xstrdup("");
 		job->alloc_nodes = slurm_atoul(row[JOB_REQ_ALLOC_NODES]);
 		job->associd = slurm_atoul(row[JOB_REQ_ASSOCID]);
+		job->array_job_id = slurm_atoul(row[JOB_REQ_ARRAYJOBID]);
+		job->array_task_id = slurm_atoul(row[JOB_REQ_ARRAYTASKID]);
 		job->resvid = slurm_atoul(row[JOB_REQ_RESVID]);
+
+		if (row[JOB_REQ_RESV_NAME] && row[JOB_REQ_RESV_NAME][0])
+			job->resv_name = xstrdup(row[JOB_REQ_RESV_NAME]);
+
 		job->cluster = xstrdup(cluster_name);
 
 		/* we want a blank wckey if the name is null */
@@ -522,6 +551,13 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 			job->account = xstrdup(row[JOB_REQ_ACCOUNT]);
 		else if (row[JOB_REQ_ACCOUNT1] && row[JOB_REQ_ACCOUNT1][0])
 			job->account = xstrdup(row[JOB_REQ_ACCOUNT1]);
+
+		if (row[JOB_REQ_ARRAY_STR] && row[JOB_REQ_ARRAY_STR][0])
+			job->array_task_str = xstrdup(row[JOB_REQ_ARRAY_STR]);
+
+		if (row[JOB_REQ_ARRAY_MAX])
+			job->array_max_tasks =
+				slurm_atoul(row[JOB_REQ_ARRAY_MAX]);
 
 		if (row[JOB_REQ_BLOCKID])
 			job->blockid = xstrdup(row[JOB_REQ_BLOCKID]);
@@ -644,6 +680,10 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 		job->track_steps = slurm_atoul(row[JOB_REQ_TRACKSTEPS]);
 		job->priority = slurm_atoul(row[JOB_REQ_PRIORITY]);
 		job->req_cpus = slurm_atoul(row[JOB_REQ_REQ_CPUS]);
+		if (row[JOB_REQ_GRES_REQ])
+			job->req_gres = xstrdup(row[JOB_REQ_GRES_REQ]);
+		else
+			job->req_gres = xstrdup("");
 		job->req_mem = slurm_atoul(row[JOB_REQ_REQ_MEM]);
 		job->requid = slurm_atoul(row[JOB_REQ_KILL_REQUID]);
 		job->qosid = slurm_atoul(row[JOB_REQ_QOS]);
@@ -657,7 +697,9 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 			set = 0;
 			itr = list_iterator_create(job_cond->step_list);
 			while ((selected_step = list_next(itr))) {
-				if (selected_step->jobid != job->jobid) {
+				if ((selected_step->jobid != job->jobid) &&
+				    (selected_step->jobid !=
+				     job->array_job_id)) {
 					continue;
 				} else if (selected_step->stepid == NO_VAL) {
 					job->show_full = 1;
@@ -676,6 +718,11 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 					   selected_step->stepid);
 				set = 1;
 				job->show_full = 0;
+				/* Set it back just in case we are
+				   looking at a job array.
+				*/
+				if (selected_step->stepid == SLURM_BATCH_SCRIPT)
+					selected_step->stepid = INFINITE;
 			}
 			list_iterator_destroy(itr);
 			if (set)
@@ -789,15 +836,15 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 			step->stats.disk_read_max =
 				atof(step_row[STEP_REQ_MAX_DISK_READ]);
 			step->stats.disk_read_max_taskid =
-				slurm_atoul(step_row[
-					STEP_REQ_MAX_DISK_READ_TASK]);
+				slurm_atoul(
+					step_row[STEP_REQ_MAX_DISK_READ_TASK]);
 			step->stats.disk_read_ave =
 				atof(step_row[STEP_REQ_AVE_DISK_READ]);
 			step->stats.disk_write_max =
 				atof(step_row[STEP_REQ_MAX_DISK_WRITE]);
 			step->stats.disk_write_max_taskid =
-				slurm_atoul(step_row[
-					STEP_REQ_MAX_DISK_WRITE_TASK]);
+				slurm_atoul(
+					step_row[STEP_REQ_MAX_DISK_WRITE_TASK]);
 			step->stats.disk_write_ave =
 				atof(step_row[STEP_REQ_AVE_DISK_WRITE]);
 			step->stats.vsize_max =
@@ -956,8 +1003,8 @@ extern List setup_cluster_list_with_inx(mysql_conn_t *mysql_conn,
 			   job_cond->usage_end, job_cond->usage_start);
 	}
 
-	debug3("%d(%s:%d) query\n%s",
-	       mysql_conn->conn, THIS_FILE, __LINE__, query);
+	if (debug_flags & DEBUG_FLAG_DB_JOB)
+		DB_DEBUG(mysql_conn->conn, "query\n%s", query);
 	if (!(result = mysql_db_query_ret(mysql_conn, query, 0))) {
 		xfree(query);
 		goto no_hosts;
@@ -1155,8 +1202,8 @@ no_resv:
 					   (int)job_cond->usage_end);
 			}
 
-			debug3("%d(%s:%d) query\n%s",
-			       mysql_conn->conn, THIS_FILE, __LINE__, query);
+			if (debug_flags & DEBUG_FLAG_DB_JOB)
+				DB_DEBUG(mysql_conn->conn, "query\n%s", query);
 			result = mysql_db_query_ret(mysql_conn, query, 0);
 			xfree(query);
 			if (!result)
@@ -1332,8 +1379,17 @@ extern int setup_job_cond_limits(mysql_conn_t *mysql_conn,
 		while ((selected_step = list_next(itr))) {
 			if (set)
 				xstrcat(*extra, " || ");
-			xstrfmtcat(*extra, "t1.id_job=%u",
-				   selected_step->jobid);
+			if (selected_step->array_task_id == NO_VAL)
+				xstrfmtcat(*extra, "(t1.id_job=%u || "
+					   "t1.id_array_job=%u)",
+					   selected_step->jobid,
+					   selected_step->jobid);
+			else {
+				xstrfmtcat(*extra, "(t1.id_array_job=%u && "
+					   "t1.id_array_task=%u)",
+					   selected_step->jobid,
+					   selected_step->array_task_id);
+			}
 			set = 1;
 		}
 		list_iterator_destroy(itr);

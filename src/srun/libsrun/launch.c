@@ -35,10 +35,7 @@
 
 #include <stdlib.h>
 #include <fcntl.h>
-
-#if defined(__FreeBSD__)
 #include <signal.h>
-#endif
 
 #include "launch.h"
 
@@ -237,6 +234,16 @@ extern int launch_common_create_job_step(srun_job_t *job, bool use_all_cpus,
 	job->ctx_params.verbose_level = (uint16_t)_verbose;
 	if (opt.resv_port_cnt != NO_VAL)
 		job->ctx_params.resv_port_cnt = (uint16_t) opt.resv_port_cnt;
+	else {
+#if defined(HAVE_NATIVE_CRAY)
+		/*
+		 * On Cray systems default to reserving one port, or one
+		 * more than the number of multi prog commands, for Cray PMI
+		 */
+		job->ctx_params.resv_port_cnt = (opt.multi_prog ?
+						 opt.multi_prog_cmds + 1 : 1);
+#endif
+	}
 
 	switch (opt.distribution) {
 	case SLURM_DIST_BLOCK:

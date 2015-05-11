@@ -37,11 +37,15 @@
 source ./globals
 
 set test_id     "1.85"
+set exit_code   0
 set prompt      "PROMPT: "
 
 print_header $test_id
 
-if {[test_launch_poe]} {
+if {[test_serial]} {
+	send_user "\nWARNING: This test is incompatible with serial systems\n"
+	exit $exit_code
+} elseif {[test_launch_poe]} {
         set node_name_env MP_I_UPMD_HOSTNAME
 } else {
         set node_name_env SLURM_STEP_NODELIST
@@ -50,7 +54,7 @@ if {[test_launch_poe]} {
 # spawn an allocation to run on 2
 # hosts with 4 tasks.
 #
-spawn $salloc -N 2 -n 4 -t 1
+spawn $salloc --gres=craynetwork:0 -N 2 -n 4 -t 1
 set salloc_id $spawn_id
 expect {
 	-re "Node count specification invalid|More processors requested" {

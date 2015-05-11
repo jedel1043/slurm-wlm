@@ -119,7 +119,7 @@ enum {
 
 int init( void )
 {
-	verbose( "authd authentication module initializing" );
+	debug( "authd authentication module initializing" );
 
 	return SLURM_SUCCESS;
 }
@@ -284,6 +284,8 @@ slurm_auth_unpack( Buf buf )
 	/* Check the plugin type. */
 	safe_unpackmem_ptr( &data, &sig_size, buf );
 	if ( strcmp( data, plugin_type ) != 0 ) {
+		debug("slurm_auth_unpack error: packed by %s unpack by %s",
+		      data, plugin_type);
 		plugin_errno = SLURM_AUTH_MISMATCH;
 		return NULL;
 	}

@@ -264,6 +264,88 @@ void batch_bind(batch_job_launch_msg_t *req)
 	slurm_cred_free_args(&arg);
 }
 
+/* The job has specialized cores, synchronize user map with available cores */
+static void _validate_map(launch_tasks_request_msg_t *req, char *avail_mask)
+{
+	char *tmp_map, *save_ptr = NULL, *tok;
+	cpu_set_t avail_cpus;
+	bool superset = true;
+
+	CPU_ZERO(&avail_cpus);
+	(void) str_to_cpuset(&avail_cpus, avail_mask);
+	tmp_map = xstrdup(req->cpu_bind);
+	tok = strtok_r(tmp_map, ",", &save_ptr);
+	while (tok) {
+		int i = atoi(tok);
+		if (!CPU_ISSET(i, &avail_cpus)) {
+			/* The task's CPU map is completely invalid.
+			 * Disable CPU map. */
+			superset = false;
+			break;
+		}
+		tok = strtok_r(NULL, ",", &save_ptr);
+	}
+	xfree(tmp_map);
+
+	if (!superset) {
+		info("task/affinity: Ignoring user CPU binding outside of job "
+		     "step allocation");
+		req->cpu_bind_type &= (~CPU_BIND_MAP);
+		req->cpu_bind_type |=   CPU_BIND_MASK;
+		xfree(req->cpu_bind);
+		req->cpu_bind = xstrdup(avail_mask);
+	}
+}
+
+/* The job has specialized cores, synchronize user mask with available cores */
+static void _validate_mask(launch_tasks_request_msg_t *req, char *avail_mask)
+{
+	char *new_mask = NULL, *save_ptr = NULL, *tok;
+	cpu_set_t avail_cpus, task_cpus;
+	bool superset = true;
+
+	CPU_ZERO(&avail_cpus);
+	(void) str_to_cpuset(&avail_cpus, avail_mask);
+	tok = strtok_r(req->cpu_bind, ",", &save_ptr);
+	while (tok) {
+		int i, overlaps = 0;
+		char mask_str[1 + CPU_SETSIZE / 4];
+		CPU_ZERO(&task_cpus);
+		(void) str_to_cpuset(&task_cpus, tok);
+		for (i = 0; i < CPU_SETSIZE; i++) {
+			if (!CPU_ISSET(i, &task_cpus))
+				continue;
+			if (CPU_ISSET(i, &avail_cpus)) {
+				overlaps++;
+			} else {
+				CPU_CLR(i, &task_cpus);
+				superset = false;
+			}
+		}
+		if (overlaps == 0) {
+			/* The task's CPU mask is completely invalid.
+			 * Give it all allowed CPUs. */
+			for (i = 0; i < CPU_SETSIZE; i++) {
+				if (CPU_ISSET(i, &avail_cpus))
+					CPU_SET(i, &task_cpus);
+			}
+		}
+		cpuset_to_str(&task_cpus, mask_str);
+		if (new_mask)
+			xstrcat(new_mask, ",");
+		xstrcat(new_mask, mask_str);
+		tok = strtok_r(NULL, ",", &save_ptr);
+	}
+
+	if (!superset) {
+		info("task/affinity: Ignoring user CPU binding outside of job "
+		     "step allocation");
+	}
+
+	xfree(req->cpu_bind);
+	req->cpu_bind = new_mask;
+}
+
 /*
  * lllp_distribution
  *
@@ -302,16 +384,21 @@ void lllp_distribution(launch_tasks_request_msg_t *req, uint32_t node_id)
 					       &whole_nodes,  &whole_sockets,
 					       &whole_cores,  &whole_threads,
 					       &part_sockets, &part_cores);
-		if ((whole_nodes == 0) && avail_mask) {
-			/* Step does NOT have access to whole node,
-			 * bind to full mask of available processors */
+		if ((whole_nodes == 0) && avail_mask &&
+		    (req->job_core_spec == (uint16_t) NO_VAL)) {
+			info("task/affinity: entire node must be allocated, "
+			     "disabling affinity");
 			xfree(req->cpu_bind);
 			req->cpu_bind = avail_mask;
 			req->cpu_bind_type &= (~bind_mode);
 			req->cpu_bind_type |= CPU_BIND_MASK;
 		} else {
-			/* Step does have access to whole node,
-			 * bind to whatever step wants */
+			if (req->job_core_spec == (uint16_t) NO_VAL) {
+				if (req->cpu_bind_type & CPU_BIND_MASK)
+					_validate_mask(req, avail_mask);
+				else if (req->cpu_bind_type & CPU_BIND_MAP)
+					_validate_map(req, avail_mask);
+			}
 			xfree(avail_mask);
 		}
 		slurm_sprint_cpu_bind_type(buf_type, req->cpu_bind_type);
@@ -323,7 +410,8 @@ void lllp_distribution(launch_tasks_request_msg_t *req, uint32_t node_id)
 	if (!(req->cpu_bind_type & bind_entity)) {
 		/* No bind unit (sockets, cores) specified by user,
 		 * pick something reasonable */
-		int max_tasks = req->tasks_to_launch[(int)node_id];
+		int max_tasks = req->tasks_to_launch[(int)node_id] *
+			req->cpus_per_task;
 		char *avail_mask = _alloc_mask(req,
 					       &whole_nodes,  &whole_sockets,
 					       &whole_cores,  &whole_threads,

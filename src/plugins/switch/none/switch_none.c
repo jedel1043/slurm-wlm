@@ -84,7 +84,7 @@ const uint32_t plugin_version   = 110;
  */
 int init ( void )
 {
-	verbose("%s loaded", plugin_name);
+	debug("%s loaded", plugin_name);
 	return SLURM_SUCCESS;
 }
 
@@ -356,6 +356,26 @@ extern int switch_p_slurmd_init( void )
 }
 
 extern int switch_p_slurmd_step_init( void )
+{
+	return SLURM_SUCCESS;
+}
+
+extern int switch_p_job_step_pre_suspend( stepd_step_rec_t *job )
+{
+	return SLURM_SUCCESS;
+}
+
+extern int switch_p_job_step_post_suspend( stepd_step_rec_t *job )
+{
+	return SLURM_SUCCESS;
+}
+
+extern int switch_p_job_step_pre_resume( stepd_step_rec_t *job )
+{
+	return SLURM_SUCCESS;
+}
+
+extern int switch_p_job_step_post_resume( stepd_step_rec_t *job )
 {
 	return SLURM_SUCCESS;
 }

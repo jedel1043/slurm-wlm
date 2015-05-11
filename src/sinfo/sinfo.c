@@ -103,6 +103,7 @@ static int _insert_node_ptr(List sinfo_list, uint16_t part_num,
 static int _handle_subgrps(List sinfo_list, uint16_t part_num,
 			   partition_info_t *part_ptr,
 			   node_info_t *node_ptr, uint32_t node_scaling);
+static int _find_part_list(void *x, void *key);
 
 int main(int argc, char *argv[])
 {
@@ -361,28 +362,34 @@ _query_server(partition_info_msg_t ** part_pptr,
 		}
 	}
 
-	if (old_resv_ptr) {
-		if (clear_old)
-			old_resv_ptr->last_update = 0;
-		error_code = slurm_load_reservations(old_resv_ptr->last_update,
-						     &new_resv_ptr);
-		if (error_code == SLURM_SUCCESS)
-			slurm_free_reservation_info_msg(old_resv_ptr);
-		else if (slurm_get_errno() == SLURM_NO_CHANGE_IN_DATA) {
-			error_code = SLURM_SUCCESS;
-			new_resv_ptr = old_resv_ptr;
+	/* Avoid calling slurmctld for reservation
+	 * if the reservation flag is not set.
+	 */
+	if (params.reservation_flag) {
+		if (old_resv_ptr) {
+			if (clear_old)
+				old_resv_ptr->last_update = 0;
+			error_code
+				= slurm_load_reservations(old_resv_ptr->last_update,
+							  &new_resv_ptr);
+			if (error_code == SLURM_SUCCESS)
+				slurm_free_reservation_info_msg(old_resv_ptr);
+			else if (slurm_get_errno() == SLURM_NO_CHANGE_IN_DATA) {
+				error_code = SLURM_SUCCESS;
+				new_resv_ptr = old_resv_ptr;
+			}
+		} else {
+			error_code = slurm_load_reservations((time_t) NULL,
+							     &new_resv_ptr);
 		}
-	} else {
-		error_code = slurm_load_reservations((time_t) NULL,
-						     &new_resv_ptr);
-	}
 
-	if (error_code) {
-		slurm_perror("slurm_load_reservations");
-		return error_code;
+		if (error_code) {
+			slurm_perror("slurm_load_reservations");
+			return error_code;
+		}
+		old_resv_ptr = new_resv_ptr;
+		*reserv_pptr = new_resv_ptr;
 	}
-	old_resv_ptr = new_resv_ptr;
-	*reserv_pptr = new_resv_ptr;
 
 	if (!params.bg_flag)
 		return SLURM_SUCCESS;
@@ -505,8 +512,10 @@ static int _build_sinfo_data(List sinfo_list,
 	if ((!params.node_flag) && params.match_flags.partition_flag) {
 		part_ptr = partition_msg->partition_array;
 		for (j=0; j<partition_msg->record_count; j++, part_ptr++) {
-			if ((!params.partition) ||
-			    (_strcmp(params.partition, part_ptr->name) == 0)) {
+			if ((!params.part_list) ||
+			    (list_find_first(params.part_list,
+					     _find_part_list,
+					     part_ptr->name))) {
 				list_append(sinfo_list, _create_sinfo(
 						    part_ptr, (uint16_t) j,
 						    NULL,
@@ -527,8 +536,10 @@ static int _build_sinfo_data(List sinfo_list,
 	for (j=0; j<partition_msg->record_count; j++, part_ptr++) {
 		part_ptr = &(partition_msg->partition_array[j]);
 
-		if (params.filtering && params.partition &&
-		    _strcmp(part_ptr->name, params.partition))
+		if (params.filtering && params.part_list &&
+		    !list_find_first(params.part_list,
+				     _find_part_list,
+				     part_ptr->name))
 			continue;
 
 		if (node_msg->record_count == 1) { /* node_name_single */
@@ -628,7 +639,7 @@ static bool _filter_out(node_info_t *node_ptr)
 	if (params.state_list) {
 		int *node_state;
 		bool match = false;
-		uint16_t base_state;
+		uint32_t base_state;
 		ListIterator iterator;
 		uint16_t cpus = 0;
 		node_info_t tmp_node, *tmp_node_ptr = &tmp_node;
@@ -884,7 +895,7 @@ static bool _match_part_data(sinfo_data_t *sinfo_ptr,
 static void _update_sinfo(sinfo_data_t *sinfo_ptr, node_info_t *node_ptr,
 			  uint32_t node_scaling)
 {
-	uint16_t base_state;
+	uint32_t base_state;
 	uint16_t used_cpus = 0, error_cpus = 0;
 	int total_cpus = 0, total_nodes = 0;
 	/* since node_scaling could be less here, we need to use the
@@ -1212,4 +1223,13 @@ static int _strcmp(char *data1, char *data2)
 	if (data2 == NULL)
 		data2 = null_str;
 	return strcmp(data1, data2);
+}
+
+
+/* Find the given partition name in the list */
+static int _find_part_list(void *x, void *key)
+{
+	if (!strcmp((char *)x, (char *)key))
+		return 1;
+	return 0;
 }

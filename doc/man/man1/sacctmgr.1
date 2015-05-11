@@ -140,6 +140,10 @@ Terminate the execution of sacctmgr interactive mode.
 Identical to the \fBexit\fR command.
 
 .TP
+\fBreconfigure\fR
+Reconfigures the SlurmDBD if running with one.
+
+.TP
 \fBshow\fR <\fIENTITY\fR> [<\fISPECS\fR>]
 Display information about the specified entity.
 By default, all entries are displayed, you can narrow results by
@@ -211,7 +215,8 @@ Quality of Service.
 
 .TP
 \fIResource\fP
-Resources - software resources for the system.
+Software resources for the system. Those are software licenses shared
+among clusters.
 
 .TP
 \fItransaction\fR
@@ -248,8 +253,12 @@ when removing a QOS from a <= 2.1 sacctmgr.
 .TP
 \fIFairshare\fP=<fairshare number | parent>
 Number used in conjunction with other accounts to determine job
-priority. Can also be the string \fIparent\fR, this means that the
-parent association is used for fairshare. To clear a previously set
+priority. Can also be the string \fIparent\fR, when used on a user
+this means that the parent association is used for fairshare.  If
+Fairshare=parent is set on an account, that account's children will be
+effectively reparented for fairshare calculations to the first parent
+of their parent that is not Fairshare=parent.  Limits remain the same,
+only it's fairshare value is affected.  To clear a previously set
 value use the modify command with a new value of \-1.
 
 .TP
@@ -584,8 +593,12 @@ the QOS list mentioned below.
 .TP
 \fIFairshare\fP
 Number used in conjunction with other accounts to determine job
-priority. Can also be the string \fIparent\fR, this means that the
-parent association is used for fairshare.
+priority. Can also be the string \fIparent\fR, when used on a user
+this means that the parent association is used for fairshare.  If
+Fairshare=parent is set on an account, that account's children will be
+effectively reparented for fairshare calculations to the first parent
+of their parent that is not Fairshare=parent.  Limits remain the same,
+only it's fairshare value is affected.
 
 .TP
 \fIGrpCPUMins\fP
@@ -1070,6 +1083,11 @@ Maximum number of jobs each user is allowed to run at one time.
 Maximum number of nodes each job is able to use.
 
 .TP
+\fIMinCPUs\fP
+Minimum number of CPUs each job running under this QOS must request.
+Otherwise the job will pend until modified.
+
+.TP
 \fIMaxNodesPerUser\fP
 Maximum number of nodes each user is able to use.
 .P
@@ -1251,6 +1269,13 @@ The value is recorded in minutes with rounding as needed.
 To clear a previously set value use the modify command with a new value of \-1.
 
 .TP
+\fIMinCPUs\fP
+Minimum number of CPUs each job running under this QOS must request.
+Otherwise the job will pend until modified.
+To clear a previously set value use the modify command with a new
+value of \-1.
+
+.TP
 \fIName\fP
 Name of the QOS.  Needed for creation.
 
@@ -1310,8 +1335,9 @@ Flags that identify specific attributes of the system resource.  At this time
 no flags have been defined.
 
 .TP
-\fIManager\fP=<OPT>
-The name of a software resource manager controlling this system resource.
+\fIServerType\fP=<OPT>
+The type of a software resource manager providing the licenses. For example
+FlexNext Publisher Flexlm license server or Reprise License Manager RLM.
 
 .TP
 \fINames\fP=<OPT>
@@ -1326,7 +1352,8 @@ Percentage of a specific resource that can be used on specified cluster.
 
 .TP
 \fIServer\fP=<OPT>
-The name of the server serving up the resource.  Default is 'slurmdb'.
+The name of the server serving up the resource.  Default is 'slurmdb' indicating
+the licenses are being served by the database.
 
 .TP
 \fIType\fP=<OPT>
@@ -1348,46 +1375,28 @@ Name of cluster resource is given to.
 The count of a specific resource configured on the system globally.
 
 .TP
-\fICountAllowed\fP
-The count of a specific resource configured on the system to a cluster.
-
-.TP
-\fICountUsed\fP
-The used count of a specific resource configured on the system globally.
+\fIAllocated\fP
+The percent of licenses allocated to a cluster.
 
 .TP
 \fIDescription\fP
 Description of the resource.
 
 .TP
-\fIFlags\fP
-Flags that identify specific attributes associated with the resource.  At
-this time no flags have been defined.
-
- .TP
-\fIManager\fP
-Name of the resource manager that controls this resource.
+\fIServerType\fP
+The type of the server controlling the licenses.
 
 .TP
 \fIName\fP
 Name of this resource.
 
 .TP
-\fIPercentAllowed\fP
-The percent of a specific resource given to a cluster.
-
-.TP
-\fIPercentUsed\fP
-The used percentage of a specific resource globally.
-
- .TP
 \fIServer\fP
 Server serving up the resource.
 
 .TP
 \fIType\fP
 Type of resource this record represents.
-
 
 .SH "SPECIFICATIONS FOR TRANSACTIONS"
 

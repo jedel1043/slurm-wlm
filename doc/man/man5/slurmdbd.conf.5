@@ -1,4 +1,4 @@
-.TH "slurmdbd.conf" "5" "September 2013" "slurmdbd.conf 14.03" "Slurm configuration file"
+.TH "slurmdbd.conf" "21" "July 2014" "slurmdbd.conf 14.11" "Slurm configuration file"
 .SH "NAME"
 slurmdbd.conf \- Slurm Database Daemon (SlurmDBD) configuration file
 
@@ -126,6 +126,19 @@ SlurmDBD must be terminated prior to changing the value of \fBAuthType\fR
 and later restarted.
 
 .TP
+\fBCommitDelay\fR
+How many seconds between commits on a connection from a Slurmctld.  This
+speeds up inserts into the database dramatically.  If you are running a very
+high throughput of jobs you should consider setting this.  In testing 1 second
+improves the slurmdbd performance dramatically, and reduces overhead.  There is
+a small probability of data loss though since this creates a window in which
+if the slurmdbd seg faults or exits abnormally for any reason the data not
+committed could be lost.  While this situation should be very rare,
+it does present an extremely small risk, but may be the only way to run in
+extremely heavy environments.  In all honestly the risk is quite low, but still
+present.
+
+.TP
 \fBDbdBackupHost\fR
 The name of the machine where the backup Slurm Database Daemon is executed.
 This host must have access to the same underlying database specified by
@@ -148,6 +161,48 @@ to for work. The default value is SLURMDBD_PORT as established at system
 build time. If none is explicitly specified, it will be set to 6819.
 This value must be equal to the \fBAccountingStoragePort\fR parameter in the
 slurm.conf file.
+
+.TP
+\fBDebugFlags\fR
+Defines specific subsystems which should provide more detailed event logging.
+Multiple subsystems can be specified with comma separators.
+Most DebugFlags will result in verbose logging for the identified subsystems
+and could impact performance.
+Valid subsystems available today (with more to come) include:
+.RS
+.TP 17
+\fBDB_ASSOC\fR
+SQL statements/queries when dealing with associations in the database.
+.TP
+\fBDB_EVENT\fR
+SQL statements/queries when dealing with (node) events in the database.
+.TP
+\fBDB_JOB\fR
+SQL statements/queries when dealing with jobs in the database.
+.TP
+\fBDB_QOS\fR
+SQL statements/queries when dealing with QOS in the database.
+.TP
+\fBDB_QUERY\fR
+SQL statements/queries when dealing with transactions and such in the database.
+.TP
+\fBDB_RESERVATION\fR
+SQL statements/queries when dealing with reservations in the database.
+.TP
+\fBDB_RESOURCE\fR
+SQL statements/queries when dealing with resources like licenses in the
+database.
+.TP
+\fBDB_STEP\fR
+SQL statements/queries when dealing with steps in the database.
+.TP
+\fBDB_USAGE\fR
+SQL statements/queries when dealing with usage queries and inserts
+in the database.
+.TP
+\fBDB_WCKEY\fR
+SQL statements/queries when dealing with wckeys in the database.
+.RE
 
 .TP
 \fBDebugLevel\fR
@@ -435,7 +490,7 @@ StorageUser=database_mgr
 Copyright (C) 2008-2010 Lawrence Livermore National Security.
 Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
 .br
-Copyright (C) 2010\-2013 SchedMD LLC.
+Copyright (C) 2010\-2014 SchedMD LLC.
 .LP
 This file is part of SLURM, a resource management program.
 For details, see <http://slurm.schedmd.com/>.

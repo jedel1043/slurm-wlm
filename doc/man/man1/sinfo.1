@@ -86,19 +86,19 @@ when running with various options are
 .RS
 .TP 15
 .I "default"
-"%9P %.5a %.10l %.6D %.6t %N"
+"%#P %.5a %.10l %.6D %.6t %N"
 .TP
 .I "\-\-summarize"
-"%9P %.5a %.10l %.16F  %N"
+"%#P %.5a %.10l %.16F  %N"
 .TP
 .I "\-\-long"
-"%9P %.5a %.10l %.10s %.4r %.8h %.10g %.6D %.11T %N"
+"%#P %.5a %.10l %.10s %.4r %.8h %.10g %.6D %.11T %N"
 .TP
 .I "\-\-Node"
-"%N %.6D %.9P %6t"
+"%#N %.6D %#P %6t"
 .TP
 .I "\-\-long \-\-Node"
-"%N %.6D %.9P %.11T %.4c %.8z %.6m %.8d %.6w %.8f %20E"
+"%#N %.6D %#P %.11T %.4c %.8z %.6m %.8d %.6w %.8f %20E"
 .TP
 .I "\-\-list\-reasons"
 "%20E %9u %19H %N"
@@ -108,8 +108,13 @@ when running with various options are
 .RE
 
 .IP
-In the above format strings the use of "#" represents the
-maximum length of an node list to be printed.
+In the above format strings, the use of "#" represents the
+maximum length of any partition name or node list to be printed.
+A pass is made over the records to be printed to establish the size in order
+to allign the sinfo output, then a second pass is made over the records to
+print them.
+Note that the literal character "#" itself is not a valid field length
+specification, but is only used to document this behaviour.
 .IP
 The field specifications available include:
 .RS
@@ -223,7 +228,7 @@ Print the user name of who set the reason a node is unavailable.
 Print the user name and uid of who set the reason a node is unavailable.
 .TP
 \fB%v\fR
-Print the version of the running slurmd dameon.
+Print the version of the running slurmd daemon.
 .TP
 \fB%w\fR
 Scheduling weight of the nodes
@@ -249,7 +254,8 @@ size of field
 
 .TP
 \fB\-p <partition>\fR, \fB\-\-partition=<partition>\fR
-Print information only about the specified partition.
+Print information only about the specified partition(s). Mutliple partitions
+are separated by commas.
 
 .TP
 \fB\-r\fR, \fB\-\-responding\fR
@@ -417,18 +423,27 @@ Size of temporary disk space in megabytes on these nodes.
 .SH "NODE STATE CODES"
 .PP
 Node state codes are shortened as required for the field size.
-If the node state code is followed by "*", this indicates the
-node is presently not responding and will not be allocated
+These node states may be followed by a special characater to identify
+state flags associated with the node.
+The following node sufficies and states are used:
+.TP 4
+\fB*\fR
+The node is presently not responding and will not be allocated
 any new work.  If the node remains non\-responsive, it will
 be placed in the \fBDOWN\fR state (except in the case of
 \fBCOMPLETING\fR, \fBDRAINED\fR, \fBDRAINING\fR,
 \fBFAIL\fR, \fBFAILING\fR nodes).
-
-If the node state code is followed by "~", this indicates
-the node is presently in a power saving mode (typically
+.TP
+\fB~\fR
+The node is presently in a power saving mode (typically
 running at reduced frequency).
-If the node state code is followed by "#", this indicates
-the node is presently being powered up or configured.
+.TP
+\fB#\fR
+The node is presently being powered up or configured.
+.TP
+\fB$\fR
+The node is currently in a reservation with a flag value of "maintenance"
+or is scheduled to be rebooted.
 .TP 12
 \fBALLOCATED\fR
 The node has been allocated to one or more jobs.

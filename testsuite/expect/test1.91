@@ -50,10 +50,10 @@ if {[test_launch_poe]} {
 }
 
 #
-# Test if task affinity support is supported.
+# Test if CPU affinity support is supported.
 #
-if {![test_affinity]} {
-	send_user "\nWARNING: task affinity not supported on this system\n"
+if {![test_cpu_affinity]} {
+	send_user "\nWARNING: CPU affinity not supported on this system\n"
 	exit 0
 }
 send_user "\ntask affinity plugin installed\n"
@@ -522,8 +522,9 @@ if {$exit_code == 0} {
 	send_user "\nSUCCESS\n"
 } elseif { [test_fast_schedule_2] } {
 	exec $bin_rm -f $file_prog
-	send_user "\nNOTE: This test can fail if the node configuration in slurm.conf \n"
+	send_user "\nNOTE: This test can fail if the node configuration in slurm.conf\n"
 	send_user "  (sockets, cores, threads) differs from the actual configuration\n"
+	send_user "  or if using task/cgroup without task/affinity.\n"
 } else {
 	send_user "\nFAILURE\n"
 	set exit_code 1

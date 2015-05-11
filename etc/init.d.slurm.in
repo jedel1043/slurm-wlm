@@ -112,7 +112,7 @@ startall() {
 	optvar=`echo ${prog}_OPTIONS | tr "a-z" "A-Z"`
 	if [[ ${MULTIPLE_SLURMD} == yes ]] && [[ ${prog} == slurmd ]]
 	then
-	    for node in $(scontrol show aliases)
+	    for node in $($BINDIR/scontrol show aliases)
 	    do
 		start $prog -N ${node} ${!optvar}
 	    done
@@ -151,7 +151,7 @@ slurmstatus() {
 	echo ${pidfile} | grep -q %n
 	if [[ $? -eq 0 ]]
 	then
-	    for n in $(scontrol show aliases)
+	    for n in $($BINDIR/scontrol show aliases)
 	    do
 		pidfiles="${pidfiles} $(echo ${pidfile} | sed "s/%n/$n/g")"
 	    done
@@ -186,7 +186,6 @@ slurmstatus() {
 		fi
 		RETVAL=1
 	    fi
-	    
 	fi
 
 	if [[ $rc -eq 0 ]]
@@ -198,10 +197,11 @@ slurmstatus() {
 	    echo $"${base} (pid $pid) is running..."
 	    continue
 	fi
-	
-	echo $"${base} is stopped"
-	RETVAL=1
 
+	echo $"${base} is stopped"
+	if [ "$RETVAL" == "0" ]; then
+	    RETVAL=3
+	fi
     done
 
     return $RETVAL
@@ -263,7 +263,7 @@ case "$1" in
 	       anystop=$rc
 	   fi
 	done
-	RETVAL=$anystop          
+	RETVAL=$anystop
 	;;
     restart)
 	$0 stop
@@ -277,7 +277,7 @@ case "$1" in
 		 optvar=`echo ${prog}_OPTIONS | tr "a-z" "A-Z"`
 		 if [[ ${MULTIPLE_SLURMD} == yes ]] && [[ ${prog} == slurmd ]]
 		 then
-		     for node in $(scontrol show aliases)
+		     for node in $($BINDIR/scontrol show aliases)
 		     do
 			 start $prog -N ${node}
 		     done

@@ -59,6 +59,7 @@
 #include "src/common/slurm_jobacct_gather.h"
 #include "src/common/slurm_acct_gather.h"
 #include "src/common/stepd_api.h"
+#include "src/common/switch.h"
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
 #include "src/common/checkpoint.h"
@@ -78,6 +79,9 @@ static void *_handle_accept(void *arg);
 static int _handle_request(int fd, stepd_step_rec_t *job, uid_t uid, gid_t gid);
 static int _handle_state(int fd, stepd_step_rec_t *job);
 static int _handle_info(int fd, stepd_step_rec_t *job);
+static int _handle_mem_limits(int fd, stepd_step_rec_t *job);
+static int _handle_uid(int fd, stepd_step_rec_t *job);
+static int _handle_nodeid(int fd, stepd_step_rec_t *job);
 static int _handle_signal_task_local(int fd, stepd_step_rec_t *job, uid_t uid);
 static int _handle_signal_container(int fd, stepd_step_rec_t *job, uid_t uid);
 static int _handle_checkpoint_tasks(int fd, stepd_step_rec_t *job, uid_t uid);
@@ -421,7 +425,7 @@ _handle_accept(void *arg)
 	g_slurm_auth_destroy(auth_cred);
 	free_buf(buffer);
 
-	rc = SLURM_SUCCESS;
+	rc = SLURM_PROTOCOL_VERSION;
 	safe_write(fd, &rc, sizeof(int));
 
 	while (1) {
@@ -493,6 +497,18 @@ _handle_request(int fd, stepd_step_rec_t *job, uid_t uid, gid_t gid)
 	case REQUEST_INFO:
 		debug("Handling REQUEST_INFO");
 		rc = _handle_info(fd, job);
+		break;
+	case REQUEST_STEP_MEM_LIMITS:
+		debug("Handling REQUEST_STEP_MEM_LIMITS");
+		rc = _handle_mem_limits(fd, job);
+		break;
+	case REQUEST_STEP_UID:
+		debug("Handling REQUEST_STEP_UID");
+		rc = _handle_uid(fd, job);
+		break;
+	case REQUEST_STEP_NODEID:
+		debug("Handling REQUEST_STEP_NODEID");
+		rc = _handle_nodeid(fd, job);
 		break;
 	case REQUEST_ATTACH:
 		debug("Handling REQUEST_ATTACH");
@@ -581,6 +597,37 @@ _handle_info(int fd, stepd_step_rec_t *job)
 	safe_write(fd, &job->nodeid, sizeof(uint32_t));
 	safe_write(fd, &job->job_mem, sizeof(uint32_t));
 	safe_write(fd, &job->step_mem, sizeof(uint32_t));
+
+	return SLURM_SUCCESS;
+rwfail:
+	return SLURM_FAILURE;
+}
+
+static int
+_handle_mem_limits(int fd, stepd_step_rec_t *job)
+{
+	safe_write(fd, &job->job_mem, sizeof(uint32_t));
+	safe_write(fd, &job->step_mem, sizeof(uint32_t));
+
+	return SLURM_SUCCESS;
+rwfail:
+	return SLURM_FAILURE;
+}
+
+static int
+_handle_uid(int fd, stepd_step_rec_t *job)
+{
+	safe_write(fd, &job->uid, sizeof(uid_t));
+
+	return SLURM_SUCCESS;
+rwfail:
+	return SLURM_FAILURE;
+}
+
+static int
+_handle_nodeid(int fd, stepd_step_rec_t *job)
+{
+	safe_write(fd, &job->nodeid, sizeof(uid_t));
 
 	return SLURM_SUCCESS;
 rwfail:
@@ -750,6 +797,10 @@ _handle_signal_container(int fd, stepd_step_rec_t *job, uid_t uid)
 			error("*** %s CANCELLED AT %s DUE TO NODE %s FAILURE ***",
 			      entity, time_str, job->node_name);
 			msg_sent = 1;
+		} else if (sig == SIG_REQUEUED) {
+			error("*** %s CANCELLED AT %s DUE TO JOB REQUEUE ***",
+			      entity, time_str);
+			msg_sent = 1;
 		} else if (sig == SIG_FAILURE) {
 			error("*** %s FAILED (non-zero exit code or other "
 			      "failure mode) on %s ***",
@@ -762,7 +813,8 @@ _handle_signal_container(int fd, stepd_step_rec_t *job, uid_t uid)
 		}
 	}
 	if ((sig == SIG_TIME_LIMIT) || (sig == SIG_NODE_FAIL) ||
-	    (sig == SIG_PREEMPTED)  || (sig == SIG_FAILURE))
+	    (sig == SIG_PREEMPTED)  || (sig == SIG_FAILURE) ||
+	    (sig == SIG_REQUEUED))
 		goto done;
 
 	if (sig == SIG_ABORT) {
@@ -1010,6 +1062,7 @@ _handle_terminate(int fd, stepd_step_rec_t *job, uid_t uid)
 	if (suspended) {
 		debug("Terminating suspended job step %u.%u",
 		      job->jobid, job->stepid);
+		suspended = false;
 	}
 
 	if (proctrack_g_signal(job->cont_id, SIGKILL) < 0) {
@@ -1156,9 +1209,13 @@ _handle_suspend(int fd, stepd_step_rec_t *job, uid_t uid)
 	static int launch_poe = -1;
 	int rc = SLURM_SUCCESS;
 	int errnum = 0;
+	uint16_t job_core_spec = (uint16_t) NO_VAL;
 
-	debug("_handle_suspend for step=%u.%u uid=%d",
-	      job->jobid, job->stepid, (int) uid);
+	safe_read(fd, &job_core_spec, sizeof(uint16_t));
+
+	debug("_handle_suspend for step:%u.%u uid:%ld core_spec:%u",
+	      job->jobid, job->stepid, (long)uid, job_core_spec);
+
 	if (!_slurm_authorized_user(uid)) {
 		debug("job step suspend request from uid %ld for job %u.%u ",
 		      (long)uid, job->jobid, job->stepid);
@@ -1195,6 +1252,9 @@ _handle_suspend(int fd, stepd_step_rec_t *job, uid_t uid)
 		pthread_mutex_unlock(&suspend_mutex);
 		goto done;
 	} else {
+		if (!job->batch && switch_g_job_step_pre_suspend(job))
+			error("switch_g_job_step_pre_suspend: %m");
+
 		/* SIGTSTP is sent first to let MPI daemons stop their tasks,
 		 * then wait 2 seconds, then send SIGSTOP to the spawned
 		 * process's container to stop everything else.
@@ -1222,11 +1282,10 @@ _handle_suspend(int fd, stepd_step_rec_t *job, uid_t uid)
 		}
 		suspended = true;
 	}
-	if (core_spec_g_suspend(job->cont_id))
+	if (!job->batch && switch_g_job_step_post_suspend(job))
+		error("switch_g_job_step_post_suspend: %m");
+	if (!job->batch && core_spec_g_suspend(job->cont_id, job_core_spec))
 		error("core_spec_g_suspend: %m");
-	/* reset the cpu frequencies if cpu_freq option used */
-	if (job->cpu_freq != NO_VAL)
-		cpu_freq_reset(job);
 
 	pthread_mutex_unlock(&suspend_mutex);
 
@@ -1244,11 +1303,13 @@ _handle_resume(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	int rc = SLURM_SUCCESS;
 	int errnum = 0;
+	uint16_t job_core_spec = (uint16_t) NO_VAL;
 
-	debug("_handle_resume for job %u.%u",
-	      job->jobid, job->stepid);
+	safe_read(fd, &job_core_spec, sizeof(uint16_t));
 
-	debug3("  uid = %d", uid);
+	debug("_handle_resume for step:%u.%u uid:%ld core_spec:%u",
+	      job->jobid, job->stepid, (long)uid, job_core_spec);
+
 	if (!_slurm_authorized_user(uid)) {
 		debug("job step resume request from uid %ld for job %u.%u ",
 		      (long)uid, job->jobid, job->stepid);
@@ -1276,7 +1337,10 @@ _handle_resume(int fd, stepd_step_rec_t *job, uid_t uid)
 		pthread_mutex_unlock(&suspend_mutex);
 		goto done;
 	} else {
-		if (core_spec_g_resume(job->cont_id))
+		if (!job->batch && switch_g_job_step_pre_resume(job))
+			error("switch_g_job_step_pre_resume: %m");
+		if (!job->batch && core_spec_g_resume(job->cont_id,
+						      job_core_spec))
 			error("core_spec_g_resume: %m");
 		if (proctrack_g_signal(job->cont_id, SIGCONT) < 0) {
 			verbose("Error resuming %u.%u: %m",
@@ -1286,6 +1350,8 @@ _handle_resume(int fd, stepd_step_rec_t *job, uid_t uid)
 		}
 		suspended = false;
 	}
+	if (!job->batch && switch_g_job_step_post_resume(job))
+		error("switch_g_job_step_post_resume: %m");
 	/* set the cpu frequencies if cpu_freq option used */
 	if (job->cpu_freq != NO_VAL)
 		cpu_freq_set(job);
@@ -1313,7 +1379,6 @@ _handle_completion(int fd, stepd_step_rec_t *job, uid_t uid)
 	char* buf;
 	int len;
 	Buf buffer;
-	int version;	/* For future use */
 	bool lock_set = false;
 
 	debug("_handle_completion for job %u.%u",
@@ -1331,7 +1396,6 @@ _handle_completion(int fd, stepd_step_rec_t *job, uid_t uid)
 		return SLURM_SUCCESS;
 	}
 
-	safe_read(fd, &version, sizeof(int));
 	safe_read(fd, &first, sizeof(int));
 	safe_read(fd, &last, sizeof(int));
 	safe_read(fd, &step_rc, sizeof(int));
@@ -1533,4 +1597,20 @@ done:
 	return SLURM_SUCCESS;
 rwfail:
 	return SLURM_FAILURE;
+}
+
+extern void wait_for_resumed(uint16_t msg_type)
+{
+	int i;
+
+	for (i = 0; ; i++) {
+		if (i)
+			sleep(1);
+		if (!suspended)
+			return;
+		if (i == 0) {
+			info("defer sending msg_type %u to suspended job",
+			     msg_type);
+		}
+	}
 }

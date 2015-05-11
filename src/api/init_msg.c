@@ -156,7 +156,7 @@ void slurm_init_resv_desc_msg (resv_desc_msg_t * resv_msg)
 void slurm_init_update_node_msg (update_node_msg_t * update_node_msg)
 {
 	memset(update_node_msg, 0, sizeof(update_node_msg_t));
-	update_node_msg->node_state = (uint16_t) NO_VAL;
+	update_node_msg->node_state = (uint32_t) NO_VAL;
 	update_node_msg->weight = (uint32_t) NO_VAL;
 }
 
@@ -168,7 +168,7 @@ void slurm_init_update_front_end_msg (update_front_end_msg_t *
 				      update_front_end_msg)
 {
 	memset(update_front_end_msg, 0, sizeof(update_front_end_msg_t));
-	update_front_end_msg->node_state = (uint16_t) NO_VAL;
+	update_front_end_msg->node_state = (uint32_t)NO_VAL;
 }
 
 /*

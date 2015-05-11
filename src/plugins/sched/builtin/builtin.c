@@ -95,8 +95,11 @@ extern void stop_builtin_agent(void)
 static void _my_sleep(int secs)
 {
 	struct timespec ts = {0, 0};
+	struct timeval now;
 
-	ts.tv_sec = time(NULL) + secs;
+	gettimeofday(&now, NULL);
+	ts.tv_sec = now.tv_sec + secs;
+	ts.tv_nsec = now.tv_usec * 1000;
 	pthread_mutex_lock(&term_lock);
 	if (!stop_builtin)
 		pthread_cond_timedwait(&term_cond, &term_lock, &ts);
@@ -154,6 +157,7 @@ static void _compute_start_times(void)
 	bitstr_t *exc_core_bitmap = NULL;
 	uint32_t max_nodes, min_nodes, req_nodes, time_limit;
 	time_t now = time(NULL), sched_start, last_job_alloc;
+	bool resv_overlap = false;
 
 	sched_start = now;
 	last_job_alloc = now - 1;
@@ -198,7 +202,7 @@ static void _compute_start_times(void)
 		}
 
 		j = job_test_resv(job_ptr, &now, true, &avail_bitmap,
-				  &exc_core_bitmap);
+				  &exc_core_bitmap, &resv_overlap);
 		if (j != SLURM_SUCCESS) {
 			FREE_NULL_BITMAP(avail_bitmap);
 			FREE_NULL_BITMAP(exc_core_bitmap);

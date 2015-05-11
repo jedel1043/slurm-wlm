@@ -93,6 +93,7 @@ Lead Slurm developers are:
 <li>Andriy Grytsenko (Massive Solutions Limited, Ukraine)</li>
 <li>Michael Gutteridge (Fred Hutchinson Cancer Research Center)</li>
 <br>
+<li>Anders Halager (Aarhus University, Denmark)</li>
 <li>Chris Harwell (D. E. Shaw Research)</li>
 <li>Takao Hatazaki (HP)</li>
 <li>Matthieu Hautreux (CEA, France)</li>
@@ -107,6 +108,7 @@ Lead Slurm developers are:
 <br>
 <li>David Jackson (Adaptive Computing)</li>
 <li>Alec Jensen (SchedMD)</li>
+<li>Jacob Jenson (SchedMD)</li>
 <li>Klaus Joas (University Karlsruhe, Germany)</li>
 <li>Greg Johnson (Los Alamos National Laboratory)</li>
 <li>Magnus Jonsson (Ume&aring; University, Sweden)</li>
@@ -117,6 +119,7 @@ Lead Slurm developers are:
 <li>Yury Kiryanov (Intel)</li>
 <li>Aaron Knister (Environmental Protection Agency, UMBC)</li>
 <li>Marlys Kohnke (Cray)</li>
+<li>Dorian Krause (Forschungszentrum Juelich GmbH, Germany)</li>
 <li>Nancy Kritkausky (Bull)</li>
 <li>Roman Kurakin (Institute of Natural Science and Ecology, Russia)</li>
 <br>
@@ -127,6 +130,7 @@ Lead Slurm developers are:
 <li>Piotr Lesnicki (Bull)</li>
 <li>Bernard Li (Genome Sciences Centre, Canada)</li>
 <li>Eric Lin (Bull)</li>
+<li>David Linden (HP)</li>
 <li>Pierre Lindenbaum (L'Insitut du Thorax, France)</li>
 <li>Donald Lipari (Lawrence Livermore National Laboratory)</li>
 <br>
@@ -136,6 +140,7 @@ Lead Slurm developers are:
 <li>Donna Mecozzi (Lawrence Livermore National Laboratory)</li>
 <li>Bj&oslash;rn-Helge Mevik (University of Oslo, Norway)</li>
 <li>Stuart Midgley (Down Under GeoSolutions)</li>
+<li>Levi Morrison (Brigham Young University)</li>
 <li>Chris Morrone (Lawrence Livermore National Laboratory)</li>
 <li>Pere Munt (Barcelona Supercomputing Center, Spain)</li>
 <br>
@@ -157,6 +162,7 @@ Lead Slurm developers are:
 <li>Martin Perry (Bull)</li>
 <li>Dan Phung (Lawrence Livermore National Laboratory/Columbia University)</li>
 <li>Ashley Pittman (Quadrics, UK)</li>
+<li>Artem Polyakov (ISP SB RAS, Russia)</li>
 <li>Ludovic Prevost (NEC, France)</li>
 <br>
 <li>Vijay Ramasubramanian (University of Maryland)</li>
@@ -175,6 +181,7 @@ Lead Slurm developers are:
 <br>
 <li>Federico Sacerdoti (D. E. Shaw Research)</li>
 <li>Aleksej Saushev</li>
+<li>Uwe Sauter (High Performance Computing Center Stuttgart, Germany)</li>
 <li>Chris Scheller (University of Michigan)</li>
 <li>Rod Schultz (Bull)</li>
 <li>David Singleton</li>
@@ -208,6 +215,6 @@ Lead Slurm developers are:
 <!-- INDIVIDUALS, PLEASE KEEP IN ALPHABETICAL ORDER -->
 </ul>
 
-<p style="text-align:center;">Last modified 23 July 2014</p>
+<p style="text-align:center;">Last modified 9 October 2014</p>
 
 <!--#include virtual="footer.txt"-->

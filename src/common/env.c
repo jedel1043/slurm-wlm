@@ -53,20 +53,21 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/param.h>		/* MAXPATHLEN */
-#include "src/common/macros.h"
 #include "slurm/slurm.h"
+#include "src/common/cpu_frequency.h"
 #include "src/common/log.h"
 #include "src/common/env.h"
 #include "src/common/fd.h"
-#include "src/common/read_config.h"
-#include "src/common/xassert.h"
-#include "src/common/xmalloc.h"
-#include "src/common/xstring.h"
 #include "src/common/node_select.h"
+#include "src/common/macros.h"
 #include "src/common/proc_args.h"
+#include "src/common/read_config.h"
 #include "src/common/slurm_protocol_api.h"
 #include "src/common/slurm_step_layout.h"
 #include "src/common/slurmdb_defs.h"
+#include "src/common/xassert.h"
+#include "src/common/xmalloc.h"
+#include "src/common/xstring.h"
 
 /*
  * Define slurm-specific aliases for use by plugins, see slurm_xlator.h
@@ -279,16 +280,16 @@ setenvfs(const char *fmt, ...)
 
 int setenvf(char ***envp, const char *name, const char *fmt, ...)
 {
-	char *str = NULL, *value;
+	char *value;
 	va_list ap;
-	int rc;
+	int size, rc;
 
 	value = xmalloc(ENV_BUFSIZE);
 	va_start(ap, fmt);
-	vsnprintf (value, ENV_BUFSIZE, fmt, ap);
+	vsnprintf(value, ENV_BUFSIZE, fmt, ap);
 	va_end(ap);
 
-	int size = strlen(name) + strlen(value) + 2;
+	size = strlen(name) + strlen(value) + 2;
 	if (size >= MAX_ENV_STRLEN) {
 		error("environment variable %s is too long", name);
 		return ENOMEM;
@@ -300,15 +301,7 @@ int setenvf(char ***envp, const char *name, const char *fmt, ...)
 		else
 			rc = 1;
 	} else {
-		/* XXX Space is allocated on the heap and will never
-		 * be reclaimed.
-		 * Also you can not use xmalloc here since some of the
-		 * external api's like perl will crap out when they
-		 * try to free it.
-		 */
-		str = malloc(size);
-		snprintf(str, size, "%s=%s", name, value);
-		rc = putenv(str);
+		rc = setenv(name, value, 1);
 	}
 
 	xfree(value);
@@ -642,30 +635,13 @@ int setup_env(env_t *env, bool preserve_env)
 	    (env->cpu_freq != 0)) {      /* Default value from slurmstepd
 					  * for batch jobs */
 		int sts;
-		char *str;
 
 		if (env->cpu_freq & CPU_FREQ_RANGE_FLAG) {
-			switch (env->cpu_freq)
-			{
-			case CPU_FREQ_LOW :
-				str="low";
-				break;
-			case CPU_FREQ_MEDIUM :
-				str="medium";
-				break;
-			case CPU_FREQ_HIGH :
-				str="high";
-				break;
-			case CPU_FREQ_HIGHM1 :
-				str="highm1";
-				break;
-			default :
-				str="unknown";
-				break;
-			}
-			sts = setenvf(&env->env, "SLURM_CPU_FREQ_REQ", str);
+			char buf[32];
+			cpu_freq_to_string(buf, sizeof(buf), env->cpu_freq);
+			sts = setenvf(&env->env, "SLURM_CPU_FREQ_REQ", buf);
 		} else {
-			sts = setenvf(&env->env, "SLURM_CPU_FREQ_REQ", "%d",
+			sts = setenvf(&env->env, "SLURM_CPU_FREQ_REQ", "%u",
 				      env->cpu_freq);
 		}
 		if (sts) {
@@ -1102,6 +1078,7 @@ env_array_for_job(char ***dest, const resource_allocation_response_msg_t *alloc,
  * suitable for use by execle() and other env_array_* functions.
  *
  * Sets the variables:
+ *	SLURM_CLUSTER_NAME
  *	SLURM_JOB_ID
  *	SLURM_JOB_NUM_NODES
  *	SLURM_JOB_NODELIST
@@ -1122,7 +1099,7 @@ extern int
 env_array_for_batch_job(char ***dest, const batch_job_launch_msg_t *batch,
 			const char *node_name)
 {
-	char *tmp = NULL;
+	char *tmp = NULL, *cluster_name;
 	uint32_t num_nodes = 0;
 	uint32_t num_cpus = 0;
 	int i;
@@ -1139,6 +1116,13 @@ env_array_for_batch_job(char ***dest, const batch_job_launch_msg_t *batch,
 	for (i = 0; i < batch->num_cpu_groups; i++) {
 		num_nodes += batch->cpu_count_reps[i];
 		num_cpus += batch->cpu_count_reps[i] * batch->cpus_per_node[i];
+	}
+
+	cluster_name = slurm_get_cluster_name();
+	if (cluster_name) {
+		env_array_append_fmt(dest, "SLURM_CLUSTER_NAME", "%s",
+				     cluster_name);
+		xfree(cluster_name);
 	}
 
 	env_array_overwrite_fmt(dest, "SLURM_JOB_ID", "%u", batch->job_id);

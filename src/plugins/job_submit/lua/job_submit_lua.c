@@ -47,14 +47,14 @@
 #  include <inttypes.h>
 #endif
 
-#include <stdio.h>
-
-#include <sys/types.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <dlfcn.h>
 #include <pthread.h>
+#include <stdio.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -65,7 +65,9 @@
 
 #include "src/common/slurm_xlator.h"
 #include "src/common/assoc_mgr.h"
+#include "src/slurmctld/locks.h"
 #include "src/slurmctld/slurmctld.h"
+#include "src/slurmctld/reservation.h"
 
 #define _DEBUG 0
 #define MIN_ACCTG_FREQUENCY 30
@@ -102,8 +104,12 @@ const uint32_t plugin_version   = 110;
 const uint32_t min_plug_version = 100;
 
 static const char lua_script_path[] = DEFAULT_SCRIPT_DIR "/job_submit.lua";
+static time_t lua_script_last_loaded = (time_t) 0;
 static lua_State *L = NULL;
 static char *user_msg = NULL;
+
+time_t last_lua_jobs_update = (time_t) 0;
+time_t last_lua_resv_update = (time_t) 0;
 
 /*
  *  Mutex for protecting multi-threaded access to this plugin.
@@ -216,73 +222,6 @@ static const struct luaL_Reg slurm_functions [] = {
 	{ NULL,		NULL        }
 };
 
-static void _register_lua_slurm_output_functions (void)
-{
-	/*
-	 *  Register slurm output functions in a global "slurm" table
-	 */
-	lua_newtable (L);
-	luaL_register (L, NULL, slurm_functions);
-
-	/*
-	 *  Create more user-friendly lua versions of SLURM log functions.
-	 */
-	luaL_loadstring (L, "slurm.error (string.format(unpack({...})))");
-	lua_setfield (L, -2, "log_error");
-	luaL_loadstring (L, "slurm.log (0, string.format(unpack({...})))");
-	lua_setfield (L, -2, "log_info");
-	luaL_loadstring (L, "slurm.log (1, string.format(unpack({...})))");
-	lua_setfield (L, -2, "log_verbose");
-	luaL_loadstring (L, "slurm.log (2, string.format(unpack({...})))");
-	lua_setfield (L, -2, "log_debug");
-	luaL_loadstring (L, "slurm.log (3, string.format(unpack({...})))");
-	lua_setfield (L, -2, "log_debug2");
-	luaL_loadstring (L, "slurm.log (4, string.format(unpack({...})))");
-	lua_setfield (L, -2, "log_debug3");
-	luaL_loadstring (L, "slurm.log (5, string.format(unpack({...})))");
-	lua_setfield (L, -2, "log_debug4");
-	luaL_loadstring (L, "slurm.user_msg (string.format(unpack({...})))");
-	lua_setfield (L, -2, "log_user");
-
-	/*
-	 * Error codes: slurm.SUCCESS, slurm.FAILURE, slurm.ERROR, etc.
-	 */
-	lua_pushnumber (L, SLURM_FAILURE);
-	lua_setfield (L, -2, "FAILURE");
-	lua_pushnumber (L, SLURM_ERROR);
-	lua_setfield (L, -2, "ERROR");
-	lua_pushnumber (L, SLURM_SUCCESS);
-	lua_setfield (L, -2, "SUCCESS");
-	lua_pushnumber (L, ESLURM_INVALID_LICENSES);
-	lua_setfield (L, -2, "ESLURM_INVALID_LICENSES");
-
-
-	/*
-	 * Other definitions needed to interpret data
-	 * slurm.MEM_PER_CPU, slurm.NO_VAL, etc.
-	 */
-	lua_pushnumber (L, ALLOC_SID_ADMIN_HOLD);
-	lua_setfield (L, -2, "ALLOC_SID_ADMIN_HOLD");
-	lua_pushnumber (L, ALLOC_SID_USER_HOLD);
-	lua_setfield (L, -2, "ALLOC_SID_USER_HOLD");
-	lua_pushnumber (L, MAIL_JOB_BEGIN);
-	lua_setfield (L, -2, "MAIL_JOB_BEGIN");
-	lua_pushnumber (L, MAIL_JOB_END);
-	lua_setfield (L, -2, "MAIL_JOB_END");
-	lua_pushnumber (L, MAIL_JOB_FAIL);
-	lua_setfield (L, -2, "MAIL_FAIL");
-	lua_pushnumber (L, MAIL_JOB_REQUEUE);
-	lua_setfield (L, -2, "MAIL_JOB_REQUEUE");
-	lua_pushnumber (L, MEM_PER_CPU);
-	lua_setfield (L, -2, "MEM_PER_CPU");
-	lua_pushnumber (L, NICE_OFFSET);
-	lua_setfield (L, -2, "NICE_OFFSET");
-	lua_pushnumber (L, NO_VAL);
-	lua_setfield (L, -2, "NO_VAL");
-
-	lua_setglobal (L, "slurm");
-}
-
 /* Get the default account for a user (or NULL if not present) */
 static char *_get_default_account(uint32_t user_id)
 {
@@ -298,16 +237,16 @@ static char *_get_default_account(uint32_t user_id)
 	}
 }
 
-/* Get fields in an existing slurmctld job record
- * NOTE: This is an incomplete list of job record fields.
- * Add more as needed and send patches to slurm-dev@schedmd.com */
-static int _get_job_rec_field (lua_State *L)
+/* Get fields in an existing slurmctld job record.
+ *
+ * This is an incomplete list of job record fields. Add more as needed and
+ * send patches to slurm-dev@schedmd.com.
+ */
+static int _job_rec_field(const struct job_record *job_ptr,
+                          const char *name)
 {
-	const struct job_record *job_ptr = lua_touserdata(L, 1);
-	const char *name = luaL_checkstring(L, 2);
-
 	if (job_ptr == NULL) {
-		error("_get_job_field: job_ptr is NULL");
+		error("_job_rec_field: job_ptr is NULL");
 		lua_pushnil (L);
 	} else if (!strcmp(name, "account")) {
 		lua_pushstring (L, job_ptr->account);
@@ -369,14 +308,174 @@ static int _get_job_rec_field (lua_State *L)
 	return 1;
 }
 
-/* Get fields in the job request record on job submit or modify */
-static int _get_job_req_field (lua_State *L)
+static int _get_job_rec_field(lua_State *L)
 {
-	const struct job_descriptor *job_desc = lua_touserdata(L, 1);
+	const struct job_record *job_ptr = lua_touserdata(L, 1);
 	const char *name = luaL_checkstring(L, 2);
 
+	return _job_rec_field(job_ptr, name);
+}
+
+/* Get fields in an existing slurmctld job_record */
+static int _job_rec_field_index(lua_State *L)
+{
+	const char *name = luaL_checkstring(L, 2);
+	struct job_record *job_ptr;
+
+	lua_getmetatable(L, -2);
+	lua_getfield(L, -1, "_job_rec_ptr");
+	job_ptr = lua_touserdata(L, -1);
+
+	return _job_rec_field(job_ptr, name);
+}
+
+/* Get the list of existing slurmctld job records. */
+static void _update_jobs_global(void)
+{
+	char job_id_buf[11]; /* Big enough for a uint32_t */
+	ListIterator iter;
+	struct job_record *job_ptr;
+
+	if (last_lua_jobs_update >= last_job_update) {
+		return;
+	}
+
+	lua_getglobal(L, "slurm");
+	lua_newtable(L);
+
+	iter = list_iterator_create(job_list);
+	while ((job_ptr = (struct job_record *) list_next(iter))) {
+		/* Create an empty table, with a metatable that looks up the
+		 * data for the individual job.
+		 */
+		lua_newtable(L);
+
+		lua_newtable(L);
+		lua_pushcfunction(L, _job_rec_field_index);
+		lua_setfield(L, -2, "__index");
+		/* Store the job_record in the metatable, so the index
+		 * function knows which job it's getting data for.
+		 */
+		lua_pushlightuserdata(L, job_ptr);
+		lua_setfield(L, -2, "_job_rec_ptr");
+		lua_setmetatable(L, -2);
+
+		/* Lua copies passed strings, so we can reuse the buffer. */
+		snprintf(job_id_buf, sizeof(job_id_buf),
+		         "%d", job_ptr->job_id);
+		lua_setfield(L, -2, job_id_buf);
+	}
+	last_lua_jobs_update = last_job_update;
+	list_iterator_destroy(iter);
+
+	lua_setfield(L, -2, "jobs");
+	lua_pop(L, 1);
+}
+
+static int _resv_field(const slurmctld_resv_t *resv_ptr,
+                       const char *name)
+{
+	if (resv_ptr == NULL) {
+		error("_resv_field: resv_ptr is NULL");
+		lua_pushnil(L);
+	} else if (!strcmp(name, "accounts")) {
+		lua_pushstring(L, resv_ptr->accounts);
+	} else if (!strcmp(name, "assoc_list")) {
+		lua_pushstring(L, resv_ptr->assoc_list);
+	} else if (!strcmp(name, "cpu_cnt")) {
+		lua_pushnumber(L, resv_ptr->cpu_cnt);
+	} else if (!strcmp(name, "duration")) {
+		lua_pushnumber(L, resv_ptr->duration);
+	} else if (!strcmp(name, "end_time")) {
+		lua_pushnumber(L, resv_ptr->end_time);
+	} else if (!strcmp(name, "features")) {
+		lua_pushstring(L, resv_ptr->features);
+	} else if (!strcmp(name, "flags")) {
+		lua_pushnumber(L, resv_ptr->flags);
+	} else if (!strcmp(name, "full_nodes")) {
+		lua_pushboolean(L, resv_ptr->full_nodes);
+	} else if (!strcmp(name, "flags_set_node")) {
+		lua_pushboolean(L, resv_ptr->flags_set_node);
+	} else if (!strcmp(name, "job_pend_cnt")) {
+		lua_pushnumber(L, resv_ptr->job_pend_cnt);
+	} else if (!strcmp(name, "job_run_cnt")) {
+		lua_pushnumber(L, resv_ptr->job_run_cnt);
+	} else if (!strcmp(name, "licenses")) {
+		lua_pushstring(L, resv_ptr->licenses);
+	} else if (!strcmp(name, "node_cnt")) {
+		lua_pushnumber(L, resv_ptr->node_cnt);
+	} else if (!strcmp(name, "node_list")) {
+		lua_pushstring(L, resv_ptr->node_list);
+	} else if (!strcmp(name, "partition")) {
+		lua_pushstring(L, resv_ptr->partition);
+	} else if (!strcmp(name, "start_time")) {
+		lua_pushnumber(L, resv_ptr->start_time);
+	} else if (!strcmp(name, "users")) {
+		lua_pushstring(L, resv_ptr->users);
+	} else {
+		lua_pushnil(L);
+	}
+
+	return 1;
+}
+
+/* Get fields in an existing slurmctld reservation record */
+static int _resv_field_index(lua_State *L)
+{
+	const char *name = luaL_checkstring(L, 2);
+	slurmctld_resv_t *resv_ptr;
+
+	lua_getmetatable(L, -2);
+	lua_getfield(L, -1, "_resv_ptr");
+	resv_ptr = lua_touserdata(L, -1);
+
+	return _resv_field(resv_ptr, name);
+}
+
+/* Get the list of existing slurmctld reservation records. */
+static void _update_resvs_global(void)
+{
+	ListIterator iter;
+	slurmctld_resv_t *resv_ptr;
+
+	if (last_lua_resv_update >= last_resv_update) {
+		return;
+	}
+
+	lua_getglobal(L, "slurm");
+	lua_newtable(L);
+
+	iter = list_iterator_create(resv_list);
+	while ((resv_ptr = (slurmctld_resv_t *) list_next(iter))) {
+		/* Create an empty table, with a metatable that looks up the
+		 * data for the individual reservation.
+		 */
+		lua_newtable(L);
+
+		lua_newtable(L);
+		lua_pushcfunction(L, _resv_field_index);
+		lua_setfield(L, -2, "__index");
+		/* Store the slurmctld_resv_t in the metatable, so the index
+		 * function knows which reservation it's getting data for.
+		 */
+		lua_pushlightuserdata(L, resv_ptr->name);
+		lua_setfield(L, -2, "_resv_ptr");
+		lua_setmetatable(L, -2);
+
+		lua_setfield(L, -2, resv_ptr->name);
+	}
+	last_lua_resv_update = last_resv_update;
+	list_iterator_destroy(iter);
+
+	lua_setfield(L, -2, "reservations");
+	lua_pop(L, 1);
+}
+
+static int _job_req_field(const struct job_descriptor *job_desc,
+                          const char *name)
+{
 	if (job_desc == NULL) {
-		error("_get_job_req_field: job_desc is NULL");
+		error("_job_req_field: job_desc is NULL");
 		lua_pushnil (L);
 	} else if (!strcmp(name, "account")) {
 		lua_pushstring (L, job_desc->account);
@@ -478,7 +577,6 @@ static int _get_job_req_field (lua_State *L)
 		lua_pushnumber (L, job_desc->ntasks_per_socket);
 	} else if (!strcmp(name, "sockets_per_board")) {
 		lua_pushnumber (L, job_desc->sockets_per_board);
-
 	} else {
 		lua_pushnil (L);
 	}
@@ -486,15 +584,40 @@ static int _get_job_req_field (lua_State *L)
 	return 1;
 }
 
-/* Set fields in the job request structure on job submit or modify */
-static int _set_job_req_field (lua_State *L)
+/* Get fields in the job request record on job submit or modify */
+static int _get_job_req_field(lua_State *L)
 {
-	struct job_descriptor *job_desc = lua_touserdata(L, 1);
+	const struct job_descriptor *job_desc = lua_touserdata(L, 1);
+	const char *name = luaL_checkstring(L, 2);
+
+	return _job_req_field(job_desc, name);
+}
+
+/* Get fields in an existing slurmctld job_descriptor record */
+static int _job_req_field_index(lua_State *L)
+{
+	const char *name = luaL_checkstring(L, 2);
+	struct job_descriptor *job_desc;
+
+	lua_getmetatable(L, -2);
+	lua_getfield(L, -1, "_job_desc");
+	job_desc = lua_touserdata(L, -1);
+
+	return _job_req_field(job_desc, name);
+}
+
+/* Set fields in the job request structure on job submit or modify */
+static int _set_job_req_field(lua_State *L)
+{
 	const char *name, *value_str;
+	struct job_descriptor *job_desc;
 
 	name = luaL_checkstring(L, 2);
+	lua_getmetatable(L, -3);
+	lua_getfield(L, -1, "_job_desc");
+	job_desc = lua_touserdata(L, -1);
 	if (job_desc == NULL) {
-		error("_set_job_req_field: job_desc is NULL");
+		error("%s: job_desc is NULL", __func__);
 	} else if (!strcmp(name, "account")) {
 		value_str = luaL_checkstring(L, 3);
 		xfree(job_desc->account);
@@ -642,14 +765,58 @@ static int _set_job_req_field (lua_State *L)
 	return 0;
 }
 
-/* Get fields in an existing slurmctld partition record
- * NOTE: This is an incomplete list of partition record fields.
- * Add more as needed and send patches to slurm-dev@schedmd.com */
-static int _get_part_rec_field (lua_State *L)
+static void _push_job_desc(struct job_descriptor *job_desc)
 {
-	const struct part_record *part_ptr = lua_touserdata(L, 1);
-	const char *name = luaL_checkstring(L, 2);
+#if 0
+	lua_newtable(L);
+	lua_pushlightuserdata(L, job_desc);
+	lua_setfield(L, -2, "job_desc_ptr");
+#else
+	lua_newtable(L);
 
+	lua_newtable(L);
+	lua_pushcfunction(L, _job_req_field_index);
+	lua_setfield(L, -2, "__index");
+	lua_pushcfunction(L, _set_job_req_field);
+	lua_setfield(L, -2, "__newindex");
+	/* Store the job descriptor in the metatable, so the index
+	 * function knows which struct it's getting data for.
+	 */
+	lua_pushlightuserdata(L, job_desc);
+	lua_setfield(L, -2, "_job_desc");
+	lua_setmetatable(L, -2);
+#endif
+}
+
+static void _push_job_rec(struct job_record *job_ptr)
+{
+#if 0
+	lua_newtable(L);
+	lua_pushlightuserdata(L, job_ptr);
+	lua_setfield(L, -2, "job_rec_ptr");
+#else
+	lua_newtable(L);
+
+	lua_newtable(L);
+	lua_pushcfunction(L, _job_rec_field_index);
+	lua_setfield(L, -2, "__index");
+	/* Store the job_ptr in the metatable, so the index
+	 * function knows which struct it's getting data for.
+	 */
+	lua_pushlightuserdata(L, job_ptr);
+	lua_setfield(L, -2, "_job_rec_ptr");
+	lua_setmetatable(L, -2);
+#endif
+}
+
+/* Get fields in an existing slurmctld partition record
+ *
+ * This is an incomplete list of partition record fields. Add more as needed
+ * and send patches to slurm-dev@schedmd.com
+ */
+static int _part_rec_field(const struct part_record *part_ptr,
+                           const char *name)
+{
 	if (part_ptr == NULL) {
 		error("_get_part_field: part_ptr is NULL");
 		lua_pushnil (L);
@@ -686,11 +853,166 @@ static int _get_part_rec_field (lua_State *L)
 
 	return 1;
 }
+
+static int _get_part_rec_field (lua_State *L)
+{
+	const struct part_record *part_ptr = lua_touserdata(L, 1);
+	const char *name = luaL_checkstring(L, 2);
+
+	return _part_rec_field(part_ptr, name);
+}
+
+static int _part_rec_field_index(lua_State *L)
+{
+	const char *name = luaL_checkstring(L, 2);
+	struct part_record *part_ptr;
+
+	lua_getmetatable(L, -2);
+	lua_getfield(L, -1, "_part_rec_ptr");
+	part_ptr = lua_touserdata(L, -1);
+
+	return _part_rec_field(part_ptr, name);
+}
 #if 0
 /* Filter before packing list of partitions */
 	char *allow_groups;	/* comma delimited list of groups */
 	uid_t *allow_uids;	/* zero terminated list of allowed users */
 #endif
+
+static bool _user_can_use_part(uint32_t user_id, uint32_t submit_uid,
+			       struct part_record *part_ptr)
+{
+	int i;
+
+	if (user_id == 0) {
+		if (part_ptr->flags & PART_FLAG_NO_ROOT)
+			return false;
+		return true;
+	}
+
+	if ((part_ptr->flags & PART_FLAG_ROOT_ONLY) && (submit_uid != 0))
+		return false;
+
+	if (part_ptr->allow_uids == NULL)
+		return true;	/* No user ID filters */
+
+	for (i=0; part_ptr->allow_uids[i]; i++) {
+		if (user_id == part_ptr->allow_uids[i])
+			return true;
+	}
+	return false;
+}
+
+static void _push_partition_list(uint32_t user_id, uint32_t submit_uid)
+{
+	/* Locks: Read partition */
+	slurmctld_lock_t part_read_lock = {
+		NO_LOCK, NO_LOCK, NO_LOCK, READ_LOCK };
+	ListIterator part_iterator;
+	struct part_record *part_ptr;
+
+	lua_newtable(L);
+	lock_slurmctld(part_read_lock);
+	part_iterator = list_iterator_create(part_list);
+	while ((part_ptr = (struct part_record *) list_next(part_iterator))) {
+		if (!_user_can_use_part(user_id, submit_uid, part_ptr))
+			continue;
+#if 0
+		lua_pushlightuserdata(L, part_ptr);
+		lua_rawseti(L, -2, i++);
+#else
+		/* Create an empty table, with a metatable that looks up the
+		 * data for the partition.
+		 */
+		lua_newtable(L);
+
+		lua_newtable(L);
+		lua_pushcfunction(L, _part_rec_field_index);
+		lua_setfield(L, -2, "__index");
+		/* Store the part_record in the metatable, so the index
+		 * function knows which job it's getting data for.
+		 */
+		lua_pushlightuserdata(L, part_ptr);
+		lua_setfield(L, -2, "_part_rec_ptr");
+		lua_setmetatable(L, -2);
+
+		lua_setfield(L, -2, part_ptr->name);
+	}
+#endif
+	list_iterator_destroy(part_iterator);
+	unlock_slurmctld(part_read_lock);
+}
+
+static void _register_lua_slurm_output_functions (void)
+{
+	/*
+	 *  Register slurm output functions in a global "slurm" table
+	 */
+	lua_newtable (L);
+	luaL_register (L, NULL, slurm_functions);
+
+	/*
+	 *  Create more user-friendly lua versions of SLURM log functions.
+	 */
+	luaL_loadstring (L, "slurm.error (string.format(unpack({...})))");
+	lua_setfield (L, -2, "log_error");
+	luaL_loadstring (L, "slurm.log (0, string.format(unpack({...})))");
+	lua_setfield (L, -2, "log_info");
+	luaL_loadstring (L, "slurm.log (1, string.format(unpack({...})))");
+	lua_setfield (L, -2, "log_verbose");
+	luaL_loadstring (L, "slurm.log (2, string.format(unpack({...})))");
+	lua_setfield (L, -2, "log_debug");
+	luaL_loadstring (L, "slurm.log (3, string.format(unpack({...})))");
+	lua_setfield (L, -2, "log_debug2");
+	luaL_loadstring (L, "slurm.log (4, string.format(unpack({...})))");
+	lua_setfield (L, -2, "log_debug3");
+	luaL_loadstring (L, "slurm.log (5, string.format(unpack({...})))");
+	lua_setfield (L, -2, "log_debug4");
+	luaL_loadstring (L, "slurm.user_msg (string.format(unpack({...})))");
+	lua_setfield (L, -2, "log_user");
+
+	/*
+	 * Error codes: slurm.SUCCESS, slurm.FAILURE, slurm.ERROR, etc.
+	 */
+	lua_pushnumber (L, SLURM_FAILURE);
+	lua_setfield (L, -2, "FAILURE");
+	lua_pushnumber (L, SLURM_ERROR);
+	lua_setfield (L, -2, "ERROR");
+	lua_pushnumber (L, SLURM_SUCCESS);
+	lua_setfield (L, -2, "SUCCESS");
+	lua_pushnumber (L, ESLURM_INVALID_LICENSES);
+	lua_setfield (L, -2, "ESLURM_INVALID_LICENSES");
+
+	/*
+	 * Other definitions needed to interpret data
+	 * slurm.MEM_PER_CPU, slurm.NO_VAL, etc.
+	 */
+	lua_pushnumber (L, ALLOC_SID_ADMIN_HOLD);
+	lua_setfield (L, -2, "ALLOC_SID_ADMIN_HOLD");
+	lua_pushnumber (L, ALLOC_SID_USER_HOLD);
+	lua_setfield (L, -2, "ALLOC_SID_USER_HOLD");
+	lua_pushnumber (L, MAIL_JOB_BEGIN);
+	lua_setfield (L, -2, "MAIL_JOB_BEGIN");
+	lua_pushnumber (L, MAIL_JOB_END);
+	lua_setfield (L, -2, "MAIL_JOB_END");
+	lua_pushnumber (L, MAIL_JOB_FAIL);
+	lua_setfield (L, -2, "MAIL_FAIL");
+	lua_pushnumber (L, MAIL_JOB_REQUEUE);
+	lua_setfield (L, -2, "MAIL_JOB_REQUEUE");
+	lua_pushnumber (L, MEM_PER_CPU);
+	lua_setfield (L, -2, "MEM_PER_CPU");
+	lua_pushnumber (L, NICE_OFFSET);
+	lua_setfield (L, -2, "NICE_OFFSET");
+	lua_pushnumber (L, NO_VAL);
+	lua_setfield (L, -2, "NO_VAL");
+
+	lua_setglobal (L, "slurm");
+
+	last_lua_jobs_update = 0;
+	_update_jobs_global();
+	last_lua_resv_update = 0;
+	_update_resvs_global();
+}
 
 static void _register_lua_slurm_struct_functions (void)
 {
@@ -743,80 +1065,25 @@ static int _check_lua_script_functions(void)
 	return (rc);
 }
 
-static bool _user_can_use_part(uint32_t user_id, uint32_t submit_uid,
-			       struct part_record *part_ptr)
-{
-	int i;
-
-	if (user_id == 0) {
-		if (part_ptr->flags & PART_FLAG_NO_ROOT)
-			return false;
-		return true;
-	}
-
-	if ((part_ptr->flags & PART_FLAG_ROOT_ONLY) && (submit_uid != 0))
-		return false;
-
-	if (part_ptr->allow_uids == NULL)
-		return true;	/* No user ID filters */
-
-	for (i=0; part_ptr->allow_uids[i]; i++) {
-		if (user_id == part_ptr->allow_uids[i])
-			return true;
-	}
-	return false;
-}
-
-static void _push_partition_list(uint32_t user_id, uint32_t submit_uid)
-{
-	int i = 1;
-	ListIterator part_iterator;
-	struct part_record *part_ptr;
-
-	lua_newtable(L);
-	part_iterator = list_iterator_create(part_list);
-	while ((part_ptr = (struct part_record *) list_next(part_iterator))) {
-		if (!_user_can_use_part(user_id, submit_uid, part_ptr))
-			continue;
-		lua_pushlightuserdata (L, part_ptr);
-		lua_rawseti(L, -2, i++);
-	}
-	list_iterator_destroy(part_iterator);
-}
-
-static void _push_job_desc(struct job_descriptor *job_desc)
-{
-	lua_newtable(L);
-	lua_pushlightuserdata(L, job_desc);
-	lua_setfield(L, -2, "job_desc_ptr");
-}
-
-static void _push_job_rec(struct job_record *job_ptr)
-{
-	lua_newtable(L);
-	lua_pushlightuserdata (L, job_ptr);
-	lua_setfield(L, -2, "job_rec_ptr");
-}
-
-/*
- *  NOTE: The init callback should never be called multiple times,
- *   let alone called from multiple threads. Therefore, locking
- *   is unnecessary here.
- */
-int init (void)
+static int _load_script(void)
 {
 	int rc = SLURM_SUCCESS;
+	struct stat st;
+	lua_State *L_orig = L;
 
-	/*
-	 *  Need to dlopen() liblua.so with RTLD_GLOBAL in order to
-	 *   ensure symbols from liblua are available to libs opened
-	 *   by any lua scripts.
-	 */
-	if (!dlopen("liblua.so",       RTLD_NOW | RTLD_GLOBAL) &&
-	    !dlopen("liblua-5.1.so",   RTLD_NOW | RTLD_GLOBAL) &&
-	    !dlopen("liblua5.1.so",    RTLD_NOW | RTLD_GLOBAL) &&
-	    !dlopen("liblua5.1.so.0",  RTLD_NOW | RTLD_GLOBAL)) {
-		return (error("Failed to open liblua.so: %s", dlerror()));
+	if (stat(lua_script_path, &st) != 0) {
+		if (L_orig) {
+			(void) error("Unable to stat %s, "
+			             "using old script: %s",
+			             lua_script_path, strerror(errno));
+			return SLURM_SUCCESS;
+		}
+		return error("Unable to stat %s: %s",
+		             lua_script_path, strerror(errno));
+	}
+	
+	if (st.st_mtime <= lua_script_last_loaded) {
+		return SLURM_SUCCESS;
 	}
 
 	/*
@@ -825,8 +1092,17 @@ int init (void)
 	L = luaL_newstate();
 	luaL_openlibs(L);
 	if (luaL_loadfile(L, lua_script_path)) {
-		return error("lua: %s: %s", lua_script_path,
-			     lua_tostring(L, -1));
+		if (L_orig) {
+			(void) error("lua: %s: %s, using previous script",
+			             lua_script_path, lua_tostring(L, -1));
+			lua_close(L);
+			L = L_orig;
+			return SLURM_SUCCESS;
+		}
+		rc = error("lua: %s: %s", lua_script_path,
+		           lua_tostring(L, -1));
+		lua_pop(L, 1);
+		return rc;
 	}
 
 	/*
@@ -840,25 +1116,85 @@ int init (void)
 	 *  Run the user script:
 	 */
 	if (lua_pcall(L, 0, 1, 0) != 0) {
-		return error("job_submit/lua: %s: %s",
-			     lua_script_path, lua_tostring (L, -1));
+		if (L_orig) {
+			(void) error("job_submit/lua: %s: %s, "
+			             "using previous script",
+			             lua_script_path, lua_tostring(L, -1));
+			lua_close(L);
+			L = L_orig;
+			return SLURM_SUCCESS;
+		}
+		rc = error("job_submit/lua: %s: %s",
+		           lua_script_path, lua_tostring(L, -1));
+		lua_pop(L, 1);
+		return rc;
 	}
 
 	/*
 	 *  Get any return code from the lua script
 	 */
 	rc = (int) lua_tonumber(L, -1);
-	lua_pop (L, 1);
-	if (rc != SLURM_SUCCESS)
+	if (rc != SLURM_SUCCESS) {
+		if (L_orig) {
+			(void) error("job_submit/lua: %s: returned %d "
+			             "on load, using previous script",
+			             lua_script_path, rc);
+			lua_close(L);
+			L = L_orig;
+			return SLURM_SUCCESS;
+		}
+		(void) error("job_submit/lua: %s: returned %d on load",
+		             lua_script_path, rc);
+		lua_pop (L, 1);
 		return rc;
+	}
 
 	/*
 	 *  Check for required lua script functions:
 	 */
-	return (_check_lua_script_functions());
+	rc = _check_lua_script_functions();
+	if (rc != SLURM_SUCCESS) {
+		if (L_orig) {
+			(void) error("job_submit/lua: %s: "
+			             "required function(s) not present, "
+			             "using previous script",
+			             lua_script_path);
+			lua_close(L);
+			L = L_orig;
+			return SLURM_SUCCESS;
+		}
+		return rc;
+	}
+
+	if (L_orig)
+		lua_close(L_orig);
+	lua_script_last_loaded = time(NULL);
+	return SLURM_SUCCESS;
 }
 
-int fini (void)
+/*
+ *  NOTE: The init callback should never be called multiple times,
+ *   let alone called from multiple threads. Therefore, locking
+ *   is unnecessary here.
+ */
+int init(void)
+{
+	/*
+	 *  Need to dlopen() liblua.so with RTLD_GLOBAL in order to
+	 *   ensure symbols from liblua are available to libs opened
+	 *   by any lua scripts.
+	 */
+	if (!dlopen("liblua.so",       RTLD_NOW | RTLD_GLOBAL) &&
+	    !dlopen("liblua-5.1.so",   RTLD_NOW | RTLD_GLOBAL) &&
+	    !dlopen("liblua5.1.so",    RTLD_NOW | RTLD_GLOBAL) &&
+	    !dlopen("liblua5.1.so.0",  RTLD_NOW | RTLD_GLOBAL)) {
+		return error("Failed to open liblua.so: %s", dlerror());
+	}
+
+	return _load_script();
+}
+
+int fini(void)
 {
 	lua_close (L);
 	return SLURM_SUCCESS;
@@ -872,6 +1208,8 @@ extern int job_submit(struct job_descriptor *job_desc, uint32_t submit_uid,
 	int rc = SLURM_ERROR;
 	slurm_mutex_lock (&lua_lock);
 
+	(void) _load_script();
+
 	/*
 	 *  All lua script functions should have been verified during
 	 *   initialization:
@@ -879,6 +1217,9 @@ extern int job_submit(struct job_descriptor *job_desc, uint32_t submit_uid,
 	lua_getglobal(L, "slurm_job_submit");
 	if (lua_isnil(L, -1))
 		goto out;
+
+	_update_jobs_global();
+	_update_resvs_global();
 
 	_push_job_desc(job_desc);
 	_push_partition_list(job_desc->user_id, submit_uid);
@@ -924,6 +1265,9 @@ extern int job_modify(struct job_descriptor *job_desc,
 	lua_getglobal(L, "slurm_job_modify");
 	if (lua_isnil(L, -1))
 		goto out;
+
+	_update_jobs_global();
+	_update_resvs_global();
 
 	_push_job_desc(job_desc);
 	_push_job_rec(job_ptr);

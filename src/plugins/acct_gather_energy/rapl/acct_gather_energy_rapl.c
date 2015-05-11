@@ -132,11 +132,11 @@ const char plugin_type[] = "acct_gather_energy/rapl";
 const uint32_t plugin_version = 100;
 
 static acct_gather_energy_t *local_energy = NULL;
-static uint32_t debug_flags = 0;
+static uint64_t debug_flags = 0;
 
 /* one cpu in the package */
-static int pkg2cpu[MAX_PKGS] = {[0 ... MAX_PKGS-1] -1};
-static int pkg_fd[MAX_PKGS] = {[0 ... MAX_PKGS-1] -1};
+static int pkg2cpu[MAX_PKGS] = {[0 ... MAX_PKGS-1] = -1};
+static int pkg_fd[MAX_PKGS] = {[0 ... MAX_PKGS-1] = -1};
 static char hostname[MAXHOSTNAMELEN];
 
 static int nb_pkg = 0;
@@ -543,7 +543,7 @@ extern void acct_gather_energy_p_conf_set(s_p_hashtbl_t *tbl)
 	if (result == 0)
 		local_energy->current_watts = NO_VAL;
 
-	verbose("%s loaded", plugin_name);
+	debug("%s loaded", plugin_name);
 
 	return;
 }

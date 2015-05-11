@@ -586,7 +586,7 @@ bool verify_socket_core_thread_count(const char *arg, int *min_sockets,
 {
 	bool tmp_val,ret_val;
 	int i,j;
-	int max_sockets = 0, max_cores, max_threads;
+	int max_sockets = 0, max_cores = 0, max_threads = 0;
 	const char *cur_ptr = arg;
 	char buf[3][48]; /* each can hold INT64_MAX - INT64_MAX */
 	buf[0][0] = '\0';
@@ -627,6 +627,7 @@ bool verify_socket_core_thread_count(const char *arg, int *min_sockets,
 	if ((*min_sockets == 1) && (max_sockets == INT_MAX))
 		*min_sockets = NO_VAL;	/* Use full range of values */
 	ret_val = ret_val && tmp_val;
+
 
 	tmp_val = get_resource_arg_range(&buf[1][0], "second arg of -B",
 					 min_cores, &max_cores, true);
@@ -681,21 +682,28 @@ bool verify_hint(const char *arg, int *min_sockets, int *min_cores,
 			*min_sockets = NO_VAL;
 			*min_cores   = NO_VAL;
 			*min_threads = 1;
-			*cpu_bind_type |= CPU_BIND_TO_CORES;
+			if (cpu_bind_type)
+				*cpu_bind_type |= CPU_BIND_TO_CORES;
 		} else if (strcasecmp(tok, "memory_bound") == 0) {
 			*min_cores   = 1;
 			*min_threads = 1;
-			*cpu_bind_type |= CPU_BIND_TO_CORES;
+			if (cpu_bind_type)
+				*cpu_bind_type |= CPU_BIND_TO_CORES;
 		} else if (strcasecmp(tok, "multithread") == 0) {
 			*min_threads = NO_VAL;
-			*cpu_bind_type |= CPU_BIND_TO_THREADS;
-			*cpu_bind_type &= (~CPU_BIND_ONE_THREAD_PER_CORE);
+			if (cpu_bind_type) {
+				*cpu_bind_type |= CPU_BIND_TO_THREADS;
+				*cpu_bind_type &=
+					(~CPU_BIND_ONE_THREAD_PER_CORE);
+			}
 			if (*ntasks_per_core == NO_VAL)
 				*ntasks_per_core = INFINITE;
 		} else if (strcasecmp(tok, "nomultithread") == 0) {
 			*min_threads = 1;
-			*cpu_bind_type |= CPU_BIND_TO_THREADS;
-			*cpu_bind_type |= CPU_BIND_ONE_THREAD_PER_CORE;
+			if (cpu_bind_type) {
+				*cpu_bind_type |= CPU_BIND_TO_THREADS;
+				*cpu_bind_type |= CPU_BIND_ONE_THREAD_PER_CORE;
+			}
 		} else {
 			error("unrecognized --hint argument \"%s\", "
 			      "see --hint=help", tok);
@@ -710,42 +718,91 @@ bool verify_hint(const char *arg, int *min_sockets, int *min_cores,
 
 uint16_t parse_mail_type(const char *arg)
 {
-	uint16_t rc;
+	char *buf, *tok, *save_ptr = NULL;
+	uint16_t rc = 0;
 
-	if (strcasecmp(arg, "BEGIN") == 0)
-		rc = MAIL_JOB_BEGIN;
-	else if  (strcasecmp(arg, "END") == 0)
-		rc = MAIL_JOB_END;
-	else if (strcasecmp(arg, "FAIL") == 0)
-		rc = MAIL_JOB_FAIL;
-	else if (strcasecmp(arg, "REQUEUE") == 0)
-		rc = MAIL_JOB_REQUEUE;
-	else if (strcasecmp(arg, "ALL") == 0)
-		rc = MAIL_JOB_BEGIN |  MAIL_JOB_END |  MAIL_JOB_FAIL |
-		     MAIL_JOB_REQUEUE;
-	else
-		rc = 0;		/* failure */
+	if (!arg)
+		return rc;
+
+	buf = xstrdup(arg);
+	tok = strtok_r(buf, ",", &save_ptr);
+	while (tok) {
+		if (strcasecmp(tok, "BEGIN") == 0)
+			rc |= MAIL_JOB_BEGIN;
+		else if  (strcasecmp(tok, "END") == 0)
+			rc |= MAIL_JOB_END;
+		else if (strcasecmp(tok, "FAIL") == 0)
+			rc |= MAIL_JOB_FAIL;
+		else if (strcasecmp(tok, "REQUEUE") == 0)
+			rc |= MAIL_JOB_REQUEUE;
+		else if (strcasecmp(tok, "ALL") == 0)
+			rc |= MAIL_JOB_BEGIN |  MAIL_JOB_END |  MAIL_JOB_FAIL |
+			      MAIL_JOB_REQUEUE;
+		else if (strcasecmp(tok, "TIME_LIMIT") == 0)
+			rc |= MAIL_JOB_TIME100;
+		else if (strcasecmp(tok, "TIME_LIMIT_90") == 0)
+			rc |= MAIL_JOB_TIME90;
+		else if (strcasecmp(tok, "TIME_LIMIT_80") == 0)
+			rc |= MAIL_JOB_TIME80;
+		else if (strcasecmp(tok, "TIME_LIMIT_50") == 0)
+			rc |= MAIL_JOB_TIME50;
+		tok = strtok_r(NULL, ",", &save_ptr);
+	}
+	xfree(buf);
 
 	return rc;
 }
 char *print_mail_type(const uint16_t type)
 {
+	static char buf[256];
+
+	buf[0] = '\0';
+
 	if (type == 0)
 		return "NONE";
 
-	if (type == MAIL_JOB_BEGIN)
-		return "BEGIN";
-	if (type == MAIL_JOB_END)
-		return "END";
-	if (type == MAIL_JOB_FAIL)
-		return "FAIL";
-	if (type == MAIL_JOB_REQUEUE)
-		return "REQUEUE";
-	if (type == (MAIL_JOB_BEGIN |  MAIL_JOB_END |  MAIL_JOB_FAIL |
-		     MAIL_JOB_REQUEUE))
-		return "ALL";
+	if (type & MAIL_JOB_BEGIN) {
+		if (buf[0])
+			strcat(buf, ",");
+		strcat(buf, "BEGIN");
+	}
+	if (type & MAIL_JOB_END) {
+		if (buf[0])
+			strcat(buf, ",");
+		strcat(buf, "END");
+	}
+	if (type & MAIL_JOB_FAIL) {
+		if (buf[0])
+			strcat(buf, ",");
+		strcat(buf, "FAIL");
+	}
+	if (type & MAIL_JOB_REQUEUE) {
+		if (buf[0])
+			strcat(buf, ",");
+		strcat(buf, "REQUEUE");
+	}
+	if (type & MAIL_JOB_TIME50) {
+		if (buf[0])
+			strcat(buf, ",");
+		strcat(buf, "TIME_LIMIT_50");
+	}
+	if (type & MAIL_JOB_TIME80) {
+		if (buf[0])
+			strcat(buf, ",");
+		strcat(buf, "TIME_LIMIT_80");
+	}
+	if (type & MAIL_JOB_TIME90) {
+		if (buf[0])
+			strcat(buf, ",");
+		strcat(buf, "TIME_LIMIT_90");
+	}
+	if (type & MAIL_JOB_TIME100) {
+		if (buf[0])
+			strcat(buf, ",");
+		strcat(buf, "TIME_LIMIT");
+	}
 
-	return "MULTIPLE";
+	return buf;
 }
 
 static void
@@ -1241,4 +1298,99 @@ extern void bg_figure_nodes_tasks(int *min_nodes, int *max_nodes,
 	if (!set_tasks && figured)
 		*ntasks_per_node = 0;
 
+}
+
+/* parse_resv_flags()
+ */
+uint32_t
+parse_resv_flags(const char *flagstr, const char *msg)
+{
+	int flip;
+	uint32_t outflags = 0;
+	const char *curr = flagstr;
+	int taglen = 0;
+
+	while (*curr != '\0') {
+		flip = 0;
+		if (*curr == '+') {
+			curr++;
+		} else if (*curr == '-') {
+			flip = 1;
+			curr++;
+		}
+		taglen = 0;
+		while (curr[taglen] != ',' && curr[taglen] != '\0')
+			taglen++;
+
+		if (strncasecmp(curr, "Maintenance", MAX(taglen,1)) == 0) {
+			curr += taglen;
+			if (flip)
+				outflags |= RESERVE_FLAG_NO_MAINT;
+			else
+				outflags |= RESERVE_FLAG_MAINT;
+		} else if ((strncasecmp(curr, "Overlap", MAX(taglen,1))
+			    == 0) && (!flip)) {
+			curr += taglen;
+			outflags |= RESERVE_FLAG_OVERLAP;
+			/* "-OVERLAP" is not supported since that's the
+			 * default behavior and the option only applies
+			 * for reservation creation, not updates */
+		} else if (strncasecmp(curr, "Ignore_Jobs", MAX(taglen,1))
+			   == 0) {
+			curr += taglen;
+			if (flip)
+				outflags |= RESERVE_FLAG_NO_IGN_JOB;
+			else
+				outflags |= RESERVE_FLAG_IGN_JOBS;
+		} else if (strncasecmp(curr, "Daily", MAX(taglen,1)) == 0) {
+			curr += taglen;
+			if (flip)
+				outflags |= RESERVE_FLAG_NO_DAILY;
+			else
+				outflags |= RESERVE_FLAG_DAILY;
+		} else if (strncasecmp(curr, "Weekly", MAX(taglen,1)) == 0) {
+			curr += taglen;
+			if (flip)
+				outflags |= RESERVE_FLAG_NO_WEEKLY;
+			else
+				outflags |= RESERVE_FLAG_WEEKLY;
+		} else if (strncasecmp(curr, "License_Only", MAX(taglen,1))
+			   == 0) {
+			curr += taglen;
+			if (flip)
+				outflags |= RESERVE_FLAG_NO_LIC_ONLY;
+			else
+				outflags |= RESERVE_FLAG_LIC_ONLY;
+		} else if (strncasecmp(curr, "Static_Alloc", MAX(taglen,1))
+			   == 0) {
+			curr += taglen;
+			if (flip)
+				outflags |= RESERVE_FLAG_NO_STATIC;
+			else
+				outflags |= RESERVE_FLAG_STATIC;
+		} else if (strncasecmp(curr, "Part_Nodes", MAX(taglen,1))
+			   == 0) {
+			curr += taglen;
+			if (flip)
+				outflags |= RESERVE_FLAG_NO_PART_NODES;
+			else
+				outflags |= RESERVE_FLAG_PART_NODES;
+		} else if (!strncasecmp(curr, "First_Cores", MAX(taglen,1)) &&
+			   !flip) {
+			curr += taglen;
+			outflags |= RESERVE_FLAG_FIRST_CORES;
+		} else if (!strncasecmp(curr, "Time_Float", MAX(taglen,1)) &&
+			   !flip) {
+			curr += taglen;
+			outflags |= RESERVE_FLAG_TIME_FLOAT;
+		} else {
+			error("Error parsing flags %s.  %s", flagstr, msg);
+			return 0xffffffff;
+		}
+
+		if (*curr == ',') {
+			curr++;
+		}
+	}
+	return outflags;
 }
