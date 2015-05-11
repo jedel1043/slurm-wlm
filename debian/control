@@ -109,7 +109,7 @@ Description: SLURM central management daemon
  interconnect agnostic.
  This package contains the central management demon slurmctld.
 
-Package: libslurmdb27
+Package: libslurmdb28
 Section: libs
 Architecture: any
 Pre-Depends: ${misc:Pre-Depends}
@@ -119,7 +119,7 @@ Description: Runtime library files for the SLURM DataBase Daemon
  is an open-source cluster resource management and job scheduling.
  This package contains the SLURM DataBase Daemon runtime library.
 
-Package: libslurm27
+Package: libslurm28
 Section: libs
 Architecture: any
 Pre-Depends: ${misc:Pre-Depends}
@@ -145,7 +145,7 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- libslurm27 (= ${binary:Version})
+ libslurm28 (= ${binary:Version})
 Conflicts: libslurm10-dev, libslurm11-dev, libslurm12-dev, libslurm13-dev, libslurm20-dev, libslurm21-dev
 Replaces: libslurm10-dev, libslurm11-dev, libslurm12-dev, libslurm13-dev, libslurm20-dev, libslurm21-dev
 Description: SLURM development files
@@ -159,7 +159,7 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- libslurmdb27 (= ${binary:Version})
+ libslurmdb28 (= ${binary:Version})
 Description: SLURM DataBase Daemon development files
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
@@ -172,7 +172,7 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  libpmi0 (= ${binary:Version}),
- libslurm27 (= ${binary:Version})
+ libslurm28 (= ${binary:Version})
 Description: SLURM PMI library implementation development files
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.

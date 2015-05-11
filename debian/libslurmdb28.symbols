@@ -1,4 +1,4 @@
-libslurmdb.so.27 libslurmdb27 #MINVER#
+libslurmdb.so.28 libslurmdb28 #MINVER#
  slurm_accept_msg_conn@Base 2.2.0
  slurm_accept_stream@Base 2.2.0
  slurm_accounting_enforce_string@Base 2.2.0

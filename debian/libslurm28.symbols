@@ -1,4 +1,4 @@
-libslurm.so.27 libslurm27 #MINVER#
+libslurm.so.28 libslurm28 #MINVER#
  islurm_get_rem_time2__@Base 1.3.8
  islurm_get_rem_time__@Base 1.3.8
  plugin_context_create@Base 2.5.7
