@@ -230,18 +230,29 @@ _verify_job_ids (void)
 				break;
 		}
 		jp = &job_ptr[i];
-		if (((IS_JOB_FINISHED(jp)) ||
-		     (i >= job_buffer_ptr->record_count)) &&
-		     (job_ptr[i].array_task_id == NO_VAL) &&
-		     (opt.verbose >= 0)) {
-			if (opt.step_id[j] == SLURM_BATCH_SCRIPT)
+		if ((i >= job_buffer_ptr->record_count) ||
+		    IS_JOB_FINISHED(jp)) {
+			if (opt.verbose < 0) {
+				;
+			} else if ((opt.array_id[j] == NO_VAL) &&
+				   (opt.step_id[j] == SLURM_BATCH_SCRIPT)) {
 				error("Kill job error on job id %u: %s",
 				      opt.job_id[j],
 				      slurm_strerror(ESLURM_INVALID_JOB_ID));
-			else
+			} else if (opt.array_id[j] == NO_VAL) {
 				error("Kill job error on job step id %u.%u: %s",
 				      opt.job_id[j], opt.step_id[j],
 				      slurm_strerror(ESLURM_INVALID_JOB_ID));
+			} else if (opt.step_id[j] == SLURM_BATCH_SCRIPT) {
+				error("Kill job error on job id %u_%u: %s",
+				      opt.job_id[j], opt.array_id[j],
+				      slurm_strerror(ESLURM_INVALID_JOB_ID));
+			} else {
+				error("Kill job error on job step id %u_%u.%u: %s",
+				      opt.job_id[j], opt.array_id[j],
+				      opt.step_id[j],
+				      slurm_strerror(ESLURM_INVALID_JOB_ID));
+			}
 			rc = 1;
 		}
 	}
@@ -586,7 +597,7 @@ _cancel_job_id (void *ci)
 			error_code = slurm_kill_job (job_id, sig, flags);
 		} else {
 			if (opt.batch) {
-				sig = sig|(KILL_JOB_BATCH << 24);
+				sig = sig | (KILL_JOB_BATCH << 24);
 				error_code = slurm_signal_job_step(job_id,
 						SLURM_BATCH_SCRIPT, sig);
 			} else {

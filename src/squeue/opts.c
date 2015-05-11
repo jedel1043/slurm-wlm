@@ -87,6 +87,8 @@ static void _parse_long_token( char *token, char *sep, int *field_size,
 			       bool *right_justify, char **suffix);
 static void  _print_options( void );
 static void  _usage( void );
+static bool _check_node_names(char *);
+static bool _find_a_host(char *, node_info_msg_t *);
 
 /*
  * parse_command_line
@@ -95,6 +97,7 @@ extern void
 parse_command_line( int argc, char* argv[] )
 {
 	char *env_val = NULL;
+	char *nodes;
 	bool override_format_env = false;
 	int opt_char;
 	int option_index;
@@ -148,7 +151,7 @@ parse_command_line( int argc, char* argv[] )
 	}
 	if (getenv("SQUEUE_PRIORITY"))
 		params.priority_flag = true;
-
+	nodes = NULL;
 	while ((opt_char = getopt_long(argc, argv,
 				       "A:ahi:j::lL:n:M:O:o:p:Pq:R:rs::S:t:u:U:vVw:",
 				       long_options, &option_index)) != -1) {
@@ -296,6 +299,7 @@ parse_command_line( int argc, char* argv[] )
 				      optarg);
 				exit(1);
 			}
+			nodes = xstrdup(optarg);
 			break;
 		case OPT_LONG_HELP:
 			_help();
@@ -373,6 +377,14 @@ parse_command_line( int argc, char* argv[] )
 		/* Replace params.nodename with the new one */
 		hostset_destroy(params.nodes);
 		params.nodes = nodenames;
+		/* Check if all node names specified
+		 * with -w are known to the controller.
+		 */
+		if (!_check_node_names(nodes)) {
+			xfree(nodes);
+			exit(1);
+		}
+		xfree(nodes);
 	}
 
 	if ( ( params.accounts == NULL ) &&
@@ -1919,4 +1931,55 @@ Usage: squeue [OPTIONS]\n\
 \nHelp options:\n\
   --help                          show this help message\n\
   --usage                         display a brief summary of squeue options\n");
+}
+
+/* _check_node_names()
+ */
+static bool
+_check_node_names(char *names)
+{
+	int cc;
+	node_info_msg_t *node_info;
+	hostlist_t l;
+	char *host;
+	hostlist_iterator_t itr;
+
+	if (names == NULL)
+		return true;
+
+	cc = slurm_load_node(0,
+			     &node_info,
+			     SHOW_ALL);
+	if (cc != 0) {
+		slurm_perror ("slurm_load_node error");
+		return false;
+	}
+
+	l = slurm_hostlist_create(names);
+	itr = hostlist_iterator_create(l);
+	while ((host = hostlist_next(itr))) {
+		if (!_find_a_host(host, node_info)) {
+			error("Invalid node name %s", host);
+			hostlist_iterator_destroy(itr);
+			return false;
+		}
+	}
+	hostlist_iterator_destroy(itr);
+
+	return true;
+}
+
+/* _find_a_host()
+ */
+static bool
+_find_a_host(char *host, node_info_msg_t *node)
+{
+	int cc;
+
+	for (cc = 0; cc < node->record_count; cc++) {
+		if (strcmp(host, node->node_array[cc].name) == 0)
+			return true;
+	}
+
+	return false;
 }
