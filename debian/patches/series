@@ -2,4 +2,3 @@ mail-path
 header
 sacctmgr-increase-buffer
 manpages
-honor-without-rpath-hwloc
