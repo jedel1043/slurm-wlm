@@ -1,0 +1,28 @@
+Description: Add zero-width break points in scontrol manpage
+  These break points make man hyphenate this long word without adding
+  hyphens.
+Origin: upstream
+Forwarded: no
+Reviewed-By: Rémi Palancher <remi@rezib.org>
+Last-Update: 2015-05-18
+
+--- slurm-llnl-14.11.6.orig/doc/man/man1/scontrol.1
++++ slurm-llnl-14.11.6/doc/man/man1/scontrol.1
+@@ -780,7 +780,7 @@
+ associated with the node(s) allocated to the job.
+ .TP
+ \fINtasksPerN:B:S:C\fP=
+-<tasks_per_node>:<tasks_per_baseboard>:<tasks_per_socket>:<tasks_per_core>
++<tasks_per_node>:\:<tasks_per_baseboard>:\:<tasks_per_socket>:\:<tasks_per_core>
+ Specifies the number of tasks to be started per hardware component (node,
+ baseboard, socket and core).
+ Unconstrained values may be shown as "0" or "*".
+@@ -797,7 +797,7 @@
+ The reason job is not running: e.g., waiting "Resources".
+ .TP
+ \fIReqB:S:C:T\fP=
+-<baseboard_count>:<socket_per_baseboard_count>:<core_per_socket_count>:<thread_per_core_count>
++<baseboard_count>:\:<socket_per_baseboard_count>:\:<core_per_socket_count>:\:<thread_per_core_count>
+ Specifies the count of various hardware components requested by the job.
+ Unconstrained values may be shown as "0" or "*".
+ .TP
