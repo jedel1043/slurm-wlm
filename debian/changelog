@@ -1,3 +1,22 @@
+slurm-llnl (14.11.6-1) UNRELEASED; urgency=medium
+
+  [ Gennaro Oliva ]
+  * Minor man pages formatting changes
+  * Restore var/*/slurm-llnl dirnames in the html configurator tools
+  * Add --disable-debug to configure to avoid the default use of -O0 and
+    consequent unprotected source functions, causing lintian report
+    hardening-no-fortify-functions; notice that -g in CFLAGS is still
+    provided by dpkg-buildflags
+
+  [ Rémi Palancher ]
+  * Add -dbg packages for libs, binaries and plugins
+  * Remove autoreconf since not needed anymore
+  * Remove patch honor-without-rpath-hwloc since merged upstream
+  * Create user slurm on slurm-client pkg install (Closes: #783663)
+  * Add missing dep for -client on -basic-plugins (Closes: #783662)
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 20 May 2015 11:04:53 +0200
+
 slurm-llnl (14.03.9-5) unstable; urgency=medium
 
   [ Roland Fehrenbacher ]
