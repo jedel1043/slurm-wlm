@@ -11,6 +11,10 @@ include /usr/share/dpkg/architecture.mk
 %:
 	dh $@ --builddirectory --parallel --with systemd
 
+# We run configure with --disable-debug to avoid the default use of -O0 and
+# consequent unprotected source functions, causing lintian report
+# hardening-no-fortify-functions
+# Notice that -g in CFLAGS is still provided by dpkg-buildflags
 override_dh_auto_configure:
 	dh_auto_configure -- --sysconfdir=/etc/slurm-llnl --localstatedir=/var/run/slurm-llnl --with-munge --without-blcr --enable-pam --without-rpath --disable-debug
 
