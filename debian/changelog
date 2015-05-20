@@ -1,4 +1,4 @@
-slurm-llnl (14.11.6-1) UNRELEASED; urgency=medium
+slurm-llnl (14.11.6-1) unstable; urgency=medium
 
   [ Gennaro Oliva ]
   * New upstream release
@@ -14,7 +14,7 @@ slurm-llnl (14.11.6-1) UNRELEASED; urgency=medium
   * Add missing dep on ucf + adduser on pkgs
   * Add missing dep for -client on -basic-plugins (Closes: #783662)
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 20 May 2015 11:04:53 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 20 May 2015 16:47:32 +0200
 
 slurm-llnl (14.03.9-5) unstable; urgency=medium
 
