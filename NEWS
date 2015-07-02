@@ -1,5 +1,54 @@
- This file describes changes in recent versions of Slurm. It primarily
+This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
+
+* Changes in Slurm 14.11.7
+==========================
+ -- Initialize some variables used with the srun --no-alloc option that may
+    cause random failures.
+ -- Add SchedulerParameters option of sched_min_interval that controls the
+    minimum time interval between any job scheduling action. The default value
+    is zero (disabled).
+ -- Change default SchedulerParameters=max_sched_time from 4 seconds to 2.
+ -- Refactor scancel so that all pending jobs are cancelled before starting
+    cancellation of running jobs. Otherwise they happen in parallel and the
+    pending jobs can be scheduled on resources as the running jobs are being
+    cancelled.
+ -- ALPS - Add new cray.conf variable NoAPIDSignalOnKill.  When set to yes this
+    will make it so the slurmctld will not signal the apid's in a batch job.
+    Instead it relies on the rpc coming from the slurmctld to kill the job to
+    end things correctly.
+ -- ALPS - Have the slurmstepd running a batch job wait for an ALPS release
+    before ending the job.
+ -- Initialize variables in consumable resource plugin to prevent core dump.
+ -- Fix scancel bug which could return an error on attempt to signal a job step.
+ -- In slurmctld communication agent, make the thread timeout be the configured
+    value of MessageTimeout rather than 30 seconds.
+ -- sshare -U/--Users only flag was used uninitialized.
+ -- Cray systems, add "plugstack.conf.template" sample SPANK configuration file.
+ -- BLUEGENE - Set DB2NOEXITLIST when starting the slurmctld daemon to avoid
+    random crashing in db2 when the slurmctld is exiting.
+ -- Make full node reservations display correctly the core count instead of
+    cpu count.
+ -- Preserve original errno on execve() failure in task plugin.
+ -- Add SLURM_JOB_NAME env variable to an salloc's environment.
+ -- Overwrite SLURM_JOB_NAME in an srun when it gets an allocation.
+ -- Make sure each job has a wckey if that is something that is tracked.
+ -- Make sure old step data is cleared when job is requeued.
+ -- Load libtinfo as needed when building ncurses tools.
+ -- Fix small memory leak in backup controller.
+ -- Fix segfault when backup controller takes control for second time.
+ -- Cray - Fix backup controller running native Slurm.
+ -- Provide prototypes for init_setproctitle()/fini_setproctitle on NetBSD.
+ -- Add configuration test to find out the full path to su command.
+ -- preempt/job_prio plugin: Fix for possible infinite loop when identifying
+    preemptable jobs.
+ -- preempt/job_prio plugin: Implement the concept of Warm-up Time here. Use
+    the QoS GraceTime as the amount of time to wait before preempting.
+    Basically, skip preemption if your time is not up.
+ -- Make srun wait KillWait time when a task is cancelled.
+ -- switch/cray: Revert logic added to 14.11.6 that set "PMI_CRAY_NO_SMP_ENV=1"
+    if CR_PACK_NODES is configured.
+ -- Prevent users from setting job's partition to an invalid partition.
 
 * Changes in Slurm 14.11.6
 ==========================

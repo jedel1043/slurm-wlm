@@ -224,7 +224,7 @@ For example, \fB\-\-constraint="intel"\fR
 A request can specify the number of nodes needed with some feature
 by appending an asterisk and count after the feature name.
 For example "\fB\-\-nodes=16 \-\-constraint=graphics*4 ..."\fR
-indicates that the job requires 16 nodes at that at least four of those
+indicates that the job requires 16 nodes and that at least four of those
 nodes must have the feature "graphics."
 .TP
 \fBAND\fR
@@ -660,6 +660,8 @@ This parameter would generally be used if whole nodes
 are allocated to jobs (\fBSelectType=select/linear\fR).
 Also see \fB\-\-mem\-per\-cpu\fR.
 \fB\-\-mem\fR and \fB\-\-mem\-per\-cpu\fR are mutually exclusive.
+NOTE: A memory size specification is treated as a special case and grants
+the job access to all of the memory on each node.
 NOTE: Enforcement of memory limits currently relies upon the task/cgroup plugin
 or enabling of accounting, which samples memory use on a periodic basis (data
 need not be stored, just collected). In both cases memory use is based upon
@@ -675,7 +677,7 @@ seen using the \fBscontrol show config\fR command.
 Note that if the job's \fB\-\-mem\-per\-cpu\fR value exceeds the configured
 \fBMaxMemPerCPU\fR, then the user's limit will be treated as a memory limit
 per task; \fB\-\-mem\-per\-cpu\fR will be reduced to a value no larger than
-\fBMaxMemPerCPU\fR; \fB\-\-cpus\-per\-task\fR will be set and value of
+\fBMaxMemPerCPU\fR; \fB\-\-cpus\-per\-task\fR will be set and the value of
 \fB\-\-cpus\-per\-task\fR multiplied by the new \fB\-\-mem\-per\-cpu\fR
 value will equal the original \fB\-\-mem\-per\-cpu\fR value specified by
 the user.

@@ -378,6 +378,8 @@ If configured, then any processes invoked on the user behalf (namely the
 SPANK prolog/epilog scripts and the slurmstepd processes, which in turn spawn
 the user batch script and applications) are not directly executed by the slurmd
 daemon, but instead the \fBChosLoc\fR program is executed.
+Both are spawned with the same user ID as the configured SlurmdUser
+(typically user root).
 That program's argument are the program and arguments that would otherwise be
 invoked directly by the slurmd daemon.
 The intent of this feature is to be able to run a user application in some
@@ -1126,7 +1128,7 @@ For examples of use, see the SLURM code in "src/plugins/job_submit" and
 "contribs/lua/job_submit*.lua" then modify the code to satisfy your needs.
 SLURM can be configured to use multiple job_submit plugins if desired,
 however the lua plugin will only execute one lua script named "job_submit.lua"
-and located in default script directory (typically the subdirectory "etc" of
+located in the default script directory (typically the subdirectory "etc" of
 the installation directory).
 No job submission plugins are used by default.
 
@@ -1425,7 +1427,7 @@ This is not compatible with \fBPreemptMode=OFF\fR.
 .TP
 \fBpreempt/qos\fR
 Job preemption rules are specified by Quality Of Service (QOS) specifications
-in the SLURM database a database.
+in the SLURM database.
 This is not compatible with \fBPreemptMode=OFF\fR or \fBPreemptMode=SUSPEND\fR
 (i.e. preempted jobs must be removed from the resources).
 .RE
@@ -2220,9 +2222,9 @@ deferred during this time period.
 Make certain the value is lower than \fBMessageTimeout\fR.
 If a value is not explicitly configured, the default value is half of
 \fBMessageTimeout\fR with a minimum default value of 1 second and a maximum
-default value of 4 seconds.
-For example if MessageTimeout=10, the time limit will be 4 seconds
-(i.e. MIN(10/2, 4) = 4).
+default value of 2 seconds.
+For example if MessageTimeout=10, the time limit will be 2 seconds
+(i.e. MIN(10/2, 2) = 2).
 .TP
 \fBmax_switch_wait=#\fR
 Maximum number of seconds that a job can delay execution waiting for the
@@ -2270,6 +2272,19 @@ The default value is 60 seconds.
 The maximum number of jobs that the main scheduling logic will start in any
 single execution.
 The default value is zero, which imposes no limit.
+.TP
+\fBsched_min_interval=#\fR
+How frequently, in microseconds, the main scheduling loop will execute and test
+any pending jobs.
+The scheduler runs in a limited fashion every time that any event happens which
+could enable a job to start (e.g. job submit, job terminate, etc.).
+If these events happen at a high frequency, the scheduler can run very
+frequently and consume significant resources if not throttled by this option.
+This option specifies the minimum time between the end of one scheduling
+cycle and the beginning of the next scheduling cycle.
+A value of zero will disable throttling of the scheduling logic interval.
+The default value is 1,000,000 microseconds on Cray/ALPS systems and
+zero microseconds (throttling is disabled) on other systems.
 .RE
 
 .TP
@@ -3350,8 +3365,7 @@ Also see \fBFeature\fR.
 .TP
 \fBMemSpecLimit\fR
 Limit on combined real memory allocation for compute node daemons
-(slurmd, slurmstepd), in megabytes. Use of this parameter may improve
-job performance.
+(slurmd, slurmstepd), in megabytes.
 
 .TP
 \fBPort\fR
