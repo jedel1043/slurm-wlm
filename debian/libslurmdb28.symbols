@@ -194,6 +194,7 @@ libslurmdb.so.28 libslurmdb28 #MINVER#
  slurm_fd_set_blocking@Base 2.2.0
  slurm_fd_set_nonblocking@Base 2.2.0
  slurm_fd_write_n@Base 2.2.0
+ slurm_find_group_user@Base 14.11.8
  slurm_forward_data@Base 2.4.5
  slurm_free_accounting_update_msg@Base 2.2.0
  slurm_free_acct_gather_energy_req_msg@Base 2.6.2
