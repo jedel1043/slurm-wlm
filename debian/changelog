@@ -1,3 +1,10 @@
+slurm-llnl (14.11.8-1) unstable; urgency=medium
+
+  * New upstream release
+  * Updated libslurm28 and libslurmdb28 symbol files
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 08 Jul 2015 11:01:46 +0200
+
 slurm-llnl (14.11.7-1) unstable; urgency=medium
 
   * New upstream release 
