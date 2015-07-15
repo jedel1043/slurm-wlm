@@ -1,3 +1,10 @@
+slurm-llnl (14.11.8-3) unstable; urgency=medium
+
+  * Add libipmimonitoring-dev build dependency (Closes: #792368)
+  * Add librrd-dev build dependency (Closes: #792370)
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 15 Jul 2015 09:48:30 +0200
+
 slurm-llnl (14.11.8-2) unstable; urgency=medium
 
   * Correct a typo in the slurmd init.d script (Closes: #792027) 
