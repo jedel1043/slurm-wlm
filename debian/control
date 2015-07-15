@@ -22,6 +22,8 @@ Build-Depends:
  libhwloc-dev,
  dh-autoreconf,
  dh-exec,
+ librrd-dev,
+ libipmimonitoring-dev,
  dh-systemd (>= 1.5)
 Standards-Version: 3.9.6
 Homepage: http://slurm.schedmd.com
