@@ -1,8 +1,8 @@
-slurm-llnl (14.11.8-4) UNRELEASED; urgency=medium
+slurm-llnl (14.11.8-4) unstable; urgency=medium
 
   * Conflict with older versions of sinfo only
 
- -- Mehdi Dogguy <mehdi@debian.org>  Wed, 19 Aug 2015 22:07:56 +0000
+ -- Mehdi Dogguy <mehdi@debian.org>  Wed, 19 Aug 2015 22:15:21 +0000
 
 slurm-llnl (14.11.8-3) unstable; urgency=medium
 
