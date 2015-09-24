@@ -1,6 +1,7 @@
 slurm-llnl (15.08.0-1) UNRELEASED; urgency=medium
 
   * New upstream release 
+  * Updated libraries api version to 29 
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 24 Sep 2015 15:50:58 +0200
 
