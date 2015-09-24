@@ -7,6 +7,8 @@ slurm-llnl (15.08.0-1) UNRELEASED; urgency=medium
   * Add d/slurm-client.lintian-overrides to avoid warnings for a long
     line in acct_gather.conf.5 and for the conflicts with sinfo in
     d/control
+  * Remove d/slurmd.lintian-overrides since the lintian bug that caused
+    the spelling-error-in-binary false positive was solved
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 24 Sep 2015 15:50:58 +0200
 
