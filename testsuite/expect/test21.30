@@ -94,6 +94,9 @@ set maxjobsub   MaxSubmitJobs
 set maxjobsub_num 2
 set time_spacing 1
 
+# cr_core = 1 / cr_cpu = 0
+set selectparam  0
+
 # mod qos
 array set mod_qos_vals {
 	GrpNodes        -1
@@ -168,6 +171,11 @@ proc check_state { job } {
 		set exit_code 1
 	}
 
+}
+
+# Determine what the selecttype param is
+if {[string first "CR_CORE" [test_select_type_params]] != -1} {
+	set selectparam 1
 }
 
 set got_node 0
@@ -319,11 +327,16 @@ if {[test_super_user] == 0} {
 }
 
 #
-# Some tests will not work properly when allocating whole nodes to jobs
+# Some tests will not work properly when allocating sockets or whole nodes to jobs
 #
 set select_type [test_select_type]
 if {![string compare $select_type "linear"] || [default_part_exclusive]} {
 	send_user "\nWARNING: This test is incompatible with exclusive node allocations\n"
+	exit 0
+}
+set select_type_params [test_select_type_params]
+if {[string match "*CR_SOCKET*" $select_type_params]} {
+	send_user "\nWARNING: This test is incompatible with CR_SOCKET allocations\n"
 	exit 0
 }
 
@@ -598,6 +611,12 @@ set mod_qos_vals(MaxWall) "-1"
 #
 # Test Max CPUs Per User
 #
+
+# If CR_CORE set maxcpuspu a multiple number of threads
+if {$selectparam} {
+	set maxcpuspu_num [expr $maxcpuspu_num * $nthreads]
+}
+
 set mod_qos_vals(MaxCpusPerUser) $maxcpuspu_num
 mod_qos $qostest [array get mod_qos_vals]
 sleep $time_spacing

@@ -137,6 +137,18 @@ extern int parse_option_end(char *option)
 	return end;
 }
 
+
+/* Do not allow the endtime request for sreport to exceed 'now'. */
+extern time_t sanity_check_endtime(time_t endtime)
+{
+	time_t now = time(NULL);
+
+	if (endtime > now)
+		endtime = now;
+
+	return endtime;
+}
+
 /* you need to xfree whatever is sent from here */
 extern char *strip_quotes(char *option, int *increased)
 {
@@ -238,14 +250,32 @@ extern int sort_user_dec(void *v1, void *v2)
 	slurmdb_report_user_rec_t *user_a;
 	slurmdb_report_user_rec_t *user_b;
 	int diff;
+	/* FIXME : this only works for CPUs now */
+	int tres_id = TRES_CPU;
 
 	user_a = *(slurmdb_report_user_rec_t **)v1;
 	user_b = *(slurmdb_report_user_rec_t **)v2;
 
 	if (sort_flag == SLURMDB_REPORT_SORT_TIME) {
-		if (user_a->cpu_secs > user_b->cpu_secs)
+		slurmdb_tres_rec_t *tres_a, *tres_b;
+
+		if (!user_a->tres_list || !user_b->tres_list)
+			return 0;
+
+		if (!(tres_a = list_find_first(user_a->tres_list,
+					       slurmdb_find_tres_in_list,
+					       &tres_id)))
+			return 1;
+
+		if (!(tres_b = list_find_first(user_b->tres_list,
+					       slurmdb_find_tres_in_list,
+					       &tres_id)))
 			return -1;
-		else if (user_a->cpu_secs < user_b->cpu_secs)
+
+
+		if (tres_a->alloc_secs > tres_b->alloc_secs)
+			return -1;
+		else if (tres_a->alloc_secs < tres_b->alloc_secs)
 			return 1;
 	}
 

@@ -45,6 +45,7 @@
 #include <time.h>
 #include <sys/types.h>
 
+#include "src/common/cpu_frequency.h"
 #include "src/common/hostlist.h"
 #include "src/common/list.h"
 #include "src/common/macros.h"
@@ -61,9 +62,7 @@
 static int	_filter_job(job_info_t * job);
 static int	_filter_job_part(char *part_name);
 static int	_filter_step(job_step_info_t * step);
-static int	_get_node_cnt(job_info_t * job);
 static void	_job_list_del(void *x);
-static int	_nodes_in_list(char *node_list);
 static uint32_t	_part_get_prio(char *part_name);
 static void	_part_state_free(void);
 static void	_part_state_load(void);
@@ -137,7 +136,7 @@ int print_jobs_array(job_info_t * jobs, int size, List format)
 
 	/* Print the jobs of interest */
 	list_for_each (l, (ListForF) print_job_from_format, (void *) format);
-	list_destroy (l);
+	FREE_NULL_LIST (l);
 
 	return SLURM_SUCCESS;
 }
@@ -170,7 +169,7 @@ int print_steps_array(job_step_info_t * steps, int size, List format)
 			print_step_from_format(step_ptr, format);
 		}
 		list_iterator_destroy(step_iterator);
-		list_destroy(step_list);
+		FREE_NULL_LIST(step_list);
 	}
 
 	return SLURM_SUCCESS;
@@ -454,15 +453,35 @@ int _print_job_batch_host(job_info_t * job, int width, bool right, char* suffix)
 	return SLURM_SUCCESS;
 }
 
+int _print_job_burst_buffer(job_info_t * job, int width, bool right, char* suffix)
+{
+	if (job == NULL)	/* Print the Header instead */
+		_print_str("BURST_BUFFER", width, right, true);
+	else {
+		char id[FORMAT_STRING_SIZE];
+		snprintf(id, FORMAT_STRING_SIZE, "%s", job->burst_buffer);
+		_print_str(id, width, right, true);
+	}
+	if (suffix)
+		printf("%s", suffix);
+	return SLURM_SUCCESS;
+}
+
 int _print_job_core_spec(job_info_t * job, int width, bool right, char* suffix)
 {
-	if (job == NULL) 	/* Print the Header instead */
+	char spec[FORMAT_STRING_SIZE];
+
+	if (job == NULL) {	/* Print the Header instead */
 		_print_str("CORE_SPEC", width, right, true);
-	else
-		if (job->core_spec == (uint16_t) NO_VAL)
-			_print_str("*", width, right, true);
-		else
-			_print_int(job->core_spec, width, right, true);
+	} else if (job->core_spec == (uint16_t) NO_VAL) {
+		_print_str("N/A", width, right, true);
+	} else if (job->core_spec & CORE_SPEC_THREAD) {
+		snprintf(spec, FORMAT_STRING_SIZE, "%d Threads",
+			 (job->core_spec & (~CORE_SPEC_THREAD)));
+		_print_str(spec, width, right, true);
+	} else {
+		_print_int(job->core_spec, width, right, true);
+	}
 	if (suffix)
 		printf("%s", suffix);
 	return SLURM_SUCCESS;
@@ -480,7 +499,7 @@ int _print_job_job_id(job_info_t * job, int width, bool right, char* suffix)
 		if (getenv("SLURM_BITSTR_LEN")) {
 			len = strlen(job->array_task_str) + 64;
 			buf = xmalloc(len);
-			sprintf(buf, "%u_[%s]\n", job->array_job_id,
+			sprintf(buf, "%u_[%s]", job->array_job_id,
 				job->array_task_str);
 			_print_str(buf, width, right, false);
 			xfree(buf);
@@ -875,12 +894,13 @@ int _print_job_reason_list(job_info_t * job, int width, bool right,
 		   && (IS_JOB_PENDING(job)
 		       || IS_JOB_TIMEOUT(job)
 		       || IS_JOB_FAILED(job))) {
-		char id[FORMAT_STRING_SIZE], *reason;
+		int len = width ? width : FORMAT_STRING_SIZE;
+		char id[len], *reason;
 		if (job->state_desc)
 			reason = job->state_desc;
 		else
 			reason = job_reason_string(job->state_reason);
-		snprintf(id, FORMAT_STRING_SIZE, "(%s)", reason);
+		snprintf(id, len, "(%s)", reason);
 		_print_str(id, width, right, true);
 	} else {
 		char *nodes = xstrdup(job->nodes);
@@ -931,7 +951,8 @@ int _print_job_num_cpus(job_info_t * job, int width, bool right, char* suffix)
 	else {
 		if (params.cluster_flags & CLUSTER_FLAG_BG)
 			convert_num_unit((float)job->num_cpus, tmp_char,
-					 sizeof(tmp_char), UNIT_NONE);
+					 sizeof(tmp_char), UNIT_NONE,
+					 params.convert_flags);
 		else
 			snprintf(tmp_char, sizeof(tmp_char),
 				 "%u", job->num_cpus);
@@ -957,11 +978,12 @@ int _print_job_num_nodes(job_info_t * job, int width, bool right_justify,
 						    &node_cnt);
 
 		if ((node_cnt == 0) || (node_cnt == NO_VAL))
-			node_cnt = _get_node_cnt(job);
+			node_cnt = job->num_nodes;
 
 		if (params.cluster_flags & CLUSTER_FLAG_BG)
 			convert_num_unit((float)node_cnt, tmp_char,
-					 sizeof(tmp_char), UNIT_NONE);
+					 sizeof(tmp_char), UNIT_NONE,
+					 params.convert_flags);
 		else
 			snprintf(tmp_char, sizeof(tmp_char), "%d", node_cnt);
 
@@ -970,40 +992,6 @@ int _print_job_num_nodes(job_info_t * job, int width, bool right_justify,
 	if (suffix)
 		printf("%s", suffix);
 	return SLURM_SUCCESS;
-}
-
-static int _get_node_cnt(job_info_t * job)
-{
-	int node_cnt = 0;
-
-	/*  For PENDING jobs, return the maximum of the requested nodelist,
-	 *   requested maximum number of nodes, or requested CPUs rounded
-	 *   to nearest node.
-	 *
-	 *  For COMPLETING jobs, the job->nodes nodelist has already been
-	 *   altered to list only the nodes still in the comp state, and
-	 *   thus we count only those nodes toward the total nodes still
-	 *   allocated to this job.
-	 */
-
-	if (IS_JOB_PENDING(job)) {
-		node_cnt = _nodes_in_list(job->req_nodes);
-		node_cnt = MAX(node_cnt, job->num_nodes);
-		if ((node_cnt == 1) && (job->num_cpus > 1)
-		    && job->ntasks_per_node
-		    && (job->ntasks_per_node != (uint16_t) NO_VAL)) {
-			int num_tasks = job->num_cpus;
-			if (job->cpus_per_task != (uint16_t) NO_VAL)
-				num_tasks /= job->cpus_per_task;
-			node_cnt = (num_tasks + 1) / job->ntasks_per_node;
-			if (node_cnt > num_tasks)
-				node_cnt = num_tasks;
-			else if (!node_cnt)
-				node_cnt = 1;
-		}
-	} else
-		node_cnt = _nodes_in_list(job->nodes);
-	return node_cnt;
 }
 
 int _print_job_num_sct(job_info_t * job, int width, bool right_justify,
@@ -1018,17 +1006,20 @@ int _print_job_num_sct(job_info_t * job, int width, bool right_justify,
 			strcpy(sockets, "*");
 		else
 			convert_num_unit((float)job->sockets_per_node, sockets,
-					sizeof(sockets), UNIT_NONE);
+					sizeof(sockets), UNIT_NONE,
+					params.convert_flags);
 		if (job->cores_per_socket == (uint16_t) NO_VAL)
 			strcpy(cores, "*");
 		else
 			convert_num_unit((float)job->cores_per_socket, cores,
-					sizeof(cores), UNIT_NONE);
+					sizeof(cores), UNIT_NONE,
+					params.convert_flags);
 		if (job->threads_per_core == (uint16_t) NO_VAL)
 			strcpy(threads, "*");
 		else
 			convert_num_unit((float)job->threads_per_core, threads,
-					sizeof(threads), UNIT_NONE);
+					sizeof(threads), UNIT_NONE,
+					params.convert_flags);
 		sct[0] = '\0';
 		strcat(sct, sockets);
 		strcat(sct, ":");
@@ -1045,14 +1036,6 @@ int _print_job_num_sct(job_info_t * job, int width, bool right_justify,
 	return SLURM_SUCCESS;
 }
 
-static int _nodes_in_list(char *node_list)
-{
-	hostset_t host_set = hostset_create(node_list);
-	int count = hostset_count(host_set);
-	hostset_destroy(host_set);
-	return count;
-}
-
 int _print_job_shared(job_info_t * job, int width, bool right_justify,
 		      char* suffix)
 {
@@ -1064,8 +1047,10 @@ int _print_job_shared(job_info_t * job, int width, bool right_justify,
 			_print_str("no", width, right_justify, true);
 			break;
 		case 1:
-		case 2:
 			_print_str("yes", width, right_justify, true);
+			break;
+		case 2:
+			_print_str("user", width, right_justify, true);
 			break;
 		case (uint16_t)NO_VAL:
 		default:
@@ -1101,7 +1086,8 @@ int _print_pn_min_cpus(job_info_t * job, int width, bool right_justify,
 		_print_str("MIN_CPUS", width, right_justify, true);
 	else {
 		convert_num_unit((float)job->pn_min_cpus, tmp_char,
-				 sizeof(tmp_char), UNIT_NONE);
+				 sizeof(tmp_char), UNIT_NONE,
+				 params.convert_flags);
 		_print_str(tmp_char, width, right_justify, true);
 	}
 	if (suffix)
@@ -1121,7 +1107,8 @@ int _print_sockets(job_info_t * job, int width, bool right_justify,
 			strcpy(tmp_char, "*");
 		else
 			convert_num_unit((float)job->sockets_per_node, tmp_char,
-				 sizeof(tmp_char), UNIT_NONE);
+				 sizeof(tmp_char), UNIT_NONE,
+				 params.convert_flags);
 		_print_str(tmp_char, width, right_justify, true);
 	}
 	if (suffix)
@@ -1141,7 +1128,8 @@ int _print_cores(job_info_t * job, int width, bool right_justify,
 			strcpy(tmp_char, "*");
 		else
 			convert_num_unit((float)job->cores_per_socket, tmp_char,
-					sizeof(tmp_char), UNIT_NONE);
+					sizeof(tmp_char), UNIT_NONE,
+					params.convert_flags);
 		_print_str(tmp_char, width, right_justify, true);
 	}
 	if (suffix)
@@ -1161,7 +1149,8 @@ int _print_threads(job_info_t * job, int width, bool right_justify,
 			strcpy(tmp_char, "*");
 		else
 			convert_num_unit((float)job->threads_per_core, tmp_char,
-					sizeof(tmp_char), UNIT_NONE);
+					sizeof(tmp_char), UNIT_NONE,
+					params.convert_flags);
 		_print_str(tmp_char, width, right_justify, true);
 	}
 	if (suffix)
@@ -1181,7 +1170,8 @@ int _print_pn_min_memory(job_info_t * job, int width, bool right_justify,
 	    	tmp_char[0] = '\0';
 		job->pn_min_memory &= (~MEM_PER_CPU);
 		convert_num_unit((float)job->pn_min_memory, min_mem,
-				 sizeof(min_mem), UNIT_MEGA);
+				 sizeof(min_mem), UNIT_MEGA,
+				 params.convert_flags);
 		strcat(tmp_char, min_mem);
 		_print_str(tmp_char, width, right_justify, true);
 	}
@@ -1201,7 +1191,8 @@ _print_pn_min_tmp_disk(job_info_t * job, int width, bool right_justify,
 		_print_str("MIN_TMP_DISK", width, right_justify, true);
 	else {
 		convert_num_unit((float)job->pn_min_tmp_disk,
-				 tmp_char, sizeof(tmp_char), UNIT_MEGA);
+				 tmp_char, sizeof(tmp_char), UNIT_MEGA,
+				 params.convert_flags);
 		_print_str(tmp_char, width, right_justify, true);
 	}
 
@@ -1558,7 +1549,7 @@ int _print_job_max_nodes(job_info_t * job, int width, bool right_justify,
 	else if (job->max_nodes != 0)
 		_print_int(job->max_nodes, width, right_justify, true);
 	else
-		_print_int(_get_node_cnt(job), width, right_justify, true);
+		_print_int(job->num_nodes, width, right_justify, true);
 
 	if (suffix)
 		printf("%s",suffix);
@@ -1840,6 +1831,23 @@ int _print_job_wait4switch(job_info_t * job, int width,
 
 	if (suffix)
 		printf("%s", suffix);
+	return SLURM_SUCCESS;
+}
+
+int _print_job_tres(job_info_t *job, int width,
+		    bool right_justify, char *suffix)
+{
+	if (job == NULL) {
+		_print_str("TRES", width, right_justify, true);
+	} else {
+		if (job->tres_alloc_str)
+			_print_str(job->tres_alloc_str, width,
+				   right_justify, true);
+		else
+			_print_str("N/A", width,
+				   right_justify, true);
+
+	}
 	return SLURM_SUCCESS;
 }
 
@@ -2208,12 +2216,19 @@ int _print_step_num_cpus(job_step_info_t * step, int width, bool right,
 int _print_step_cpu_freq(job_step_info_t * step, int width, bool right,
 			 char* suffix)
 {
-	if (step == NULL)
+	char bfm[16], bfx[16], bfg[16], bfall[48];
+
+	if (step == NULL) {
 		_print_str("CPU_FREQ", width, right, true);
-	else if (step->cpu_freq != NO_VAL)
-		_print_int(step->cpu_freq, width, right, true);
-	else
-		_print_str("N/A", width, right, true);
+		if (suffix)
+			printf("%s", suffix);
+		return SLURM_SUCCESS;
+	}
+	cpu_freq_to_string(bfm, sizeof(bfm), step->cpu_freq_min);
+	cpu_freq_to_string(bfx, sizeof(bfx), step->cpu_freq_max);
+	cpu_freq_to_string(bfg, sizeof(bfg), step->cpu_freq_gov);
+	snprintf(bfall, sizeof(bfall), "%s-%s:%s", bfm, bfx, bfg);
+	_print_str(bfall, width, right, true);
 
 	if (suffix)
 		printf("%s", suffix);
@@ -2253,7 +2268,7 @@ static int _filter_job(job_info_t * job)
 	int filter;
 	ListIterator iterator;
 	uint32_t *user;
-	uint16_t *state_id;
+	uint32_t *state_id;
 	char *account, *license, *qos, *name;
 	squeue_job_step_t *job_step_id;
 
@@ -2333,15 +2348,14 @@ static int _filter_job(job_info_t * job)
 		filter = 1;
 		iterator = list_iterator_create(params.state_list);
 		while ((state_id = list_next(iterator))) {
-			if ((*state_id == job->job_state) ||
-			    ((*state_id == JOB_COMPLETING) &&
-			     (*state_id & job->job_state)) ||
-			    ((*state_id == JOB_CONFIGURING) &&
-			     (*state_id & job->job_state)) ||
-			    ((*state_id == JOB_RESIZING) &&
-			     (*state_id & job->job_state))||
-			    ((*state_id == JOB_SPECIAL_EXIT) &&
-			     (*state_id & job->job_state))) {
+			bool match = false;
+			job->job_state &= ~JOB_UPDATE_DB;
+			if (*state_id &  JOB_STATE_FLAGS) {
+				if (*state_id &  job->job_state)
+					match = true;
+			} else if (*state_id == job->job_state)
+				match = true;
+			if (match) {
 				filter = 0;
 				break;
 			}

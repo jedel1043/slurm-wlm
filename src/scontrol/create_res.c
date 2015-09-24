@@ -121,6 +121,17 @@ scontrol_parse_res_options(int argc, char *argv[], const char *msg,
 		if (strncasecmp(tag, "ReservationName", MAX(taglen, 1)) == 0) {
 			resv_msg_ptr->name = val;
 
+		} else if (strncasecmp(tag, "Accounts", MAX(taglen, 1)) == 0) {
+			if (plus_minus) {
+				resv_msg_ptr->accounts =
+					_process_plus_minus(plus_minus, val);
+				*free_acct_str = 1;
+			} else {
+				resv_msg_ptr->accounts = val;
+			}
+		} else if (strncasecmp(tag, "BurstBuffer", MAX(taglen, 2))
+			   == 0) {
+			resv_msg_ptr->burst_buffer = val;
 		} else if (strncasecmp(tag, "StartTime", MAX(taglen, 1)) == 0){
 			time_t  t = parse_time(val, 0);
 			if (errno == ESLURM_INVALID_TIME_VALUE) {
@@ -274,13 +285,10 @@ scontrol_parse_res_options(int argc, char *argv[], const char *msg,
 			} else {
 				resv_msg_ptr->users = val;
 			}
-		} else if (strncasecmp(tag, "Accounts", MAX(taglen, 1)) == 0) {
-			if (plus_minus) {
-				resv_msg_ptr->accounts =
-					_process_plus_minus(plus_minus, val);
-				*free_acct_str = 1;
-			} else {
-				resv_msg_ptr->accounts = val;
+		} else if (strncasecmp(tag, "Watts", MAX(taglen, 1)) == 0) {
+			if (parse_uint32(val, &(resv_msg_ptr->resv_watts))) {
+				error("Invalid Watts value: %s", val);
+				return -1;
 			}
 		} else if (strncasecmp(tag, "res", 3) == 0) {
 			continue;
@@ -423,13 +431,17 @@ scontrol_create_res(int argc, char *argv[])
 	 * make the reservation for the whole partition.
 	 */
 	if ((resv_msg.core_cnt == 0) &&
+	    (resv_msg.burst_buffer == NULL ||
+	     resv_msg.burst_buffer[0] == '\0') &&
 	    (resv_msg.node_cnt  == NULL || resv_msg.node_cnt[0]  == 0)    &&
 	    (resv_msg.node_list == NULL || resv_msg.node_list[0] == '\0') &&
-	    (resv_msg.licenses  == NULL || resv_msg.licenses[0]  == '\0')) {
+	    (resv_msg.licenses  == NULL || resv_msg.licenses[0]  == '\0') &&
+	    (resv_msg.resv_watts == NO_VAL)) {
 		if (resv_msg.partition == NULL) {
 			exit_code = 1;
-			error("CoreCnt, Nodes, NodeCnt or Licenses must be "
-			      "specified. No reservation created.");
+			error("CoreCnt, Nodes, NodeCnt, BurstBuffer, Licenses"
+			      "or Watts must be specified. No reservation "
+			      "created.");
 			goto SCONTROL_CREATE_RES_CLEANUP;
 		}
 		if (resv_msg.flags == (uint16_t) NO_VAL)
@@ -445,7 +457,17 @@ scontrol_create_res(int argc, char *argv[])
 		      "No reservation created.");
 		goto SCONTROL_CREATE_RES_CLEANUP;
 	}
-
+	if (resv_msg.resv_watts != NO_VAL &&
+	    (!(resv_msg.flags & RESERVE_FLAG_ANY_NODES) ||
+	     (resv_msg.core_cnt != 0) ||
+	     (resv_msg.node_cnt  != NULL && resv_msg.node_cnt[0]  != 0) ||
+	     (resv_msg.node_list != NULL && resv_msg.node_list[0] != '\0') ||
+	     (resv_msg.licenses  != NULL && resv_msg.licenses[0]  != '\0'))) {
+		exit_code = 1;
+		error("A power reservation must be empty and set the "
+		      "LICENSE_ONLY flag. No reservation created.");
+		goto SCONTROL_CREATE_RES_CLEANUP;
+	}
 	new_res_name = slurm_create_reservation(&resv_msg);
 	if (!new_res_name) {
 		exit_code = 1;

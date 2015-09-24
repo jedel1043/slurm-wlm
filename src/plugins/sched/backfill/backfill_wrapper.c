@@ -53,7 +53,7 @@
 
 const char		plugin_name[]	= "SLURM Backfill Scheduler plugin";
 const char		plugin_type[]	= "sched/backfill";
-const uint32_t		plugin_version	= 110;
+const uint32_t		plugin_version	= SLURM_VERSION_NUMBER;
 
 /* A plugin-global errno. */
 static int plugin_errno = SLURM_SUCCESS;
@@ -68,10 +68,9 @@ int init( void )
 {
 	pthread_attr_t attr;
 
-#ifdef HAVE_ALPS_CRAY
-	if (!slurmctld_primary)
+	if (slurmctld_config.scheduling_disabled)
 		return SLURM_SUCCESS;
-#endif
+
 
 	verbose( "sched: Backfill scheduler plugin loaded" );
 

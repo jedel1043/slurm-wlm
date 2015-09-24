@@ -70,6 +70,10 @@
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
 
+strong_alias(stepd_available, slurm_stepd_available);
+strong_alias(stepd_connect, slurm_stepd_connect);
+strong_alias(stepd_get_uid, slurm_stepd_get_uid);
+
 static bool
 _slurm_authorized_user()
 {
@@ -150,7 +154,7 @@ _step_connect(const char *directory, const char *nodename,
 	char *name = NULL;
 
 	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
-		error("%s: socket() failed dir %s node %s job %u step %d %m",
+		error("%s: socket() failed dir %s node %s job %u step %u %m",
 		      __func__, directory, nodename, jobid, stepid);
 		return -1;
 	}
@@ -164,7 +168,7 @@ _step_connect(const char *directory, const char *nodename,
 	len = strlen(addr.sun_path)+1 + sizeof(addr.sun_family);
 
 	if (connect(fd, (struct sockaddr *) &addr, len) < 0) {
-		error("%s: connect() failed dir %s node %s job %u step %d %m",
+		error("%s: connect() failed dir %s node %s job %u step %u %m",
 		      __func__, directory, nodename, jobid, stepid);
 		if (errno == ECONNREFUSED) {
 			_handle_stray_socket(name);
@@ -210,7 +214,7 @@ _guess_nodename()
  * Returns a socket descriptor for the opened socket on success,
  * and -1 on error.
  */
-int
+extern int
 stepd_connect(const char *directory, const char *nodename,
 	      uint32_t jobid, uint32_t stepid, uint16_t *protocol_version)
 {
@@ -238,7 +242,7 @@ stepd_connect(const char *directory, const char *nodename,
 
 	buffer = init_buf(0);
 	/* Create an auth credential */
-	auth_cred = g_slurm_auth_create(NULL, 2, NULL);
+	auth_cred = g_slurm_auth_create(NULL, 2, slurm_get_auth_info());
 	if (auth_cred == NULL) {
 		error("Creating authentication credential: %s",
 		      g_slurm_auth_errstr(g_slurm_auth_errno(NULL)));
@@ -458,11 +462,15 @@ stepd_attach(int fd, uint16_t protocol_version,
 {
 	int req = REQUEST_ATTACH;
 	int rc = SLURM_SUCCESS;
+	int proto = protocol_version;
 
 	safe_write(fd, &req, sizeof(int));
 	safe_write(fd, ioaddr, sizeof(slurm_addr_t));
 	safe_write(fd, respaddr, sizeof(slurm_addr_t));
 	safe_write(fd, job_cred_sig, SLURM_IO_KEY_SIZE);
+
+	if (SLURM_PROTOCOL_VERSION >= SLURM_15_08_PROTOCOL_VERSION)
+		safe_write(fd, &proto, sizeof(int));
 
 	/* Receive the return code */
 	safe_read(fd, &rc, sizeof(int));
@@ -562,7 +570,7 @@ _sockname_regex(regex_t *re, const char *filename,
  *
  * Returns a List of pointers to step_loc_t structures.
  */
-List
+extern List
 stepd_available(const char *directory, const char *nodename)
 {
 	List l;
@@ -1084,6 +1092,8 @@ rwfail:
 /*
  * Get the uid of the step
  * Returns uid of the running step if successful.  On error returns -1.
+ *
+ * FIXME: BUG: On Linux, uid_t is uint32_t but this can return -1.
  */
 extern uid_t stepd_get_uid(int fd, uint16_t protocol_version)
 {

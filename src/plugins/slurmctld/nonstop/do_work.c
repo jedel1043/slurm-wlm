@@ -470,10 +470,7 @@ extern void init_job_db(void)
 extern void term_job_db(void)
 {
 	pthread_mutex_lock(&job_fail_mutex);
-	if (job_fail_list) {
-		list_destroy(job_fail_list);
-		job_fail_list = NULL;
-	}
+	FREE_NULL_LIST(job_fail_list);
 	pthread_mutex_unlock(&job_fail_mutex);
 }
 
@@ -1753,7 +1750,7 @@ static void _send_event_callbacks(void)
 				      callback_jobid);
 				goto io_fini;
 			}
-			sent = _slurm_msg_sendto_timeout(fd,
+			sent = slurm_msg_sendto_timeout(fd,
 					(char *) &callback_flags,
 					sizeof(uint32_t), 0, 100000);
 			while ((slurm_shutdown_msg_conn(fd) < 0) &&
@@ -1787,7 +1784,7 @@ static void *_state_thread(void *no_data)
 
 	last_save_time = last_callback_time = time(NULL);
 	while (!thread_shutdown) {
-		sleep(1);
+		usleep(200000);
 
 		now = time(NULL);
 		if (difftime(now, last_callback_time) >= NONSTOP_EVENT_PERIOD) {

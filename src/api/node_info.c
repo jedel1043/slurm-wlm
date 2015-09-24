@@ -128,7 +128,7 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 {
 	uint32_t my_state = node_ptr->node_state;
 	char *cloud_str = "", *comp_str = "", *drain_str = "", *power_str = "";
-	char load_str[32], tmp_line[512], time_str[32];
+	char load_str[32], mem_str[32], tmp_line[512], time_str[32], owner_str[32];
 	char *out = NULL, *reason_str = NULL, *select_reason_str = NULL;
 	uint16_t err_cpus = 0, alloc_cpus = 0;
 	int cpus_per_node = 1;
@@ -278,13 +278,18 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 		snprintf(tmp_line, sizeof(tmp_line), "OS=%s ", node_ptr->os);
 		xstrcat(out, tmp_line);
 	}
+	if (node_ptr->free_mem == NO_VAL)
+		strcpy(mem_str, "N/A");
+	else {
+		snprintf(mem_str, sizeof(mem_str), "%u", node_ptr->free_mem);
+	}
 	slurm_get_select_nodeinfo(node_ptr->select_nodeinfo,
 				  SELECT_NODEDATA_MEM_ALLOC,
 				  NODE_STATE_ALLOCATED,
 				  &alloc_memory);
 	snprintf(tmp_line, sizeof(tmp_line),
-		 "RealMemory=%u AllocMem=%u Sockets=%u Boards=%u",
-		 node_ptr->real_memory, alloc_memory,
+		 "RealMemory=%u AllocMem=%u FreeMem=%s Sockets=%u Boards=%u",
+		 node_ptr->real_memory, alloc_memory, mem_str,
 		 node_ptr->sockets, node_ptr->boards);
 	xstrcat(out, tmp_line);
 	if (one_liner)
@@ -317,12 +322,22 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 	}
 
 	/****** Line 8 ******/
-
+	if (node_ptr->owner == NO_VAL) {
+		snprintf(owner_str, sizeof(owner_str), "N/A");
+	} else {
+		char *user_name;
+		user_name = uid_to_string((uid_t) node_ptr->owner);
+		snprintf(owner_str, sizeof(owner_str), "%s(%u)",
+			 user_name, node_ptr->owner);
+		xfree(user_name);
+	}
 	snprintf(tmp_line, sizeof(tmp_line),
-		 "State=%s%s%s%s%s ThreadsPerCore=%u TmpDisk=%u Weight=%u",
+		 "State=%s%s%s%s%s ThreadsPerCore=%u TmpDisk=%u Weight=%u "
+		 "Owner=%s",
 		 node_state_string(my_state),
 		 cloud_str, comp_str, drain_str, power_str,
-		 node_ptr->threads, node_ptr->tmp_disk, node_ptr->weight);
+		 node_ptr->threads, node_ptr->tmp_disk, node_ptr->weight,
+		 owner_str);
 	xstrcat(out, tmp_line);
 	if (one_liner)
 		xstrcat(out, " ");
@@ -352,15 +367,29 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 	else
 		xstrcat(out, "\n   ");
 
-	/****** power Line ******/
+	/****** Power Management Line ******/
+	if (!node_ptr->power || (node_ptr->power->cap_watts == NO_VAL)) {
+		snprintf(tmp_line, sizeof(tmp_line), "CapWatts=n/a");
+	} else {
+		snprintf(tmp_line, sizeof(tmp_line), "CapWatts=%u",
+			 node_ptr->power->cap_watts);
+	}
+	xstrcat(out, tmp_line);
+	if (one_liner)
+		xstrcat(out, " ");
+	else
+		xstrcat(out, "\n   ");
+
+	/****** Power Consumption Line ******/
 	if (!node_ptr->energy || node_ptr->energy->current_watts == NO_VAL)
 		snprintf(tmp_line, sizeof(tmp_line), "CurrentWatts=n/s "
 				"LowestJoules=n/s ConsumedJoules=n/s");
 	else
 		snprintf(tmp_line, sizeof(tmp_line), "CurrentWatts=%u "
-				"LowestJoules=%u ConsumedJoules=%u",
+				"LowestJoules=%"PRIu64" "
+				"ConsumedJoules=%"PRIu64"",
 				node_ptr->energy->current_watts,
-				node_ptr->energy->base_watts,
+				node_ptr->energy->base_consumed_energy,
 				node_ptr->energy->consumed_energy);
 	xstrcat(out, tmp_line);
 	if (one_liner)
@@ -373,7 +402,7 @@ slurm_sprint_node_table (node_info_t * node_ptr,
 	    || node_ptr->ext_sensors->consumed_energy == NO_VAL)
 		snprintf(tmp_line, sizeof(tmp_line), "ExtSensorsJoules=n/s ");
 	else
-		snprintf(tmp_line, sizeof(tmp_line), "ExtSensorsJoules=%u ",
+		snprintf(tmp_line, sizeof(tmp_line), "ExtSensorsJoules=%"PRIu64" ",
 			 node_ptr->ext_sensors->consumed_energy);
 	xstrcat(out, tmp_line);
 	if (!node_ptr->ext_sensors
@@ -562,15 +591,19 @@ extern int slurm_load_node_single (node_info_msg_t **resp,
 }
 
 /*
- * slurm_node_energy - issue RPC to get the energy data on this machine
+ * slurm_get_node_energy_n - issue RPC to get the energy data of all
+ * configured sensors on the target machine
  * IN  host  - name of node to query, NULL if localhost
  * IN  delta - Use cache if data is newer than this in seconds
- * OUT acct_gather_energy_t structure on success or NULL other wise
- * RET 0 or a slurm error code
- * NOTE: free the response using slurm_acct_gather_energy_destroy
+ * OUT nb_sensors - number of sensors
+ * OUT energy - array of acct_gather_energy_t structures on success or
+ *                NULL other wise
+ * RET 0 on success or a slurm error code
+ * NOTE: free the response using xfree
  */
 extern int slurm_get_node_energy(char *host, uint16_t delta,
-				 acct_gather_energy_t **acct_gather_energy)
+				 uint16_t *sensor_cnt,
+				 acct_gather_energy_t **energy)
 {
 	int rc;
 	slurm_msg_t req_msg;
@@ -624,8 +657,10 @@ extern int slurm_get_node_energy(char *host, uint16_t delta,
 		g_slurm_auth_destroy(resp_msg.auth_cred);
 	switch (resp_msg.msg_type) {
 	case RESPONSE_ACCT_GATHER_ENERGY:
-		*acct_gather_energy = ((acct_gather_node_resp_msg_t *)
-				       resp_msg.data)->energy;
+		*sensor_cnt = ((acct_gather_node_resp_msg_t *)
+			       resp_msg.data)->sensor_cnt;
+		*energy = ((acct_gather_node_resp_msg_t *)
+			   resp_msg.data)->energy;
 		((acct_gather_node_resp_msg_t *) resp_msg.data)->energy = NULL;
 		slurm_free_acct_gather_node_resp_msg(resp_msg.data);
 		break;

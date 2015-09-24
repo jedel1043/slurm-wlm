@@ -100,6 +100,7 @@ am__aclocal_m4_deps = $(top_srcdir)/auxdir/ax_lib_hdf5.m4 \
 	$(top_srcdir)/auxdir/x_ac_bluegene.m4 \
 	$(top_srcdir)/auxdir/x_ac_cflags.m4 \
 	$(top_srcdir)/auxdir/x_ac_cray.m4 \
+	$(top_srcdir)/auxdir/x_ac_curl.m4 \
 	$(top_srcdir)/auxdir/x_ac_databases.m4 \
 	$(top_srcdir)/auxdir/x_ac_debug.m4 \
 	$(top_srcdir)/auxdir/x_ac_dlfcn.m4 \
@@ -108,10 +109,12 @@ am__aclocal_m4_deps = $(top_srcdir)/auxdir/ax_lib_hdf5.m4 \
 	$(top_srcdir)/auxdir/x_ac_gpl_licensed.m4 \
 	$(top_srcdir)/auxdir/x_ac_hwloc.m4 \
 	$(top_srcdir)/auxdir/x_ac_iso.m4 \
+	$(top_srcdir)/auxdir/x_ac_json.m4 \
 	$(top_srcdir)/auxdir/x_ac_lua.m4 \
 	$(top_srcdir)/auxdir/x_ac_man2html.m4 \
 	$(top_srcdir)/auxdir/x_ac_munge.m4 \
 	$(top_srcdir)/auxdir/x_ac_ncurses.m4 \
+	$(top_srcdir)/auxdir/x_ac_netloc.m4 \
 	$(top_srcdir)/auxdir/x_ac_nrt.m4 \
 	$(top_srcdir)/auxdir/x_ac_ofed.m4 \
 	$(top_srcdir)/auxdir/x_ac_pam.m4 \
@@ -124,7 +127,7 @@ am__aclocal_m4_deps = $(top_srcdir)/auxdir/ax_lib_hdf5.m4 \
 	$(top_srcdir)/auxdir/x_ac_sgi_job.m4 \
 	$(top_srcdir)/auxdir/x_ac_slurm_ssl.m4 \
 	$(top_srcdir)/auxdir/x_ac_sun_const.m4 \
-	$(top_srcdir)/auxdir/x_ac_xcpu.m4 $(top_srcdir)/configure.ac
+	$(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
@@ -272,6 +275,8 @@ CXXCPP = @CXXCPP@
 CXXDEPMODE = @CXXDEPMODE@
 CXXFLAGS = @CXXFLAGS@
 CYGPATH_W = @CYGPATH_W@
+DATAWARP_CPPFLAGS = @DATAWARP_CPPFLAGS@
+DATAWARP_LDFLAGS = @DATAWARP_LDFLAGS@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
 DLLTOOL = @DLLTOOL@
@@ -321,8 +326,12 @@ INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
 INSTALL_STRIP_PROGRAM = @INSTALL_STRIP_PROGRAM@
+JSON_CPPFLAGS = @JSON_CPPFLAGS@
+JSON_LDFLAGS = @JSON_LDFLAGS@
 LD = @LD@
 LDFLAGS = @LDFLAGS@
+LIBCURL = @LIBCURL@
+LIBCURL_CPPFLAGS = @LIBCURL_CPPFLAGS@
 LIBOBJS = @LIBOBJS@
 LIBS = @LIBS@
 LIBTOOL = @LIBTOOL@
@@ -341,6 +350,9 @@ MUNGE_LIBS = @MUNGE_LIBS@
 MYSQL_CFLAGS = @MYSQL_CFLAGS@
 MYSQL_LIBS = @MYSQL_LIBS@
 NCURSES = @NCURSES@
+NETLOC_CPPFLAGS = @NETLOC_CPPFLAGS@
+NETLOC_LDFLAGS = @NETLOC_LDFLAGS@
+NETLOC_LIBS = @NETLOC_LIBS@
 NM = @NM@
 NMEDIT = @NMEDIT@
 NRT_CPPFLAGS = @NRT_CPPFLAGS@
@@ -384,6 +396,7 @@ SEMAPHORE_LIBS = @SEMAPHORE_LIBS@
 SEMAPHORE_SOURCES = @SEMAPHORE_SOURCES@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
+SLEEP_CMD = @SLEEP_CMD@
 SLURMCTLD_PORT = @SLURMCTLD_PORT@
 SLURMCTLD_PORT_COUNT = @SLURMCTLD_PORT_COUNT@
 SLURMDBD_PORT = @SLURMDBD_PORT@
@@ -407,6 +420,7 @@ STRIP = @STRIP@
 SUCMD = @SUCMD@
 UTIL_LIBS = @UTIL_LIBS@
 VERSION = @VERSION@
+_libcurl_config = @_libcurl_config@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@

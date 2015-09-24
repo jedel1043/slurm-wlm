@@ -248,7 +248,7 @@ msg_thr_create(stepd_step_rec_t *job)
 	fd_set_nonblocking(fd);
 
 	eio_obj = eio_obj_create(fd, &msg_socket_ops, (void *)job);
-	job->msg_handle = eio_handle_create();
+	job->msg_handle = eio_handle_create(0);
 	eio_new_initial_obj(job->msg_handle, eio_obj);
 
 	slurm_attr_init(&attr);
@@ -419,8 +419,8 @@ _handle_accept(void *arg)
 	}
 
 	/* Get the uid & gid from the credential, then destroy it. */
-	uid = g_slurm_auth_get_uid(auth_cred, NULL);
-	gid = g_slurm_auth_get_gid(auth_cred, NULL);
+	uid = g_slurm_auth_get_uid(auth_cred, slurm_get_auth_info());
+	gid = g_slurm_auth_get_gid(auth_cred, slurm_get_auth_info());
 	debug3("  Identity: uid=%d, gid=%d", uid, gid);
 	g_slurm_auth_destroy(auth_cred);
 	free_buf(buffer);
@@ -1101,7 +1101,10 @@ _handle_attach(int fd, stepd_step_rec_t *job, uid_t uid)
 	safe_read(fd, &srun->ioaddr, sizeof(slurm_addr_t));
 	safe_read(fd, &srun->resp_addr, sizeof(slurm_addr_t));
 	safe_read(fd, srun->key, SLURM_IO_KEY_SIZE);
+	safe_read(fd, &srun->protocol_version, sizeof(int));
 
+	if (!srun->protocol_version)
+		srun->protocol_version = (uint16_t)NO_VAL;
 	/*
 	 * Check if jobstep is actually running.
 	 */
@@ -1353,8 +1356,10 @@ _handle_resume(int fd, stepd_step_rec_t *job, uid_t uid)
 	if (!job->batch && switch_g_job_step_post_resume(job))
 		error("switch_g_job_step_post_resume: %m");
 	/* set the cpu frequencies if cpu_freq option used */
-	if (job->cpu_freq != NO_VAL)
+	if (job->cpu_freq_min != NO_VAL || job->cpu_freq_max != NO_VAL ||
+	    job->cpu_freq_gov != NO_VAL) {
 		cpu_freq_set(job);
+	}
 
 	pthread_mutex_unlock(&suspend_mutex);
 

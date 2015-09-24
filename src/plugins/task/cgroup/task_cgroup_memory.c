@@ -287,6 +287,12 @@ static int memcg_initialize (xcgroup_ns_t *ns, xcgroup_t *cg,
 		mlb = mls;
 	xcgroup_set_uint64_param (cg, "memory.limit_in_bytes", mlb);
 
+	/*
+	 * Also constrain kernel memory (if available).
+	 * See https://lwn.net/Articles/516529/
+	 */
+	xcgroup_set_uint64_param (cg, "memory.kmem.limit_in_bytes", mlb);
+
 	/* this limit has to be set only if ConstrainSwapSpace is set to yes */
 	if ( constrain_swap_space ) {
 		xcgroup_set_uint64_param (cg, "memory.memsw.limit_in_bytes",
@@ -356,7 +362,14 @@ extern int task_cgroup_memory_create(stepd_step_rec_t *job)
 				      "step batch memory cg path : %m");
 
 			}
+		} else if (stepid == SLURM_EXTERN_CONT) {
+			cc = snprintf(jobstep_cgroup_path, PATH_MAX,
+				      "%s/step_extern", job_cgroup_path);
+			if (cc >= PATH_MAX) {
+				error("task/cgroup: unable to build "
+				      "step extern memory cg path : %m");
 
+			}
 		} else {
 			if (snprintf(jobstep_cgroup_path, PATH_MAX, "%s/step_%u",
 				     job_cgroup_path,stepid) >= PATH_MAX) {

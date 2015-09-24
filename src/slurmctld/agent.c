@@ -4,6 +4,7 @@
  *****************************************************************************
  *  Copyright (C) 2002-2007 The Regents of the University of California.
  *  Copyright (C) 2008-2010 Lawrence Livermore National Security.
+ *  Portions Copyright (C) 2010-2015 SchedMD LLC <http://www.schedmd.com>.
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
  *  Written by Morris Jette <jette1@llnl.gov>, et. al.
  *  Derived from pdsh written by Jim Garlick <garlick1@llnl.gov>
@@ -202,6 +203,7 @@ static List mail_list = NULL;		/* pending e-mail requests */
 static pthread_mutex_t agent_cnt_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  agent_cnt_cond  = PTHREAD_COND_INITIALIZER;
 static int agent_cnt = 0;
+static int agent_thread_cnt = 0;
 static uint16_t message_timeout = (uint16_t) NO_VAL;
 
 static bool run_scheduler    = false;
@@ -227,6 +229,7 @@ void *agent(void *args)
 	task_info_t *task_specific_ptr;
 	time_t begin_time;
 	bool spawn_retry_agent = false;
+	int rpc_thread_cnt;
 
 #if HAVE_SYS_PRCTL_H
 	if (prctl(PR_SET_NAME, "slurmctld_agent", NULL, NULL, NULL) < 0) {
@@ -236,8 +239,9 @@ void *agent(void *args)
 #endif
 
 #if 0
-	info("Agent_cnt is %d of %d with msg_type %d",
-	     agent_cnt, MAX_AGENT_CNT, agent_arg_ptr->msg_type);
+	info("Agent_cnt=%d agent_thread_cnt=%d with msg_type=%d backlog_size=%d",
+	     agent_cnt, agent_thread_cnt, agent_arg_ptr->msg_type,
+	     list_count(retry_list));
 #endif
 	slurm_mutex_lock(&agent_cnt_mutex);
 	if (!wiki2_sched_test) {
@@ -248,10 +252,12 @@ void *agent(void *args)
 		wiki2_sched_test = true;
 	}
 
+	rpc_thread_cnt = 2 + MIN(agent_arg_ptr->node_count, AGENT_THREAD_COUNT);
 	while (1) {
 		if (slurmctld_config.shutdown_time ||
-		    (agent_cnt < MAX_AGENT_CNT)) {
+		    ((agent_thread_cnt+rpc_thread_cnt) <= MAX_SERVER_THREADS)) {
 			agent_cnt++;
+			agent_thread_cnt += rpc_thread_cnt;
 			break;
 		} else {	/* wait for state change and retry */
 			pthread_cond_wait(&agent_cnt_cond, &agent_cnt_mutex);
@@ -283,10 +289,8 @@ void *agent(void *args)
 		usleep(10000);	/* sleep and retry */
 	}
 	slurm_attr_destroy(&attr_wdog);
-#if 	AGENT_THREAD_COUNT < 1
-	fatal("AGENT_THREAD_COUNT value is invalid");
-#endif
-	debug2("got %d threads to send out",agent_info_ptr->thread_count);
+
+	debug2("got %d threads to send out", agent_info_ptr->thread_count);
 	/* start all the other threads (up to AGENT_THREAD_COUNT active) */
 	for (i = 0; i < agent_info_ptr->thread_count; i++) {
 
@@ -352,14 +356,20 @@ void *agent(void *args)
 	}
 	slurm_mutex_lock(&agent_cnt_mutex);
 
-	if (agent_cnt > 0)
+	if (agent_cnt > 0) {
 		agent_cnt--;
-	else {
+	} else {
 		error("agent_cnt underflow");
 		agent_cnt = 0;
 	}
+	if (agent_thread_cnt >= rpc_thread_cnt) {
+		agent_thread_cnt -= rpc_thread_cnt;
+	} else {
+		error("agent_thread_cnt underflow");
+		agent_thread_cnt = 0;
+	}
 
-	if (agent_cnt && (agent_cnt < MAX_AGENT_CNT))
+	if ((agent_thread_cnt + AGENT_THREAD_COUNT + 2) < MAX_SERVER_THREADS)
 		spawn_retry_agent = true;
 
 	pthread_cond_broadcast(&agent_cnt_cond);
@@ -607,8 +617,7 @@ static void *_wdog(void *args)
 	}
 
 	for (i = 0; i < agent_ptr->thread_count; i++) {
-		if (thread_ptr[i].ret_list)
-			list_destroy(thread_ptr[i].ret_list);
+		FREE_NULL_LIST(thread_ptr[i].ret_list);
 		xfree(thread_ptr[i].nodelist);
 	}
 
@@ -926,6 +935,8 @@ static void *_thread_per_group_rpc(void *args)
 			lock_slurmctld(node_write_lock);
 			reset_node_load(ret_data_info->node_name,
 					ping_resp->cpu_load);
+			reset_node_free_mem(ret_data_info->node_name,
+					    ping_resp->free_mem);
 			unlock_slurmctld(node_write_lock);
 		}
 		/* SPECIAL CASE: Mark node as IDLE if job already complete */
@@ -1004,10 +1015,8 @@ static void *_thread_per_group_rpc(void *args)
 			/* Not indicative of a real error */
 		case ESLURMD_JOB_NOTRUNNING:
 			/* Not indicative of a real error */
-			debug2("agent processed RPC to node %s: %s",
-			       ret_data_info->node_name,
-			       slurm_strerror(rc));
-
+			debug2("RPC to node %s failed, job not running",
+			       ret_data_info->node_name);
 			thread_state = DSH_DONE;
 			break;
 		default:
@@ -1195,7 +1204,7 @@ extern int agent_retry (int min_wait, bool mail_too)
 		static time_t last_msg_time = (time_t) 0;
 		uint32_t msg_type[5] = {0, 0, 0, 0, 0}, i = 0;
 		list_size = list_count(retry_list);
-		if ((list_size > MAX_AGENT_CNT) &&
+		if ((list_size > 50) &&
 		    (difftime(now, last_msg_time) > 300)) {
 			/* Note sizable backlog of work */
 			info("WARNING: agent retry_list size is %d",
@@ -1217,7 +1226,8 @@ extern int agent_retry (int min_wait, bool mail_too)
 	}
 
 	slurm_mutex_lock(&agent_cnt_mutex);
-	if (agent_cnt >= MAX_AGENT_CNT) {	/* too much work already */
+	if (agent_thread_cnt + AGENT_THREAD_COUNT + 2 > MAX_SERVER_THREADS) {
+		/* too much work already */
 		slurm_mutex_unlock(&agent_cnt_mutex);
 		slurm_mutex_unlock(&retry_mutex);
 		return list_size;
@@ -1310,6 +1320,9 @@ void agent_queue_request(agent_arg_t *agent_arg_ptr)
 {
 	queued_request_t *queued_req_ptr = NULL;
 
+	if ((AGENT_THREAD_COUNT + 2) >= MAX_SERVER_THREADS)
+		fatal("AGENT_THREAD_COUNT value is too low relative to MAX_SERVER_THREADS");
+
 	if (message_timeout == (uint16_t) NO_VAL) {
 		message_timeout = MAX(slurm_get_msg_timeout(), 30);
 	}
@@ -1398,14 +1411,12 @@ void agent_purge(void)
 {
 	if (retry_list) {
 		slurm_mutex_lock(&retry_mutex);
-		list_destroy(retry_list);
-		retry_list = NULL;
+		FREE_NULL_LIST(retry_list);
 		slurm_mutex_unlock(&retry_mutex);
 	}
 	if (mail_list) {
 		slurm_mutex_lock(&mail_mutex);
-		list_destroy(mail_list);
-		mail_list = NULL;
+		FREE_NULL_LIST(mail_list);
 		slurm_mutex_unlock(&mail_mutex);
 	}
 }
@@ -1518,6 +1529,8 @@ static char *_mail_type_str(uint16_t mail_type)
 		return "Failed";
 	if (mail_type == MAIL_JOB_REQUEUE)
 		return "Requeued";
+	if (mail_type == MAIL_JOB_STAGE_OUT)
+		return "Staged Out";
 	if (mail_type == MAIL_JOB_TIME100)
 		return "Reached time limit";
 	if (mail_type == MAIL_JOB_TIME90)
@@ -1567,6 +1580,14 @@ static void _set_job_time(struct job_record *job_ptr, uint16_t mail_type,
 			interval = time(NULL) - job_ptr->start_time;
 		snprintf(buf, buf_len, ", Run time ");
 		secs2time_str(interval, buf+11, buf_len-11);
+		return;
+	}
+
+	if ((mail_type == MAIL_JOB_STAGE_OUT) && job_ptr->end_time) {
+		interval = time(NULL) - job_ptr->end_time;
+		snprintf(buf, buf_len, ", StageOut time ");
+		secs2time_str(interval, buf+16, buf_len-16);
+		return;
 	}
 }
 

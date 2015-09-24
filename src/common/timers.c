@@ -40,6 +40,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include "src/common/log.h"
+#include "src/common/slurm_time.h"
 
 /*
  * slurm_diff_tv_str - build a string showing the time difference between two
@@ -51,7 +52,7 @@
  * IN from - where the function was called form
  */
 extern void slurm_diff_tv_str(struct timeval *tv1, struct timeval *tv2,
-			      char *tv_str, int len_tv_str, char *from,
+			      char *tv_str, int len_tv_str, const char *from,
 			      long limit, long *delta_t)
 {
 	char p[64] = "";
@@ -71,7 +72,7 @@ extern void slurm_diff_tv_str(struct timeval *tv1, struct timeval *tv2,
 			debug_limit = 1000000;
 		}
 		if ((*delta_t > debug_limit) || (*delta_t > limit)) {
-			if (!localtime_r(&tv1->tv_sec, &tm))
+			if (!slurm_localtime_r(&tv1->tv_sec, &tm))
 				error("localtime_r(): %m");
 			if (strftime(p, sizeof(p), "%T", &tm) == 0)
 				error("strftime(): %m");

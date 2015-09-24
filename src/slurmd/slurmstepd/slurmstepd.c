@@ -77,11 +77,11 @@ static void _dump_user_env(void);
 static void _send_ok_to_slurmd(int sock);
 static void _send_fail_to_slurmd(int sock);
 static stepd_step_rec_t *_step_setup(slurm_addr_t *cli, slurm_addr_t *self,
-				 slurm_msg_t *msg);
+				     slurm_msg_t *msg);
 #ifdef MEMORY_LEAK_DEBUG
 static void _step_cleanup(stepd_step_rec_t *job, slurm_msg_t *msg, int rc);
 #endif
-static int process_cmdline (int argc, char *argv[]);
+static int _process_cmdline (int argc, char *argv[]);
 
 int slurmstepd_blocked_signals[] = {
 	SIGPIPE, 0
@@ -102,7 +102,7 @@ main (int argc, char *argv[])
 	gid_t *gids;
 	int rc = 0;
 
-	if (process_cmdline (argc, argv) < 0)
+	if (_process_cmdline (argc, argv) < 0)
 		fatal ("Error in slurmstepd command line");
 
 	xsignal_block(slurmstepd_blocked_signals);
@@ -172,14 +172,14 @@ ending:
 
 	xfree(cli);
 	xfree(self);
-	xfree(conf->hostname);
 	xfree(conf->block_map);
 	xfree(conf->block_map_inv);
-	xfree(conf->spooldir);
+	xfree(conf->hostname);
+	xfree(conf->logfile);
 	xfree(conf->node_name);
 	xfree(conf->node_topo_addr);
 	xfree(conf->node_topo_pattern);
-	xfree(conf->logfile);
+	xfree(conf->spooldir);
 	xfree(conf);
 #endif
 	info("done with job");
@@ -318,7 +318,7 @@ static int _handle_spank_mode (int argc, char *argv[])
 /*
  *  Process special "modes" of slurmstepd passed as cmdline arguments.
  */
-static int process_cmdline (int argc, char *argv[])
+static int _process_cmdline (int argc, char *argv[])
 {
 	if ((argc == 2) && (strcmp(argv[1], "getenv") == 0)) {
 		print_rlimits();
@@ -378,7 +378,7 @@ _init_from_slurmd(int sock, char **argv,
 	char *incoming_buffer = NULL;
 	Buf buffer;
 	int step_type;
-	int len;
+	int len, proto;
 	slurm_addr_t *cli = NULL;
 	slurm_addr_t *self = NULL;
 	slurm_msg_t *msg = NULL;
@@ -456,6 +456,9 @@ _init_from_slurmd(int sock, char **argv,
 	/* Receive cpu_frequency info from slurmd */
 	cpu_freq_recv_info(sock);
 
+	/* get the protocol version of the srun */
+	safe_read(sock, &proto, sizeof(int));
+
 	/* receive req from slurmd */
 	safe_read(sock, &len, sizeof(int));
 	incoming_buffer = xmalloc(sizeof(char) * len);
@@ -464,9 +467,9 @@ _init_from_slurmd(int sock, char **argv,
 
 	msg = xmalloc(sizeof(slurm_msg_t));
 	slurm_msg_t_init(msg);
-	msg->protocol_version = SLURM_PROTOCOL_VERSION;
+	msg->protocol_version = (uint16_t)proto;
 
-	switch(step_type) {
+	switch (step_type) {
 	case LAUNCH_BATCH_JOB:
 		msg->msg_type = REQUEST_BATCH_JOB_LAUNCH;
 		break;
@@ -474,7 +477,7 @@ _init_from_slurmd(int sock, char **argv,
 		msg->msg_type = REQUEST_LAUNCH_TASKS;
 		break;
 	default:
-		fatal("Unrecognized launch RPC");
+		fatal("%s: Unrecognized launch RPC (%d)", __func__, step_type);
 		break;
 	}
 	if (unpack_msg(msg, buffer) == SLURM_ERROR)
@@ -513,14 +516,15 @@ _step_setup(slurm_addr_t *cli, slurm_addr_t *self, slurm_msg_t *msg)
 {
 	stepd_step_rec_t *job = NULL;
 
-	switch(msg->msg_type) {
+	switch (msg->msg_type) {
 	case REQUEST_BATCH_JOB_LAUNCH:
 		debug2("setup for a batch_job");
 		job = mgr_launch_batch_job_setup(msg->data, cli);
 		break;
 	case REQUEST_LAUNCH_TASKS:
 		debug2("setup for a launch_task");
-		job = mgr_launch_tasks_setup(msg->data, cli, self);
+		job = mgr_launch_tasks_setup(msg->data, cli, self,
+					     msg->protocol_version);
 		break;
 	default:
 		fatal("handle_launch_message: Unrecognized launch RPC");
@@ -544,7 +548,7 @@ _step_setup(slurm_addr_t *cli, slurm_addr_t *self, slurm_msg_t *msg)
 	if (msg->msg_type == REQUEST_BATCH_JOB_LAUNCH)
 		gres_plugin_job_set_env(&job->env, job->job_gres_list);
 	else if (msg->msg_type == REQUEST_LAUNCH_TASKS)
-		gres_plugin_step_set_env(&job->env, job->step_gres_list);
+		gres_plugin_step_set_env(&job->env, job->step_gres_list, 0);
 
 	/*
 	 * Add slurmd node topology informations to job env array

@@ -9,8 +9,10 @@ generated_html = \
 	add.html \
 	api.html \
 	authplugins.html \
+	bb_plugins.html \
 	big_sys.html \
 	bluegene.html \
+	burst_buffer.html \
 	cgroups.html \
 	checkpoint_blcr.html \
 	checkpoint_plugins.html \
@@ -27,7 +29,6 @@ generated_html = \
 	dist_plane.html \
 	documentation.html \
 	download.html \
-	dynalloc.html \
 	elastic_computing.html \
 	ext_sensorsplugins.html \
 	faq.html \
@@ -62,11 +63,12 @@ generated_html = \
 	overview.html \
 	platforms.html \
 	plugins.html \
+	power_mgmt.html \
 	power_save.html \
+	power_plugins.html \
 	preempt.html \
 	preemption_plugins.html \
 	priority_multifactor.html \
-	priority_multifactor2.html \
 	priority_multifactor3.html \
 	priority_plugins.html \
 	proctrack_plugins.html \

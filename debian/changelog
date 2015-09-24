@@ -1,3 +1,9 @@
+slurm-llnl (15.08.0-1) UNRELEASED; urgency=medium
+
+  * New upstream release 
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 24 Sep 2015 15:50:58 +0200
+
 slurm-llnl (14.11.8-4) unstable; urgency=medium
 
   * Conflict with older versions of sinfo only
