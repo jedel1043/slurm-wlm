@@ -736,6 +736,11 @@ scontrol_update_job (int argc, char *argv[])
 			job_msg.nice = NICE_OFFSET + 100;
 			update_cnt++;
 			continue;
+		} else if (!val && argv[i + 1]) {
+			tag = argv[i];
+			taglen = strlen(tag);
+			val = argv[++i];
+			vallen = strlen(val);
 		} else {
 			exit_code = 1;
 			fprintf (stderr, "Invalid input: %s\n", argv[i]);
@@ -1027,6 +1032,17 @@ scontrol_update_job (int argc, char *argv[])
 			}
 			update_cnt++;
 		}
+		else if (strncasecmp(tag, "ThreadSpec", MAX(taglen, 4)) == 0) {
+			if (!strcmp(val, "-1") || !strcmp(val, "*"))
+				job_msg.core_spec = (uint16_t) INFINITE;
+			else if (parse_uint16(val, &job_msg.core_spec)) {
+				error ("Invalid ThreadSpec value: %s", val);
+				exit_code = 1;
+				return 0;
+			} else
+				job_msg.core_spec |= CORE_SPEC_THREAD;
+			update_cnt++;
+		}
 		else if (strncasecmp(tag, "ExcNodeList", MAX(taglen, 3)) == 0){
 			job_msg.exc_nodes = val;
 			update_cnt++;
@@ -1052,6 +1068,10 @@ scontrol_update_job (int argc, char *argv[])
 		}
 		else if (strncasecmp(tag, "Account", MAX(taglen, 1)) == 0) {
 			job_msg.account = val;
+			update_cnt++;
+		}
+		else if (strncasecmp(tag, "BurstBuffer", MAX(taglen, 1)) == 0) {
+			job_msg.burst_buffer = val;
 			update_cnt++;
 		}
 		else if (strncasecmp(tag, "Dependency", MAX(taglen, 1)) == 0) {
@@ -1437,7 +1457,8 @@ static uint32_t _get_job_time(const char *job_id_str)
 				       resp->job_array[i].array_bitmap;
 			if ((task_id == NO_VAL) ||
 			    (resp->job_array[i].array_task_id == task_id) ||
-			    ((task_id < bit_size(array_bitmap)) &&
+			    (array_bitmap &&
+			     (task_id < bit_size(array_bitmap)) &&
 			     bit_test(array_bitmap, task_id))) {
 				/* Array job with task_id match */
 				time_limit = resp->job_array[i].time_limit;

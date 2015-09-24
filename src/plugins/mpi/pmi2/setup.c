@@ -66,6 +66,7 @@
 #include "pmi.h"
 #include "spawn.h"
 #include "kvs.h"
+#include "ring.h"
 
 #define PMI2_SOCK_ADDR_FMT "/tmp/sock.pmi2.%u.%u"
 
@@ -370,6 +371,12 @@ pmi2_setup_stepd(const stepd_step_rec_t *job, char ***env)
 	if (rc != SLURM_SUCCESS)
 		return rc;
 
+	/* TODO: finalize pmix_ring state somewhere */
+	/* initialize pmix_ring state */
+	rc = pmix_ring_init(&job_info, env);
+	if (rc != SLURM_SUCCESS)
+		return rc;
+
 	return SLURM_SUCCESS;
 }
 
@@ -379,24 +386,21 @@ pmi2_setup_stepd(const stepd_step_rec_t *job, char ***env)
 static char *
 _get_proc_mapping(const mpi_plugin_client_info_t *job)
 {
-	uint32_t node_cnt, task_cnt, task_mapped, node_task_cnt, **tids,
-		block;
-	uint16_t task_dist, *tasks, *rounds;
+	uint32_t node_cnt, task_cnt, task_mapped, node_task_cnt, **tids;
+	uint32_t task_dist, block;
+	uint16_t *tasks, *rounds;
 	int i, start_id, end_id;
 	char *mapping = NULL;
 
 	node_cnt = job->step_layout->node_cnt;
 	task_cnt = job->step_layout->task_cnt;
-	task_dist = job->step_layout->task_dist;
+	task_dist = job->step_layout->task_dist & SLURM_DIST_STATE_BASE;
 	tasks = job->step_layout->tasks;
 	tids = job->step_layout->tids;
 
 	/* for now, PMI2 only supports vector processor mapping */
 
-	if (task_dist == SLURM_DIST_CYCLIC ||
-	    task_dist == SLURM_DIST_CYCLIC_CFULL ||
-	    task_dist == SLURM_DIST_CYCLIC_CYCLIC ||
-	    task_dist == SLURM_DIST_CYCLIC_BLOCK) {
+	if ((task_dist & SLURM_DIST_NODEMASK) == SLURM_DIST_NODECYCLIC) {
 		mapping = xstrdup("(vector");
 
 		rounds = xmalloc (node_cnt * sizeof(uint16_t));

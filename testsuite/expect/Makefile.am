@@ -96,12 +96,12 @@ EXTRA_DIST = \
 	test1.73			\
 	test1.74			\
 	test1.75			\
+	test1.77			\
 	test1.80			\
 	test1.81			\
 	test1.82			\
 	test1.83			\
 	test1.84			\
-	test1.84.bash			\
 	test1.85			\
 	test1.86			\
 	test1.87			\
@@ -124,6 +124,7 @@ EXTRA_DIST = \
 	test1.96.prog.c			\
 	test1.97			\
 	test1.99			\
+	test1.100			\
 	test2.1				\
 	test2.2				\
 	test2.3				\
@@ -148,6 +149,7 @@ EXTRA_DIST = \
 	test2.22			\
 	test2.23			\
 	test2.24			\
+	test2.25			\
 	test3.1				\
 	test3.2				\
 	test3.3				\
@@ -160,16 +162,18 @@ EXTRA_DIST = \
 	test3.9				\
 	test3.10			\
 	test3.11			\
-	inc3.11.1                      \
-	inc3.11.2                      \
-	inc3.11.3                      \
-	inc3.11.4                      \
-	inc3.11.5                      \
-	inc3.11.6                      \
-	inc3.11.7                      \
-	inc3.11.8                      \
+	inc3.11.1			\
+	inc3.11.2			\
+	inc3.11.3			\
+	inc3.11.4			\
+	inc3.11.5			\
+	inc3.11.6			\
+	inc3.11.7			\
+	inc3.11.8			\
 	test3.12			\
 	test3.13			\
+	test3.14			\
+	test3.15			\
 	test4.1				\
 	test4.2				\
 	test4.3				\
@@ -182,6 +186,7 @@ EXTRA_DIST = \
 	test4.10			\
 	test4.11			\
 	test4.12			\
+	test4.13			\
 	test5.1				\
 	test5.2				\
 	test5.3				\
@@ -243,6 +248,19 @@ EXTRA_DIST = \
 	test7.16			\
 	test7.17			\
 	test7.17.prog.c			\
+	test7.17_configs/test7.17.1/gres.conf	\
+	test7.17_configs/test7.17.1/slurm.conf	\
+	test7.17_configs/test7.17.2/gres.conf	\
+	test7.17_configs/test7.17.2/slurm.conf	\
+	test7.17_configs/test7.17.3/gres.conf	\
+	test7.17_configs/test7.17.3/slurm.conf	\
+	test7.17_configs/test7.17.4/gres.conf	\
+	test7.17_configs/test7.17.4/slurm.conf	\
+	test7.17_configs/test7.17.5/slurm.conf	\
+	test7.17_configs/test7.17.6/gres.conf	\
+	test7.17_configs/test7.17.6/slurm.conf	\
+	test7.17_configs/test7.17.7/gres.conf	\
+	test7.17_configs/test7.17.7/slurm.conf	\
 	test8.1				\
 	test8.2				\
 	test8.3				\
@@ -320,6 +338,7 @@ EXTRA_DIST = \
 	test14.7			\
 	test14.8			\
 	test14.9			\
+	test14.10			\
 	test15.1			\
 	test15.2			\
 	test15.3			\
@@ -389,6 +408,8 @@ EXTRA_DIST = \
 	test17.36			\
 	test17.37			\
 	test17.38			\
+	test17.39			\
+	test17.40			\
 	test19.1			\
 	test19.2			\
 	test19.3			\
@@ -431,10 +452,7 @@ EXTRA_DIST = \
 	test21.19			\
 	test21.20			\
 	test21.21			\
-	inc21.21.1                      \
-	inc21.21.2                      \
-	inc21.21.3                      \
-	inc21.21.4                      \
+	inc21.21_tests                  \
 	test21.22			\
 	test21.23			\
 	test21.24			\
@@ -446,6 +464,7 @@ EXTRA_DIST = \
 	test21.30                       \
 	test21.31			\
 	test21.32			\
+	test21.34			\
 	inc21.30.1                      \
 	inc21.30.2                      \
 	inc21.30.3                      \
@@ -462,6 +481,9 @@ EXTRA_DIST = \
 	inc21.30.14			\
 	inc21.30.15			\
 	inc21.30.16			\
+	inc21.34.1			\
+	inc21.34.2			\
+	inc21.34_test			\
 	test22.1			\
 	inc22.1.1                       \
 	inc22.1.2                       \
@@ -492,6 +514,8 @@ EXTRA_DIST = \
 	test28.5                        \
 	test28.6                        \
 	test28.7			\
+	test28.8			\
+	test28.9			\
 	test29.1                        \
 	test29.2                        \
 	test29.3                        \
@@ -516,20 +540,18 @@ EXTRA_DIST = \
 	test32.12			\
 	test33.1			\
 	test33.1.prog.c			\
-	etc.33.1.1/slurm.conf		\
 	etc.33.1.1/testcases		\
 	etc.33.1.1/topology.conf	\
-	etc.33.1.2/slurm.conf		\
 	etc.33.1.2/testcases		\
 	etc.33.1.2/topology.conf	\
-	etc.33.1.3/slurm.conf		\
 	etc.33.1.3/testcases		\
 	etc.33.1.3/topology.conf	\
-	etc.33.1.4/slurm.conf		\
 	etc.33.1.4/testcases		\
 	etc.33.1.4/topology.conf	\
 	test34.1			\
-	test34.2
+	test34.2			\
+	test35.1			\
+	test35.2
 
 distclean-local:
 	rm -rf *error *output

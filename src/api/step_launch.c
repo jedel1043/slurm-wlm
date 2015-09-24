@@ -64,20 +64,22 @@
 
 #include "slurm/slurm.h"
 
+#include "src/common/cpu_frequency.h"
+#include "src/common/eio.h"
+#include "src/common/fd.h"
+#include "src/common/forward.h"
 #include "src/common/hostlist.h"
+#include "src/common/mpi.h"
+#include "src/common/net.h"
+#include "src/common/plugstack.h"
+#include "src/common/slurm_auth.h"
+#include "src/common/slurm_cred.h"
 #include "src/common/slurm_protocol_api.h"
 #include "src/common/slurm_protocol_defs.h"
+#include "src/common/slurm_time.h"
+#include "src/common/uid.h"
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
-#include "src/common/eio.h"
-#include "src/common/net.h"
-#include "src/common/fd.h"
-#include "src/common/slurm_auth.h"
-#include "src/common/forward.h"
-#include "src/common/plugstack.h"
-#include "src/common/slurm_cred.h"
-#include "src/common/mpi.h"
-#include "src/common/uid.h"
 
 #include "src/api/step_launch.h"
 #include "src/api/step_ctx.h"
@@ -140,7 +142,9 @@ void slurm_step_launch_params_t_init (slurm_step_launch_params_t *ptr)
 	ptr->buffered_stdio = true;
 	memcpy(&ptr->local_fds, &fds, sizeof(fds));
 	ptr->gid = getgid();
-	ptr->cpu_freq = NO_VAL;
+	ptr->cpu_freq_min = NO_VAL;
+	ptr->cpu_freq_max = NO_VAL;
+	ptr->cpu_freq_gov = NO_VAL;
 }
 
 /*
@@ -256,9 +260,12 @@ int slurm_step_launch (slurm_step_ctx_t *ctx,
 	launch.task_epilog	= params->task_epilog;
 	launch.cpu_bind_type	= params->cpu_bind_type;
 	launch.cpu_bind		= params->cpu_bind;
-	launch.cpu_freq		= params->cpu_freq;
+	launch.cpu_freq_min	= params->cpu_freq_min;
+	launch.cpu_freq_max	= params->cpu_freq_max;
+	launch.cpu_freq_gov	= params->cpu_freq_gov;
 	launch.mem_bind_type	= params->mem_bind_type;
 	launch.mem_bind		= params->mem_bind;
+	launch.accel_bind_type	= params->accel_bind_type;
 	launch.multi_prog	= params->multi_prog ? 1 : 0;
 	launch.cpus_per_task	= params->cpus_per_task;
 	launch.task_dist	= params->task_dist;
@@ -433,9 +440,12 @@ int slurm_step_launch_add (slurm_step_ctx_t *ctx,
 	launch.task_epilog	= params->task_epilog;
 	launch.cpu_bind_type	= params->cpu_bind_type;
 	launch.cpu_bind		= params->cpu_bind;
-	launch.cpu_freq		= params->cpu_freq;
+	launch.cpu_freq_min	= params->cpu_freq_min;
+	launch.cpu_freq_max	= params->cpu_freq_max;
+	launch.cpu_freq_gov	= params->cpu_freq_gov;
 	launch.mem_bind_type	= params->mem_bind_type;
 	launch.mem_bind		= params->mem_bind;
+	launch.accel_bind_type	= params->accel_bind_type;
 	launch.multi_prog	= params->multi_prog ? 1 : 0;
 	launch.cpus_per_task	= params->cpus_per_task;
 	launch.task_dist	= params->task_dist;
@@ -776,6 +786,7 @@ void slurm_step_launch_fwd_signal(slurm_step_ctx_t *ctx, int signo)
 	slurm_msg_t_init(&req);
 	req.msg_type = REQUEST_SIGNAL_TASKS;
 	req.data     = &msg;
+	req.protocol_version = ctx->step_resp->use_protocol_ver;
 
 	debug3("sending signal %d to job %u on host %s",
 	       signo, ctx->job_id, name);
@@ -802,7 +813,7 @@ void slurm_step_launch_fwd_signal(slurm_step_ctx_t *ctx, int signo)
 		}
 	}
 	list_iterator_destroy(itr);
-	list_destroy(ret_list);
+	FREE_NULL_LIST(ret_list);
 nothing_left:
 	debug2("All tasks have been signalled");
 
@@ -1012,11 +1023,13 @@ static int _msg_thr_create(struct step_launch_state *sls, int num_nodes)
 	int i, rc = SLURM_SUCCESS;
 	pthread_attr_t attr;
 	uint16_t *ports;
+	uint16_t eio_timeout;
 
 	debug("Entering _msg_thr_create()");
 	slurm_uid = (uid_t) slurm_get_slurm_user_id();
 
-	sls->msg_handle = eio_handle_create();
+	eio_timeout = slurm_get_srun_eio_timeout();
+	sls->msg_handle = eio_handle_create(eio_timeout);
 	sls->num_resp_port = _estimate_nports(num_nodes, 48);
 	sls->resp_port = xmalloc(sizeof(uint16_t) * sls->num_resp_port);
 
@@ -1445,7 +1458,8 @@ static void
 _handle_msg(void *arg, slurm_msg_t *msg)
 {
 	struct step_launch_state *sls = (struct step_launch_state *)arg;
-	uid_t req_uid = g_slurm_auth_get_uid(msg->auth_cred, NULL);
+	uid_t req_uid = g_slurm_auth_get_uid(msg->auth_cred,
+					     slurm_get_auth_info());
 	uid_t uid = getuid();
 	srun_user_msg_t *um;
 	int rc;
@@ -1566,6 +1580,7 @@ static int _fail_step_tasks(slurm_step_ctx_t *ctx, char *node, int ret_code)
 	slurm_msg_t_init(&req);
 	req.msg_type = REQUEST_STEP_COMPLETE;
 	req.data = &msg;
+	req.protocol_version = ctx->step_resp->use_protocol_ver;
 
 	if (slurm_send_recv_controller_rc_msg(&req, &rc) < 0)
 	       return SLURM_ERROR;
@@ -1609,6 +1624,7 @@ static int _launch_tasks(slurm_step_ctx_t *ctx,
 	slurm_msg_t_init(&msg);
 	msg.msg_type = REQUEST_LAUNCH_TASKS;
 	msg.data = launch_msg;
+	msg.protocol_version = ctx->step_resp->use_protocol_ver;
 
 #ifdef HAVE_FRONT_END
 	slurm_cred_get_args(ctx->step_resp->cred, &cred_args);
@@ -1653,7 +1669,7 @@ static int _launch_tasks(slurm_step_ctx_t *ctx,
 		}
 	}
 	list_iterator_destroy(ret_itr);
-	list_destroy(ret_list);
+	FREE_NULL_LIST(ret_list);
 
 	if (tot_rc != SLURM_SUCCESS)
 		return tot_rc;
@@ -1734,7 +1750,7 @@ _exec_prog(slurm_msg_t *msg)
 	}
 	if (checkpoint) {
 		/* OpenMPI specific checkpoint support */
-		info("Checkpoint started at %s", slurm_ctime(&now));
+		info("Checkpoint started at %s", slurm_ctime2(&now));
 		for (i=0; (exec_msg->argv[i] && (i<2)); i++) {
 			argv[i] = exec_msg->argv[i];
 		}
@@ -1781,10 +1797,10 @@ fini:	if (checkpoint) {
 		now = time(NULL);
 		if (exit_code) {
 			info("Checkpoint completion code %d at %s",
-			     exit_code, slurm_ctime(&now));
+			     exit_code, slurm_ctime2(&now));
 		} else {
 			info("Checkpoint completed successfully at %s",
-			     slurm_ctime(&now));
+			     slurm_ctime2(&now));
 		}
 		if (buf[0])
 			info("Checkpoint location: %s", buf);

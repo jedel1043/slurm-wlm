@@ -140,7 +140,7 @@ void slurm_write_ctl_conf ( slurm_ctl_conf_info_msg_t * slurm_ctl_conf_ptr,
 	debug("Writing slurm.conf file: %s", path);
 
 	if ( ( fp = fopen(path, "w") ) == NULL ) {
-		fprintf(stderr, "Could not create file %s: %s\n", path, 
+		fprintf(stderr, "Could not create file %s: %s\n", path,
 			strerror(errno));
 		xfree(path);
 		return;
@@ -157,7 +157,7 @@ void slurm_write_ctl_conf ( slurm_ctl_conf_info_msg_t * slurm_ctl_conf_ptr,
 	ret_list = slurm_ctl_conf_2_key_pairs(slurm_ctl_conf_ptr);
 	if (ret_list) {
 		_write_key_pairs(fp, ret_list);
-		list_destroy((List)ret_list);
+		FREE_NULL_LIST(ret_list);
 	}
 
 	_write_group_header (fp, "NODES");
@@ -310,7 +310,7 @@ void slurm_print_ctl_conf ( FILE* out,
 	ret_list = slurm_ctl_conf_2_key_pairs(slurm_ctl_conf_ptr);
 	if (ret_list) {
 		slurm_print_key_pairs(out, ret_list, tmp_str);
-		list_destroy((List)ret_list);
+		FREE_NULL_LIST(ret_list);
 	}
 
 	slurm_print_key_pairs(out, slurm_ctl_conf_ptr->acct_gather_conf,
@@ -368,6 +368,11 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
+	key_pair->name = xstrdup("AccountingStorageTRES");
+	key_pair->value = xstrdup(slurm_ctl_conf_ptr->accounting_storage_tres);
+	list_append(ret_list, key_pair);
+
+	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("AccountingStorageType");
 	key_pair->value = xstrdup(slurm_ctl_conf_ptr->accounting_storage_type);
 	list_append(ret_list, key_pair);
@@ -379,10 +384,8 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("AccountingStoreJobComment");
-	if (slurm_ctl_conf_ptr->acctng_store_job_comment)
-		key_pair->value = xstrdup("YES");
-	else
-		key_pair->value = xstrdup("NO");
+	key_pair->value = xstrdup(
+		slurm_ctl_conf_ptr->acctng_store_job_comment ? "Yes" : "No");
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
@@ -414,11 +417,10 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair->value = xstrdup(slurm_ctl_conf_ptr->acct_gather_profile_type);
 	list_append(ret_list, key_pair);
 
-	snprintf(tmp_str, sizeof(tmp_str), "%u",
-		 slurm_ctl_conf_ptr->use_spec_resources);
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("AllowSpecResourcesUsage");
-	key_pair->value = xstrdup(tmp_str);
+	key_pair->value = xstrdup_printf(
+		"%u", slurm_ctl_conf_ptr->use_spec_resources);
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
@@ -453,6 +455,11 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("BOOT_TIME");
 	key_pair->value = xstrdup(tmp_str);
+	list_append(ret_list, key_pair);
+
+	key_pair = xmalloc(sizeof(config_key_pair_t));
+	key_pair->name = xstrdup("BurstBufferType");
+	key_pair->value = xstrdup(slurm_ctl_conf_ptr->bb_type);
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
@@ -508,6 +515,13 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
+	key_pair->name = xstrdup("CpuFreqGovernors");
+	cpu_freq_govlist_to_string(tmp_str, sizeof(tmp_str),
+			   slurm_ctl_conf_ptr->cpu_freq_govs);
+	key_pair->value = xstrdup(tmp_str);
+	list_append(ret_list, key_pair);
+
+	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("CryptoType");
 	key_pair->value = xstrdup(slurm_ctl_conf_ptr->crypto_type);
 	list_append(ret_list, key_pair);
@@ -541,25 +555,21 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	list_append(ret_list, key_pair);
 	key_pair->name = xstrdup("DisableRootJobs");
-	if (slurm_ctl_conf_ptr->disable_root_jobs)
-		key_pair->value = xstrdup("YES");
-	else
-		key_pair->value = xstrdup("NO");
+	key_pair->value = xstrdup(
+		slurm_ctl_conf_ptr->disable_root_jobs ? "Yes" : "No");
 
-	snprintf(tmp_str, sizeof(tmp_str), "%u",
-		 slurm_ctl_conf_ptr->dynalloc_port);
 	key_pair = xmalloc(sizeof(config_key_pair_t));
-	key_pair->name = xstrdup("DynAllocPort");
+	key_pair->name = xstrdup("EioTimeout");
+	snprintf(tmp_str, sizeof(tmp_str), "%u",
+		 slurm_ctl_conf_ptr->eio_timeout);
 	key_pair->value = xstrdup(tmp_str);
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	list_append(ret_list, key_pair);
 	key_pair->name = xstrdup("EnforcePartLimits");
-	if (slurm_ctl_conf_ptr->enforce_part_limits)
-		key_pair->value = xstrdup("YES");
-	else
-		key_pair->value = xstrdup("NO");
+	key_pair->value = xstrdup(
+		slurm_ctl_conf_ptr->enforce_part_limits ? "Yes" : "No");
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("Epilog");
@@ -674,13 +684,6 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair->value = xstrdup(slurm_ctl_conf_ptr->health_check_program);
 	list_append(ret_list, key_pair);
 
-	if (cluster_flags & CLUSTER_FLAG_XCPU) {
-		key_pair = xmalloc(sizeof(config_key_pair_t));
-		key_pair->name = xstrdup("HAVE_XCPU");
-		key_pair->value = xstrdup("1");
-		list_append(ret_list, key_pair);
-	}
-
 	snprintf(tmp_str, sizeof(tmp_str), "%u sec",
 		 slurm_ctl_conf_ptr->inactive_limit);
 	key_pair = xmalloc(sizeof(config_key_pair_t));
@@ -759,11 +762,10 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair->value = xstrdup(tmp_str);
 	list_append(ret_list, key_pair);
 
-	snprintf(tmp_str, sizeof(tmp_str), "%u",
-		 slurm_ctl_conf_ptr->job_requeue);
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("JobRequeue");
-	key_pair->value = xstrdup(tmp_str);
+	key_pair->value = xstrdup_printf(
+		"%u", slurm_ctl_conf_ptr->job_requeue);
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
@@ -786,7 +788,8 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 		 slurm_ctl_conf_ptr->kill_on_bad_exit);
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("KillOnBadExit");
-	key_pair->value = xstrdup(tmp_str);
+	key_pair->value = xstrdup_printf(
+		"%u", slurm_ctl_conf_ptr->kill_on_bad_exit);
 	list_append(ret_list, key_pair);
 
 	snprintf(tmp_str, sizeof(tmp_str), "%u sec",
@@ -794,6 +797,11 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("KillWait");
 	key_pair->value = xstrdup(tmp_str);
+	list_append(ret_list, key_pair);
+
+	key_pair = xmalloc(sizeof(config_key_pair_t));
+	key_pair->name = xstrdup("LaunchParameters");
+	key_pair->value = xstrdup(slurm_ctl_conf_ptr->launch_params);
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
@@ -879,10 +887,8 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("MemLimitEnforce");
-	if (slurm_ctl_conf_ptr->mem_limit_enforce)
-		key_pair->value = xstrdup("yes");
-	else
-		key_pair->value = xstrdup("no");
+	key_pair->value = xstrdup(
+		slurm_ctl_conf_ptr->mem_limit_enforce ? "Yes" : "No");
 	list_append(ret_list, key_pair);
 
 	snprintf(tmp_str, sizeof(tmp_str), "%u sec",
@@ -909,10 +915,15 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair->value = xstrdup(slurm_ctl_conf_ptr->mpi_params);
 	list_append(ret_list, key_pair);
 
+	key_pair = xmalloc(sizeof(config_key_pair_t));
+	key_pair->name = xstrdup("MsgAggregationParams");
+	key_pair->value = xstrdup(slurm_ctl_conf_ptr->msg_aggr_params);
+	list_append(ret_list, key_pair);
+
 	if (cluster_flags & CLUSTER_FLAG_MULTSD) {
 		key_pair = xmalloc(sizeof(config_key_pair_t));
 		key_pair->name = xstrdup("MULTIPLE_SLURMD");
-		key_pair->value = xstrdup("1");
+		key_pair->value = xstrdup("Yes");
 		list_append(ret_list, key_pair);
 	}
 
@@ -941,6 +952,16 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("PlugStackConfig");
 	key_pair->value = xstrdup(slurm_ctl_conf_ptr->plugstack);
+	list_append(ret_list, key_pair);
+
+	key_pair = xmalloc(sizeof(config_key_pair_t));
+	key_pair->name = xstrdup("PowerParameters");
+	key_pair->value = xstrdup(slurm_ctl_conf_ptr->power_parameters);
+	list_append(ret_list, key_pair);
+
+	key_pair = xmalloc(sizeof(config_key_pair_t));
+	key_pair->name = xstrdup("PowerPlugin");
+	key_pair->value = xstrdup(slurm_ctl_conf_ptr->power_plugin);
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
@@ -979,11 +1000,11 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 		key_pair->value = xstrdup(tmp_str);
 		list_append(ret_list, key_pair);
 
-		snprintf(tmp_str, sizeof(tmp_str), "%u",
-			 slurm_ctl_conf_ptr->priority_favor_small);
 		key_pair = xmalloc(sizeof(config_key_pair_t));
 		key_pair->name = xstrdup("PriorityFavorSmall");
-		key_pair->value = xstrdup(tmp_str);
+		key_pair->value = xstrdup(
+			slurm_ctl_conf_ptr->priority_favor_small ?
+			"Yes" : "No");
 		list_append(ret_list, key_pair);
 
 		key_pair = xmalloc(sizeof(config_key_pair_t));
@@ -1045,6 +1066,12 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 		key_pair->name = xstrdup("PriorityWeightQOS");
 		key_pair->value = xstrdup(tmp_str);
 		list_append(ret_list, key_pair);
+
+		key_pair = xmalloc(sizeof(config_key_pair_t));
+		key_pair->name = xstrdup("PriorityWeightTRES");
+		key_pair->value =
+			xstrdup(slurm_ctl_conf_ptr->priority_weight_tres);
+		list_append(ret_list, key_pair);
 	}
 
 
@@ -1063,6 +1090,13 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("Prolog");
 	key_pair->value = xstrdup(slurm_ctl_conf_ptr->prolog);
+	list_append(ret_list, key_pair);
+
+	snprintf(tmp_str, sizeof(tmp_str), "%u",
+		 slurm_ctl_conf_ptr->prolog_epilog_timeout);
+	key_pair = xmalloc(sizeof(config_key_pair_t));
+	key_pair->name = xstrdup("PrologEpilogTimeout");
+	key_pair->value = xstrdup(tmp_str);
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
@@ -1182,11 +1216,10 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair->value = xstrdup(tmp_str);
 	list_append(ret_list, key_pair);
 
-	snprintf(tmp_str, sizeof(tmp_str), "%u",
-		 slurm_ctl_conf_ptr->schedrootfltr);
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("SchedulerRootFilter");
-	key_pair->value = xstrdup(tmp_str);
+	key_pair->value = xstrdup_printf(
+		"%u", slurm_ctl_conf_ptr->schedrootfltr);
 	list_append(ret_list, key_pair);
 
 	snprintf(tmp_str, sizeof(tmp_str), "%u sec",
@@ -1387,18 +1420,23 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair->value = xstrdup(tmp_str);
 	list_append(ret_list, key_pair);
 
-	if (!slurm_ctl_conf_ptr->suspend_time)
+	if (slurm_ctl_conf_ptr->suspend_time == 0) {
 		snprintf(tmp_str, sizeof(tmp_str), "NONE");
-	else
+	} else {
 		snprintf(tmp_str, sizeof(tmp_str), "%d sec",
 			 ((int)slurm_ctl_conf_ptr->suspend_time - 1));
+	}
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("SuspendTime");
 	key_pair->value = xstrdup(tmp_str);
 	list_append(ret_list, key_pair);
 
-	snprintf(tmp_str, sizeof(tmp_str), "%u sec",
-		 slurm_ctl_conf_ptr->suspend_timeout);
+	if (slurm_ctl_conf_ptr->suspend_timeout == 0) {
+		snprintf(tmp_str, sizeof(tmp_str), "NONE");
+	} else {
+		snprintf(tmp_str, sizeof(tmp_str), "%u sec",
+			 slurm_ctl_conf_ptr->suspend_timeout);
+	}
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("SuspendTimeout");
 	key_pair->value = xstrdup(tmp_str);
@@ -1437,15 +1475,19 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
+	key_pair->name = xstrdup("TopologyParam");
+	key_pair->value = xstrdup(slurm_ctl_conf_ptr->topology_param);
+	list_append(ret_list, key_pair);
+
+	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("TopologyPlugin");
 	key_pair->value = xstrdup(slurm_ctl_conf_ptr->topology_plugin);
 	list_append(ret_list, key_pair);
 
-	snprintf(tmp_str, sizeof(tmp_str), "%u",
-		 slurm_ctl_conf_ptr->track_wckey);
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("TrackWCKey");
-	key_pair->value = xstrdup(tmp_str);
+	key_pair->value = xstrdup(
+		slurm_ctl_conf_ptr->track_wckey ? "Yes" : "No");
 	list_append(ret_list, key_pair);
 
 	snprintf(tmp_str, sizeof(tmp_str), "%u",
@@ -1455,11 +1497,9 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair->value = xstrdup(tmp_str);
 	list_append(ret_list, key_pair);
 
-	snprintf(tmp_str, sizeof(tmp_str), "%u",
-		 slurm_ctl_conf_ptr->use_pam);
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("UsePam");
-	key_pair->value = xstrdup(tmp_str);
+	key_pair->value = xstrdup_printf("%u", slurm_ctl_conf_ptr->use_pam);
 	list_append(ret_list, key_pair);
 
 	key_pair = xmalloc(sizeof(config_key_pair_t));
@@ -1710,18 +1750,13 @@ static void _write_key_pairs(FILE* out, void *key_pairs)
 			continue;
 		}
 
-		/* Certain values need to be changed to prevent
-		 * errors in reading/parsing the conf file */
-		if (!strcasecmp(key_pair->name, "SuspendTime") &&
-		    !strcasecmp(key_pair->value, "NONE"))
-			strcpy(key_pair->value, "0");
-
 		/* Comment out certain key_pairs */
 		/* - TaskPluginParam=(null type) is not a NULL but
 		 * it does imply no value */
 		if ((key_pair->value == NULL) ||
 		    (strlen(key_pair->value) == 0) ||
 		    !strcasecmp(key_pair->value, "(null type)") ||
+		    !strcasecmp(key_pair->value, "(null)") ||
 		    !strcasecmp(key_pair->value, "N/A") ||
 		    (!strcasecmp(key_pair->name, "KeepAliveTime") &&
 		     !strcasecmp(key_pair->value, "SYSTEM_DEFAULT")) ||
@@ -1733,9 +1768,11 @@ static void _write_key_pairs(FILE* out, void *key_pairs)
 			      key_pair->name,
 			      key_pair->value);
 		} else {
-			key_pair->value = strtok(key_pair->value, " (");
+			/* Only write out values. Use strtok
+			 * to grab just the value (ie. "60 sec") */
+			temp = strtok(key_pair->value, " (");
 			temp = xstrdup_printf("%s=%s",
-					      key_pair->name, key_pair->value);
+					      key_pair->name, temp);
 		}
 
 		if (!strcasecmp(key_pair->name, "ControlMachine") ||
@@ -1869,84 +1906,84 @@ static void _write_key_pairs(FILE* out, void *key_pairs)
 	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)control_list);
+	FREE_NULL_LIST(control_list);
 
 	_write_group_header (out, "LOGGING & OTHER PATHS");
 	iter = list_iterator_create(logging_list);
 	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)logging_list);
+	FREE_NULL_LIST(logging_list);
 
 	_write_group_header (out, "ACCOUNTING");
 	iter = list_iterator_create(accounting_list);
-	while((temp = list_next(iter)))
+	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)accounting_list);
+	FREE_NULL_LIST(accounting_list);
 
 	_write_group_header (out, "SCHEDULING & ALLOCATION");
 	iter = list_iterator_create(sched_list);
 	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)sched_list);
+	FREE_NULL_LIST(sched_list);
 
 	_write_group_header (out, "TOPOLOGY");
 	iter = list_iterator_create(topology_list);
-	while((temp = list_next(iter)))
+	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)topology_list);
+	FREE_NULL_LIST(topology_list);
 
 	_write_group_header (out, "TIMERS");
 	iter = list_iterator_create(timers_list);
 	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)timers_list);
+	FREE_NULL_LIST(timers_list);
 
 	_write_group_header (out, "POWER");
 	iter = list_iterator_create(power_list);
-	while((temp = list_next(iter)))
+	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)power_list);
+	FREE_NULL_LIST(power_list);
 
 	_write_group_header (out, "DEBUG");
 	iter = list_iterator_create(debug_list);
 	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)debug_list);
+	FREE_NULL_LIST(debug_list);
 
 	_write_group_header (out, "EPILOG & PROLOG");
 	iter = list_iterator_create(proepilog_list);
 	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)proepilog_list);
+	FREE_NULL_LIST(proepilog_list);
 
 	_write_group_header (out, "PROCESS TRACKING");
 	iter = list_iterator_create(proctrac_list);
 	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)proctrac_list);
+	FREE_NULL_LIST(proctrac_list);
 
 	_write_group_header (out, "RESOURCE CONFINEMENT");
 	iter = list_iterator_create(resconf_list);
 	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)resconf_list);
+	FREE_NULL_LIST(resconf_list);
 
 	_write_group_header (out, "OTHER");
 	iter = list_iterator_create(other_list);
 	while ((temp = list_next(iter)))
 		fprintf(out, "%s\n", temp);
 	list_iterator_destroy(iter);
-	list_destroy((List)other_list);
+	FREE_NULL_LIST(other_list);
 
 }
 
@@ -1992,7 +2029,7 @@ static void _write_group_header(FILE* out, char * header)
 	left = ((comlen - hdrlen) / 2) - 1;
 	right = left;
 	if ((comlen - hdrlen) % 2)
-		right++; 
+		right++;
 
 	fprintf(out, "#\n");
 	for (i = 0; i < comlen; i++)

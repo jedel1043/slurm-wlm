@@ -1,8 +1,9 @@
 <!--#include virtual="header.txt"-->
 
-<h1>Power Saving Guide</h1>
+<h1>Slurm Power Saving Guide</h1>
 
-<p>Slurm provides an integrated power saving mechanism for idle nodes.
+<p>Slurm provides an integrated power saving mechanism for powering down
+idle nodes.
 Nodes that remain idle for a configurable period of time can be placed
 in a power saving mode, which can reduce power consumption or fully power down
 the node.

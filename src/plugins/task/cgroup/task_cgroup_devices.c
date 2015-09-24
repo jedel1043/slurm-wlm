@@ -43,14 +43,14 @@
 #include <glob.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <slurm/slurm_errno.h>
 #include <slurm/slurm.h>
-#include "src/slurmd/slurmstepd/slurmstepd_job.h"
-#include "src/slurmd/slurmd/slurmd.h"
-
+#include <slurm/slurm_errno.h>
 #include "src/common/xstring.h"
 #include "src/common/gres.h"
 #include "src/common/list.h"
+#include "src/slurmd/common/xcpuinfo.h"
+#include "src/slurmd/slurmd/slurmd.h"
+#include "src/slurmd/slurmstepd/slurmstepd_job.h"
 
 #include "task_cgroup.h"
 
@@ -95,7 +95,8 @@ extern int task_cgroup_devices_init(slurm_cgroup_conf_t *slurm_cgroup_conf)
 		goto error;
 	}
 
-	(void) gres_plugin_node_config_load(cpunum, conf->node_name);
+	(void) gres_plugin_node_config_load(cpunum, conf->node_name, NULL);
+
 
 	strcpy(cgroup_allowed_devices_file,
 	       slurm_cgroup_conf->allowed_devices_file);
@@ -193,6 +194,14 @@ extern int task_cgroup_devices_create(stepd_step_rec_t *job)
 			if (cc >= PATH_MAX) {
 				error("task/cgroup: unable to build "
 				      "step batch devices cg path : %m");
+
+			}
+		} else if (stepid == SLURM_EXTERN_CONT) {
+			cc = snprintf(jobstep_cgroup_path, PATH_MAX,
+				      "%s/step_extern", job_cgroup_path);
+			if (cc >= PATH_MAX) {
+				error("task/cgroup: unable to build "
+				      "step extern devices cg path : %m");
 
 			}
 		} else {

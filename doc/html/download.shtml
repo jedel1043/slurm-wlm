@@ -50,8 +50,10 @@ for the application to manage Kerberos V credentials.</li>
 <ul>
 <li><a href="https://upc-bugs.lbl.gov/blcr/doc/html/">
 <b> BLCR (Berkeley Lab Checkpoint/Restart)</a></b>
-<li><a href="http://dmtcp.sourceforge.net//">
+<li><a href="http://dmtcp.sourceforge.net/">
 <b>DMTCP (Distributed MultiThreaded CheckPointing)</a></b>
+<li><a href="https://computation.llnl.gov/project/scr/">
+<b>Scalable Checkpoint/Restart (SCR) for MPI</a></b>
 </ul><br>
 
 <li><b>Databases</b> can be used to store accounting information.
@@ -359,10 +361,54 @@ easy and elegantly manner.
 <li><a href="mslurm/mslurm_overview.pdf">Overview</a></li>
 <li><a href="mslurm/mslurm_install_instructions.pdf">Installation Instructions</a></li>
 <li><a href="mslurm/mslurm.tgz">Code</a></li>
+</ul></li><br>
+
+<li><a name="json"><b>JSON</b></a><br>
+Some Slurm plugins (burst_buffer/cray and power/cray) plugins
+parse JSON format data.
+These plugins are designed to make use of the JSON-C library for this purpose.
+Instructions for the build are as follows:
+<ol>
+<li>Download json-c version 0.12 (or higher) from<br>
+<a href="https://github.com/json-c/json-c/wiki">
+https://github.com/json-c/json-c/wiki</a></li>
+
+<li>Unpackage json-c<br>
+gunzip json-c-0.12.tar.gz<br>
+tar -xf json-c-0.12.tar</li>
+
+<li>Built and install json-c
 <ul>
+<li>If you have current build tools<br>
+cd json-c-0.12<br>
+./configure --prefix=DESIRED_PATH<br>
+make<br>
+make install</li>
+
+<li>If you have old build tools<br>
+cd json-c-0.12<br>
+mv aclocal.m4 aclocal.m4.orig<br>
+mv ltmain.sh ltmain.sh.orig<br>
+./autogen.sh<br>
+./configure --prefix=DESIRED_JSON_PATH<br>
+make<br>
+make install</li>
+</ul>
+
+<li>Build and install Slurm<br>
+./configure --with-json=DESIRED_JSON_PATH ...<br>
+make -j</li>
+</ol><br>
+
+<li><b>Slurm-web</b><br>
+Slurm-web is a free software, distributed under the GPL version 2 license,
+that provides both a HTTP REST API (based on JSON format) and a web GUI
+with dashboards and graphical views of the current state of your
+Slurm-based HPC supercomputers. The website of Slurm-web, with screenshots:<br>
+<a href="http://edf-hpc.github.io/slurm-web">http://edf-hpc.github.io/slurm-web</a></li>
 
 </ul>
 
-<p style="text-align:center;">Last modified 24 June 2015</p>
+<p style="text-align:center;">Last modified 27 July 2015</p>
 
 <!--#include virtual="footer.txt"-->

@@ -50,6 +50,7 @@
 #include <termios.h>
 
 #include "src/common/read_config.h"
+#include "src/common/slurm_time.h"
 #include "src/common/xstring.h"
 #include "src/squeue/squeue.h"
 
@@ -274,10 +275,10 @@ _print_job_steps( bool clear_old )
 			error_code = SLURM_SUCCESS;
 			new_step_ptr = old_step_ptr;
 		}
-	}
-	else
+	} else {
 		error_code = slurm_get_job_steps((time_t) 0, NO_VAL, NO_VAL,
 						 &new_step_ptr, show_flags);
+	}
 	if (error_code) {
 		slurm_perror ("slurm_get_job_steps error");
 		return SLURM_ERROR;
@@ -313,5 +314,5 @@ _print_date( void )
 	time_t now;
 
 	now = time( NULL );
-	printf("%s", ctime( &now ));
+	printf("%s", slurm_ctime( &now ));
 }

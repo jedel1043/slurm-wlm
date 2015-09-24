@@ -1,6 +1,7 @@
 /*****************************************************************************\
  *  sreport.h - report generating tool for slurm accounting header file.
  *****************************************************************************
+ *  Copyright (C) 2010-2015 SchedMD LLC.
  *  Copyright (C) 2008 Lawrence Livermore National Security.
  *  Copyright (C) 2002-2007 The Regents of the University of California.
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
@@ -96,6 +97,8 @@ extern int exit_code;	/* sacctmgr's exit code, =1 on any error at any time */
 extern int exit_flag;	/* program to terminate if =1 */
 extern int input_words;	/* number of words of input permitted */
 extern int quiet_flag;	/* quiet=1, verbose=-1, normal=0 */
+extern char *tres_str;	/* --tres= value */
+List tres_list;		/* TRES to report, built from --tres= value */
 extern void *db_conn;
 extern uint32_t my_uid;
 extern int all_clusters_flag;
@@ -104,6 +107,7 @@ extern slurmdb_report_sort_t sort_flag;
 extern void slurmdb_report_print_time(print_field_t *field,
 			       uint64_t value, uint64_t total_time, int last);
 extern int parse_option_end(char *option);
+extern time_t sanity_check_endtime(time_t endtime);
 extern char *strip_quotes(char *option, int *increased);
 extern int sort_user_dec(void *, void *);
 extern int sort_cluster_dec(void *, void *);

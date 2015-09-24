@@ -205,7 +205,10 @@ int srun(int ac, char **av)
 		env->plane_size = opt.plane_size;
 	env->cpu_bind_type = opt.cpu_bind_type;
 	env->cpu_bind = opt.cpu_bind;
-	env->cpu_freq = opt.cpu_freq;
+
+	env->cpu_freq_min = opt.cpu_freq_min;
+	env->cpu_freq_max = opt.cpu_freq_max;
+	env->cpu_freq_gov = opt.cpu_freq_gov;
 	env->mem_bind_type = opt.mem_bind_type;
 	env->mem_bind = opt.mem_bind;
 	env->overcommit = opt.overcommit;
@@ -232,6 +235,9 @@ int srun(int ac, char **av)
 		env->task_count = _uint16_array_to_str(job->nhosts, tasks);
 		env->jobid = job->jobid;
 		env->stepid = job->stepid;
+		env->account = job->account;
+		env->qos = job->qos;
+		env->resv_name = job->resv_name;
 	}
 	if (opt.pty && (set_winsize(job) < 0)) {
 		error("Not using a pseudo-terminal, disregarding --pty option");
@@ -246,6 +252,9 @@ int srun(int ac, char **av)
 		tcgetattr(fd, &term);
 		/* Set raw mode on local tty */
 		cfmakeraw(&term);
+		/* Re-enable output processing such that debug() and
+		 * and error() work properly. */
+		term.c_oflag |= OPOST;
 		tcsetattr(fd, TCSANOW, &term);
 		atexit(&_pty_restore);
 

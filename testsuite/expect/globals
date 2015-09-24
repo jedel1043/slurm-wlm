@@ -217,9 +217,11 @@ set alpha                "\[a-zA-Z\]+"
 set alpha_cap            "\[A-Z\]+"
 set alpha_comma_slash    "\[a-zA-Z/,\]+"
 set alpha_numeric        "\[a-zA-Z0-9\]+"
+set alpha_numeric_colon  "\[a-zA-Z0-9_,\:\-\]+"
 set alpha_numeric_comma  "\[a-zA-Z0-9_,\-\]+"
 set alpha_numeric_under  "\[a-zA-Z0-9_\-\]+"
 set alpha_under          "\[A-Z_\]+"
+set alpha_under_slash    "\[a-zA-Z/_\]+"
 set digit                "\[0-9\]"
 set end_of_line          "\[\r\n\]"
 set float                "\[0-9\]+\\.?\[0-9\]*"
@@ -255,7 +257,7 @@ proc cancel_job { job_id } {
 	}
 
 	send_user "cancelling $job_id\n"
-	exec $scancel -Q $job_id
+	set status [catch [exec $scancel -Q $job_id] result]
 	exec $bin_sleep 1
 	return [wait_for_job $job_id "DONE"]
 }
@@ -555,6 +557,7 @@ proc wait_for_file { file_name } {
 #                            DONE any terminated state
 #                            PENDING job is pending
 #                            RUNNING job is running
+#                            SUSPENDED job is suspended
 #
 # NOTE: We sleep for two seconds before replying that a job is
 # done to give time for I/O completion (stdout/stderr files)
@@ -569,6 +572,7 @@ proc wait_for_job { job_id desired_state } {
 		"DONE" {}
 		"PENDING" {}
 		"RUNNING" {}
+		"SUSPENDED" {}
 		default {
 			send_user "FAILURE: wait_for_job with invalid state: $desired_state\n"
 			return 1
@@ -607,6 +611,10 @@ proc wait_for_job { job_id desired_state } {
 					send_user "Job $job_id is $state, "
 					send_user "but we wanted RUNNING\n"
 				}
+				if {[string compare $desired_state "SUSPENDED"] == 0} {
+					send_user "Job $job_id is $state, "
+					send_user "but we wanted SUSPENDED\n"
+				}
 				return 1
 			}
 			"PENDING" {
@@ -620,6 +628,14 @@ proc wait_for_job { job_id desired_state } {
 			"RUNNING" {
 				if {[string compare $desired_state "RUNNING"] == 0} {
 					send_user "Job $job_id is RUNNING\n"
+					return 0
+				}
+				send_user "Job $job_id is in state $state, "
+				send_user "desire $desired_state\n"
+			}
+			"SUSPENDED" {
+				if {[string compare $desired_state "SUSPENDED"] == 0} {
+					send_user "Job $job_id is SUSPENDED\n"
 					return 0
 				}
 				send_user "Job $job_id is in state $state, "
@@ -781,24 +797,20 @@ proc wait_for_all_jobs { job_name incr_sleep } {
 
 ################################################################
 #
-# Proc: test_fast_schedule_2
+# Proc: test_fast_schedule
 #
-# Purpose: Determine if we are running FastSchedule=2 usually meaning we are pretending we have more resources than reality.
-# This is based upon
-# the value of FastSchedule in the slurm.conf.
-#
-# Returns level of 1 if it is 2, 0 otherwise
+# Returns value of FastSchedule from slurm.conf
 #
 ################################################################
-proc test_fast_schedule_2 { } {
+proc test_fast_schedule { } {
 	global scontrol number
 
 	log_user 0
-	set is_2 0
+	set fast_schedule -1
 	spawn $scontrol show config
 	expect {
-		-re "FastSchedule *= 2" {
-			set is_2 1
+		-re "FastSchedule *= ($number)" {
+			set fast_schedule $expect_out(1,string)
 			exp_continue
 		}
 		eof {
@@ -807,9 +819,8 @@ proc test_fast_schedule_2 { } {
 	}
 
 	log_user 1
-	return $is_2
+	return $fast_schedule
 }
-
 
 ################################################################
 #
@@ -983,14 +994,13 @@ proc test_topology { } {
 			wait
 		}
 	}
-
 	log_user 1
 	return $have_topology
 }
 
 ################################################################
 #
-# Proc: get_task_plugins
+# Proc: get_task_types
 #
 # Purpose: get the task plugins running with task/ stripped
 #
@@ -1001,7 +1011,7 @@ proc get_affinity_types { } {
 	global scontrol alpha_comma_slash
 
 	log_user 0
-	set affinity 0
+	set affinity ""
 	spawn $scontrol show config
 	expect {
 		-re "TaskPlugin *= ($alpha_comma_slash)" {
@@ -1018,9 +1028,128 @@ proc get_affinity_types { } {
 			wait
 		}
 	}
-
 	log_user 1
 	return $affinity
+}
+
+################################################################
+#
+# Proc: get_bb_emulate
+#
+# Purpose: Determine if Cray burst buffers API is emulated
+#
+# Returns: 1 if true, 0 if false
+#
+################################################################
+proc get_bb_emulate { } {
+	global scontrol
+
+	log_user 0
+	set bb_emulate 0
+	spawn $scontrol show burst
+	expect {
+		-re "EmulateCray" {
+			set bb_emulate 1
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	return $bb_emulate
+}
+
+################################################################
+#
+# Proc: get_bb_persistent
+#
+# Purpose: Determine if persistent burst buffers can be created by users
+#
+# Returns: 1 if true, 0 if false
+#
+################################################################
+proc get_bb_persistent { } {
+	global scontrol
+
+	log_user 0
+	set bb_persistent 0
+	spawn $scontrol show burst
+	expect {
+		-re "EnablePersistent" {
+			set bb_persistent 1
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	return $bb_persistent
+}
+
+################################################################
+#
+# Proc: get_bb_types
+#
+# Purpose: get the burst buffer plugins running with task/ stripped
+#
+# Returns Returns comma separated list of task plugins running without the task/
+#
+################################################################
+proc get_bb_types { } {
+	global scontrol alpha_under_slash
+
+	log_user 0
+	set bb_types ""
+	spawn $scontrol show config
+	expect {
+		-re "BurstBufferType *= ($alpha_under_slash)" {
+			set parts [split $expect_out(1,string) ",/"]
+			while 1 {
+				set task_found [lsearch $parts "burst_buffer"]
+				if { $task_found == -1 } break
+				set parts [lreplace $parts $task_found $task_found]
+			}
+			set bb_types [join $parts ","]
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+
+	log_user 1
+	return $bb_types
+}
+
+################################################################
+#
+# Proc: get_cpu_governors
+#
+# Purpose: get the CpuFreqGovernor configuration parameter
+#
+# Returns Returns comma separated list of available CPU governor's
+#
+################################################################
+proc get_cpu_governors { } {
+	global scontrol alpha_numeric_comma
+
+	log_user 0
+	set governors ""
+	spawn $scontrol show config
+	expect {
+		-re "CpuFreqGovernors *= ($alpha_numeric_comma)" {
+			set governors $expect_out(1,string)
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+
+	log_user 1
+	return $governors
 }
 
 ################################################################
@@ -1116,8 +1245,8 @@ proc test_track_wckey { } {
 	set track_wckey 0
 	spawn $scontrol show config
 	expect {
-		-re "TrackWCKey *= ($number)" {
-			set track_wckey $expect_out(1,string)
+		-re "TrackWCKey *= Yes" {
+			set track_wckey 1
 			exp_continue
 		}
 		eof {
@@ -2252,7 +2381,7 @@ proc is_super_user { } {
 #
 ################################################################
 proc check_acct_associations { } {
-	global sacctmgr number alpha_numeric_under
+	global sacctmgr number alpha_numeric_under exit_code
 
 	set rc 1
 	log_user 0
@@ -2402,7 +2531,7 @@ proc get_job_acct_type { } {
 #
 ################################################################
 proc check_accounting_admin_level { } {
-	global sacctmgr alpha alpha_numeric_under bin_id
+	global sacctmgr alpha alpha_numeric_under bin_id exit_code
 
 	set admin_level ""
 	set user_name ""
@@ -2458,7 +2587,7 @@ proc check_accounting_admin_level { } {
 #
 ################################################################
 proc get_cluster_name { } {
-	global scontrol alpha_numeric_under
+	global scontrol alpha_numeric_under exit_code
 	#
 	# Use scontrol to find the cluster name
 	#
@@ -2495,7 +2624,7 @@ proc get_cluster_name { } {
 ################################################################
 
 proc get_bluegene_layout { } {
-	global scontrol alpha_numeric_under
+	global scontrol alpha_numeric_under exit_code
 
 	log_user 0
 	set layout 0
@@ -2530,7 +2659,7 @@ proc get_bluegene_layout { } {
 ################################################################
 
 proc get_bluegene_psets { } {
-	global scontrol number
+	global scontrol number exit_code
 
 	log_user 0
 	set psets 0
@@ -2568,7 +2697,7 @@ proc get_bluegene_psets { } {
 ################################################################
 
 proc get_bluegene_type { } {
-	global scontrol alpha
+	global scontrol alpha exit_code
 
 	log_user 0
 	set type 0
@@ -2603,7 +2732,7 @@ proc get_bluegene_type { } {
 ################################################################
 
 proc get_bluegene_procs_per_cnode { } {
-	global scontrol number
+	global scontrol number exit_code
 
 	log_user 0
 	set cpu_cnt 0
@@ -2638,7 +2767,7 @@ proc get_bluegene_procs_per_cnode { } {
 ################################################################
 
 proc get_bluegene_cnodes_per_mp { } {
-	global scontrol number
+	global scontrol number exit_code
 
 	log_user 0
 	set node_cnt 1
@@ -2673,7 +2802,7 @@ proc get_bluegene_cnodes_per_mp { } {
 ################################################################
 
 proc get_bluegene_allow_sub_blocks { } {
-	global scontrol alpha
+	global scontrol alpha exit_code
 
 	log_user 0
 	set type 0
@@ -2708,7 +2837,7 @@ proc get_bluegene_allow_sub_blocks { } {
 ################################################################
 
 proc get_node_cnt { } {
-	global scontrol
+	global scontrol exit_code
 
 	log_user 0
 	set node_cnt 0
@@ -2862,12 +2991,12 @@ proc print_success { test_id } {
 proc change_subbp_state { node ionodes state } {
 	global scontrol smap
 
-	set exit_code 0
+	set return_code 0
 
 	set my_pid [spawn $scontrol update subbpname=$node\[$ionodes\] state=$state]
 	expect {
 		-re "slurm_update error:" {
-			set exit_code 1
+			set return_code 1
 			exp_continue
 		}
 		-re "Unable to contact" {
@@ -2877,15 +3006,15 @@ proc change_subbp_state { node ionodes state } {
 		timeout {
 			send_user "\nFAILURE: scontrol not responding\n"
 			slow_kill $my_pid
-			set exit_code 1
+			set return_code 1
 		}
 		eof {
 			wait
 		}
 	}
 
-	if { $exit_code } {
-		return $exit_code
+	if { $return_code } {
+		return $return_code
 	}
 
 	set match 0
@@ -2906,7 +3035,7 @@ proc change_subbp_state { node ionodes state } {
 		timeout {
 			send_user "\nFAILURE: smap not responding\n"
 			slow_kill $my_pid
-			set exit_code 1
+			set return_code 1
 		}
 		eof {
 			wait
@@ -2915,10 +3044,10 @@ proc change_subbp_state { node ionodes state } {
 
 	if {$match != 2} {
 		send_user "\nFAILURE: Subbp did not go into $state state. $match\n"
-		set exit_code 1
+		set return_code 1
 	}
 
-	return $exit_code
+	return $return_code
 }
 
 ################################################################
@@ -3075,7 +3204,7 @@ proc check_node_mem { } {
 #
 ################################################################
 proc get_fs_damping_factor { } {
-	global scontrol number
+	global scontrol number exit_code
 
 	log_user 0
 	set damp 1
@@ -3111,7 +3240,7 @@ proc get_fs_damping_factor { } {
 ################################################################
 
 proc slurmctld_plug_stack_nonstop { } {
-	global scontrol alpha_numeric_comma
+	global scontrol alpha_numeric_comma exit_code
 
 	log_user 0
 	set nonstop_enforce 0
@@ -3148,7 +3277,7 @@ proc slurmctld_plug_stack_nonstop { } {
 ################################################################
 
 proc job_submit_all_partitions { } {
-	global scontrol alpha_numeric_comma
+	global scontrol alpha_numeric_comma exit_code
 
 	log_user 0
 	set all_partitions 0

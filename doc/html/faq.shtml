@@ -59,6 +59,8 @@
 <li><a href="#req">How can a job in complete or failed state be requeued?</a></li>
 <li><a href="#cpu_count">Slurm documentation refers to CPUs, cores and threads.
   What exactly is considered a CPU?</a></li>
+<li><a href="#sbatch_srun">What is the difference between the sbatch
+  and srun commands?</a></li>
 </ol>
 
 <h2>For Administrators</h2>
@@ -177,6 +179,10 @@ script for Slurm?</a></li>
 <li><a href="#delete_partition">How do I safely remove partitions?</a></li>
 <li><a href="#cpu_freq">Why is Slurm unable to set the CPU frequency for jobs?</a></li>
 <li><a href="#mic_config">How can Slurm be configured to support Intel Phi (MIC)?</a></li>
+<li><a href="#cluster_acct">When adding a new cluster, how can the Slurm cluster
+    configuration be copied from an existing cluster to the new cluster?</a></li>
+<li><a href="#cray_dvs">How can I update Slurm on a Cray DVS file system without
+rebooting the nodes?</a></li>
 </ol>
 
 <h2>For Management</h2>
@@ -1004,7 +1010,32 @@ resource allocation with respect to base boards, sockets, cores and threads.</p>
 <p>(<b>NOTE:</b> An exception to this would be if the system administrator
 configured SelectTypeParameters=CR_CPU and each node's CPU count without its
 socket/core/thread specification. In that case, each thread would be
-independently scheduled as a CPU. This is not a typical configuration.)
+independently scheduled as a CPU. This is not a typical configuration.)</p>
+
+<p><a name="sbatch_srun"><b>31. What is the difference between the sbatch
+  and srun commands?</b></a><br>
+The srun command has two different modes of operation. First, if not run within
+an existing job (i.e. not within a Slurm job allocation created by salloc or
+sbatch), then it will create a job allocation and spawn an application.
+If run within an existing allocation, the srun command only spawns the
+application.
+For this question, we will only address the first mode of operation and compare
+creating a job allocation using the sbatch and srun commands.</p>
+
+<p>The srun command is designed for interactive use, with someone monitoring
+the output.
+The output of the application is seen as output of the srun command,
+typically at the user's terminal.
+The sbatch command is designed to submit a script for later execution and its
+output is written to a file.
+Command options used in the job allocation are almost identical.
+The most noticable difference in options is that the sbatch command supports
+the concept of <a href="job_array.html">job arrays</a>, while srun does not.
+Another significant difference is in fault tolerance.
+Failures involving sbatch jobs typically result in the job being requeued
+and executed again, while failures involving srun typically result in an
+error message being generated with the expectation that the user will respond
+in an appropriate fashion.</p> 
 
 <p class="footer"><a href="#top">top</a></p>
 
@@ -1780,6 +1811,13 @@ slurm.conf file as shown below.</p>
 SallocDefaultCommand="srun -n1 -N1 --mem-per-cpu=0 --pty --preserve-env --mpi=none $SHELL"
 </pre>
 
+<p>
+For cray systems, add --gres=craynetwork:0 to the options.
+<pre>
+SallocDefaultCommand="srun -n1 -N1 --mem-per-cpu=0 --gres=craynetwork:0 --pty --preserve-env --mpi=none $SHELL"
+</pre>
+</p>
+
 <p><a name="upgrade"><b>50. What should I be aware of when upgrading Slurm?</b></a></br>
 See the Quick Start Administrator Guide <a href="quickstart_admin.html#upgrade">Upgrade</a>
 section for details.</p>
@@ -2015,8 +2053,42 @@ install the latest MPSS and Slurm packages from yum/zypper,
 add new MICs (via console utility or GUI),
 add MICs to Slurm queues if necessary, restart the host, use MICs via Slurm.</p>
 
+<p><a name="cluster_acct"><b>63. When adding a new cluster, how can the Slurm cluster
+    configuration be copied from an existing cluster to the new cluster?</b></a><br>
+Accounts need to be configured the cluster. An easy way to copy information from
+an existing cluster is to use the sacctmgr command to dump that cluster's information,
+modify it using some editor, the load the new information using the sacctmgr
+command. See the sacctmgr man page for details, including an example.</p>
+
+<p><a name="cray_dvs"><b>64. How can I update Slurm on a Cray DVS file system
+   without rebooting the nodes?</b></a><br>
+The problem with DVS caching is related to the fact that the dereferenced value
+of /opt/slurm/default symlink is cached in the DVS attribute cache, and that
+cache is not dropped when the rest of the VM caches are.</p>
+
+<p>The Cray Native SLURM installation manual indicates that slurm should
+have a "default" symlink run through /etc/alternatives.
+As an alternative to that:
+<ol>
+<li>Institute a policy that all changes to files which could be open
+persistently (i.e., .so files) are always modified by creating a new access
+path.  I.e., installations go to a new directory.</li>
+<li>Dump the /etc/alternatives stuff, just use a regular symlink, e.g., default
+points to 15.8.0-1.</li>
+<li>Add a new mountpoint on all the compute nodes for /dsl/opt/slurm where the
+attrcache_timeout attribute is reduced from 14440s to 60s (or 15s -- whatever):<br>
+mount -t dvs /opt/slurm /dsl/opt/slurm -o<br>
+path=/dsl/opt/slurm,nodename=c0-0c0s0n0,loadbalance,cache,ro,attrcache_timeout=15<br>
+In the example above, c0-0c0s0n0 is the single DVS server for the system.</li>
+</ol>
+<p>Using this strategy avoids the caching problems, making upgrades simple.
+One just has to wait for about 20 seconds after changing the default symlinks
+before starting the slurmds again.</p>
+<p>(Information courtesy of Douglas Jacobsen, NERSC,
+Lawrence Berkeley National Laboratory)</p>
+
 <p class="footer"><a href="#top">top</a></p>
 
-<p style="text-align:center;">Last modified 16 June 2015</p>
+<p style="text-align:center;">Last modified 25 August 2015</p>
 
 <!--#include virtual="footer.txt"-->

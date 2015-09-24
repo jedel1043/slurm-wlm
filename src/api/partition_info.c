@@ -188,6 +188,14 @@ char *slurm_sprint_partition_info ( partition_info_t * part_ptr,
 	else
 		sprintf(tmp_line, " Default=NO");
 	xstrcat(out, tmp_line);
+
+	if (part_ptr->qos_char)
+		snprintf(tmp_line, sizeof(tmp_line), " QoS=%s",
+			 part_ptr->qos_char);
+	else
+		sprintf(tmp_line, " QoS=N/A");
+	xstrcat(out, tmp_line);
+
 	if (one_liner)
 		xstrcat(out, " ");
 	else
@@ -224,6 +232,11 @@ char *slurm_sprint_partition_info ( partition_info_t * part_ptr,
 	else
 		sprintf(tmp_line, " DisableRootJobs=NO");
 	xstrcat(out, tmp_line);
+	if (part_ptr->flags & PART_FLAG_EXCLUSIVE_USER)
+		sprintf(tmp_line, " ExclusiveUser=YES");
+	else
+		sprintf(tmp_line, " ExclusiveUser=NO");
+	xstrcat(out, tmp_line);
 	sprintf(tmp_line, " GraceTime=%u", part_ptr->grace_time);
 	xstrcat(out, tmp_line);
 	if (part_ptr->flags & PART_FLAG_HIDDEN)
@@ -243,7 +256,8 @@ char *slurm_sprint_partition_info ( partition_info_t * part_ptr,
 	else {
 		if (cluster_flags & CLUSTER_FLAG_BG)
 			convert_num_unit((float)part_ptr->max_nodes,
-					 tmp1, sizeof(tmp1), UNIT_NONE);
+					 tmp1, sizeof(tmp1), UNIT_NONE,
+					 CONVERT_NUM_UNIT_EXACT);
 		else
 			snprintf(tmp1, sizeof(tmp1),"%u", part_ptr->max_nodes);
 
@@ -261,7 +275,8 @@ char *slurm_sprint_partition_info ( partition_info_t * part_ptr,
 	xstrcat(out, tmp_line);
 	if (cluster_flags & CLUSTER_FLAG_BG)
 		convert_num_unit((float)part_ptr->min_nodes, tmp1, sizeof(tmp1),
-				 UNIT_NONE);
+				 UNIT_NONE,
+				 CONVERT_NUM_UNIT_EXACT);
 	else
 		snprintf(tmp1, sizeof(tmp1), "%u", part_ptr->min_nodes);
 	sprintf(tmp_line, " MinNodes=%s", tmp1);
@@ -353,7 +368,8 @@ char *slurm_sprint_partition_info ( partition_info_t * part_ptr,
 
 	if (cluster_flags & CLUSTER_FLAG_BG)
 		convert_num_unit((float)part_ptr->total_cpus, tmp1,
-				 sizeof(tmp1), UNIT_NONE);
+				 sizeof(tmp1), UNIT_NONE,
+				 CONVERT_NUM_UNIT_EXACT);
 	else
 		snprintf(tmp1, sizeof(tmp1), "%u", part_ptr->total_cpus);
 
@@ -362,7 +378,8 @@ char *slurm_sprint_partition_info ( partition_info_t * part_ptr,
 
 	if (cluster_flags & CLUSTER_FLAG_BG)
 		convert_num_unit((float)part_ptr->total_nodes, tmp2,
-				 sizeof(tmp2), UNIT_NONE);
+				 sizeof(tmp2), UNIT_NONE,
+				 CONVERT_NUM_UNIT_EXACT);
 	else
 		snprintf(tmp2, sizeof(tmp2), "%u", part_ptr->total_nodes);
 
@@ -411,6 +428,18 @@ char *slurm_sprint_partition_info ( partition_info_t * part_ptr,
 	} else {
 		snprintf(tmp_line, sizeof(tmp_line), " MaxMemPerNode=%u",
 			 part_ptr->max_mem_per_cpu);
+		xstrcat(out, tmp_line);
+	}
+
+	/****** Line 10 ******/
+	if (part_ptr->billing_weights_str) {
+		if (one_liner)
+			xstrcat(out, " ");
+		else
+			xstrcat(out, "\n   ");
+
+		snprintf(tmp_line, sizeof(tmp_line), "TRESBillingWeights=%s",
+			part_ptr->billing_weights_str);
 		xstrcat(out, tmp_line);
 	}
 
