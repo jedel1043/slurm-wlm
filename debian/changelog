@@ -4,6 +4,9 @@ slurm-llnl (15.08.0-1) UNRELEASED; urgency=medium
   * Updated libraries api version to 29 
   * Updated mail-path patch
   * Minor man pages changes 
+  * Add d/slurm-client.lintian-overrides to avoid warnings for a long
+    line in acct_gather.conf.5 and for the conflicts with sinfo in
+    d/control
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 24 Sep 2015 15:50:58 +0200
 
