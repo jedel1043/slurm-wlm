@@ -1,0 +1,79 @@
+Description: Minor man pages changes
+ Add backslash to hypen to allow grof to interpret minus signs. Add
+ .na and .ad requests to avoid "cannot adjust line" man error.
+Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+---
+Origin: other
+Forwarded: http://bugs.schedmd.com/show_bug.cgi?id=1970
+Last-Update: 2015-09-23
+
+--- slurm-llnl-15.08.0.orig/doc/man/man1/sacct.1
++++ slurm-llnl-15.08.0/doc/man/man1/sacct.1
+@@ -188,7 +188,7 @@ Displays a general help message.
+ 
+ .TP
+ \f3\-i\fP\f3,\fP \f3\-\-nnodes\fP\f3=\fP\f2N\fP
+-Return jobs which ran on this many nodes (N = min[-max])
++Return jobs which ran on this many nodes (N = min[\-max])
+ 
+ .TP
+ \f3\-j \fP\f2job(.step)\fP \f3,\fP  \f3\-\-jobs\fP\f3=\fP\f2job(.step)\fP
+--- slurm-llnl-15.08.0.orig/doc/man/man1/srun.1
++++ slurm-llnl-15.08.0/doc/man/man1/srun.1
+@@ -813,10 +813,12 @@ Multiple license names should be comma s
+ "\-\-licenses=foo:4,bar").
+ 
+ .TP
++.na
+ \fB\-m\fR, \fB\-\-distribution\fR=
+ \fI*\fR|\fIblock\fR|\fIcyclic\fR|\fIarbitrary\fR|\fIplane=<options>
+ \fR[:\fI*\fR|\fIblock\fR|\fIcyclic\fR|\fIfcyclic\fR[:\fI*\fR|\fIblock\fR|
+ \fIcyclic\fR|\fIfcyclic\fR]][,\fIPack\fR|\fINoPack\fR]
++.ad
+ 
+ Specify alternate distribution methods for remote processes.
+ This option controls the distribution of tasks to the nodes on which
+--- slurm-llnl-15.08.0.orig/doc/man/man5/acct_gather.conf.5
++++ slurm-llnl-15.08.0/doc/man/man5/acct_gather.conf.5
+@@ -65,7 +65,9 @@ EnergyIPMIPowerSensors is optional, defa
+ .br
+ i.e.
+ .br
++.na
+ EnergyIPMIPowerSensors=Node=16,19,23,26;Socket0=16,23;Socket1=19,26;SSUP=23,26;KNC=16,19
++.ad
+ .br
+ EnergyIPMIPowerSensors=Node=29,32;SSUP0=29;SSUP1=32
+ .br
+--- slurm-llnl-15.08.0.orig/doc/man/man5/slurm.conf.5
++++ slurm-llnl-15.08.0/doc/man/man5/slurm.conf.5
+@@ -1454,7 +1454,7 @@ step completion, and epilog complete mes
+ .br
+ .RE
+ The format for this parameter is as follows:
+-.b.br
++.br
+ .RS
+ .TP 12
+ \fBMsgAggregationParams=\fR\fI<option>\fR\fB=\fR\fI<value>\fR
+@@ -1971,7 +1971,7 @@ See \fBProlog and Epilog Scripts\fR for
+ .TP
+ \fBPrologEpilogTimeout\fR
+ The interval in seconds Slurms waits for Prolog and Epilog before terminating
+-them. The dafault behavior is to wait indefinitely. This interval applies to
++them. The default behavior is to wait indefinitely. This interval applies to
+ the Prolog and Epilog run by slurmd daemon before and after the job, the
+ PrologSlurmctld and EpilogSlurmctld run by slurmctld daemon, and the SPANK
+ plugins run by the slurmstep daemon.
+@@ -2321,9 +2321,9 @@ consume any of the CPU or memory resourc
+ and preserve all of the job's environment variables (i.e. and not over\-write
+ them with the job step's allocation information).
+ 
+-For Cray systems, add --gres=craynetwork:0. e.g.:
++For Cray systems, add \-\-gres=craynetwork:0. e.g.:
+ .nf
+-    SallocDefaultCommand = "srun \-n1 \-N1 \-\-mem\-per\-cpu=0 --gres=craynetwork:0 \-\-pty \-\-preserve\-env \-\-mpi=none $SHELL"
++    SallocDefaultCommand = "srun \-n1 \-N1 \-\-mem\-per\-cpu=0 \-\-gres=craynetwork:0 \-\-pty \-\-preserve\-env \-\-mpi=none $SHELL"
+ .fi
+ 
+ .TP
