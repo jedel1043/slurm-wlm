@@ -22,7 +22,10 @@ Lead Slurm developers are:
 <li><a href="http://www.intel.com">Intel</a></li>
 <li><a href="http://www.llnl.gov">Lawrence Livermore National Laboratory</a></li>
 <li><a href="http://www.lanl.gov">Los Alamos National Laboratory</a></li>
-<li><a href="http://english.nudt.edu.cn">National University of Defense Technology (NUDT, China)</a></li>
+<li><a href="http://www.nersc.gov">National Energy Research Scientific
+  Computing Center (NERSC)</a></li>
+<li><a href="http://english.nudt.edu.cn">National University of Defense
+  Technology (NUDT, China)</a></li>
 <li><a href="http://www.nvidia.com">NVIDIA</a></li>
 <li><a href="http://www.ornl.gov">Oak Ridge National Laboratory</a></li>
 <li><a href="http://www.schedmd.com">SchedMD</a></li>
@@ -108,6 +111,7 @@ Lead Slurm developers are:
 <li>Dave Henseler (Cray)</li>
 <li>Chris Holmes (HP)</li>
 <li>David H&ouml;ppner</li>
+<li>Axel Huebl (TU Dresden, Germany)</li>
 <li>Nathan Huff (North Dakota State University)</li>
 <li>Doug Hughes (D. E. Shaw Research)</li>
 <li>Michel Hummel (Thales Group)</li>
@@ -186,6 +190,7 @@ Lead Slurm developers are:
 <li>Gerrit Renker (Swiss National Supercomputing Centre)</li>
 <li>Andy Riebs (HP)</li>
 <li>Asier Roa (Barcelona Supercomputing Center, Spain)</li>
+<li>Manuel Rodríguez-Pascual (CIEMAT, Spain)</li>
 <li>Andy Roosen (University of Deleware)</li>
 <li>Miguel Ros (Barcelona Supercomputing Center, Spain)</li>
 <li>Beat Rubischon (DALCO AG, Switzerland)</li>
@@ -233,6 +238,6 @@ Lead Slurm developers are:
 <!-- INDIVIDUALS, PLEASE KEEP IN ALPHABETICAL ORDER -->
 </ul>
 
-<p style="text-align:center;">Last modified 26 August 2015</p>
+<p style="text-align:center;">Last modified 21 September 2015</p>
 
 <!--#include virtual="footer.txt"-->

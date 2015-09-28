@@ -813,10 +813,12 @@ Multiple license names should be comma separated (e.g.
 "\-\-licenses=foo:4,bar").
 
 .TP
+.na
 \fB\-m\fR, \fB\-\-distribution\fR=
 \fI*\fR|\fIblock\fR|\fIcyclic\fR|\fIarbitrary\fR|\fIplane=<options>
 \fR[:\fI*\fR|\fIblock\fR|\fIcyclic\fR|\fIfcyclic\fR[:\fI*\fR|\fIblock\fR|
 \fIcyclic\fR|\fIfcyclic\fR]][,\fIPack\fR|\fINoPack\fR]
+.ad
 
 Specify alternate distribution methods for remote processes.
 This option controls the distribution of tasks to the nodes on which
@@ -962,7 +964,7 @@ configuration parameter.
 .TP
 \fB\-\-mail\-type\fR=<\fItype\fR>
 Notify user by email when certain event types occur.
-Valid \fItype\fR values are BEGIN, END, FAIL, REQUEUE, ALL (equivalent to
+Valid \fItype\fR values are NONE, BEGIN, END, FAIL, REQUEUE, ALL (equivalent to
 BEGIN, END, FAIL, REQUEUE, and STAGE_OUT), STAGE_OUT (burst buffer stage out
 completed), TIME_LIMIT, TIME_LIMIT_90 (reached 90 percent of time limit),
 TIME_LIMIT_80 (reached 80 percent of time limit), and TIME_LIMIT_50

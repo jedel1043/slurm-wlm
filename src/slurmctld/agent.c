@@ -777,8 +777,8 @@ static inline int _comm_err(char *node_name, slurm_msg_type_t msg_type)
 	int rc = 1;
 
 	if ((rc = is_node_resp (node_name)))
-		verbose("agent/is_node_resp: node:%s rpc:%d : %m",
-			node_name, msg_type);
+		verbose("agent/is_node_resp: node:%s RPC:%s : %m",
+			node_name, rpc_num2string(msg_type));
 	return rc;
 }
 
@@ -1467,6 +1467,8 @@ static void _purge_agent_args(agent_arg_t *agent_arg_ptr)
 			slurm_free_job_notify_msg(agent_arg_ptr->msg_args);
 		else if (agent_arg_ptr->msg_type == REQUEST_SUSPEND_INT)
 			slurm_free_suspend_int_msg(agent_arg_ptr->msg_args);
+		else if (agent_arg_ptr->msg_type == REQUEST_LAUNCH_PROLOG)
+			slurm_free_prolog_launch_msg(agent_arg_ptr->msg_args);
 		else
 			xfree(agent_arg_ptr->msg_args);
 	}

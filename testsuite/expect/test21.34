@@ -2,7 +2,7 @@
 ############################################################################
 # Purpose: Test of SLURM functionality
 #          Test that partition and job qos limits are enforced when using
-#          the PartitionQos flag for the job's qos
+#          the OverPartQos flag for the job's qos
 #
 # Output:  "TEST: #.#" followed by "SUCCESS" if test was successful, OR
 #          "FAILURE: ..." otherwise with an explanation of the failure, OR
@@ -67,7 +67,7 @@ set maxcpu           MaxCpus
 set maxcpu_num       0
 # Set maxcpumin_num to multiple of CPUs per core to work with most configurations
 set maxcpumin        MaxCPUMins
-set maxcpumin_num    0
+set maxcpumin_num    2
 set maxwall          MaxWall
 set maxwall_num      2
 set maxcpuspu        MaxCPUSPerUser
@@ -222,9 +222,6 @@ proc check_state { job } {
 
 }
 
-# Remove any vestigial data
-cleanup
-
 if { [test_account_storage] == 0 } {
 	send_user "\nWARNING: This test can't be run without a usable AccountStorageType\n"
 	exit 0
@@ -240,6 +237,9 @@ if {[test_super_user] == 0} {
 	send_user "\nWARNING Test can only be ran as SlurmUser\n"
 	exit 0
 }
+
+# Remove any vestigial data
+cleanup
 
 # Check to see that there are enough resources in the default partition
 set tmpc 0
@@ -269,7 +269,7 @@ if {$tmpc == 0 || $tmpn == 0} {
 }
 
 # Determine what the selecttype param is
-if {[string first "CR_CORE" [test_select_type_params]] != -1} {
+if {[test_select_type_params "CR_CORE"]} {
 	set selectparam 1
 }
 
@@ -408,10 +408,10 @@ send_user "\n========== Run limit test on partition's qos limits ==========\n\n"
 part_test
 
 #
-# Set partitionqos flag on job's qos
+# Set overpartqos flag on job's qos
 #
 set changed 0
-spawn $sacctmgr -i mod qos $job_qos set flag=partitionqos
+spawn $sacctmgr -i mod qos $job_qos set flag=overpartqos
 expect {
 	-re "Modified qos" {
 		set changed 1

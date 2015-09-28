@@ -938,6 +938,24 @@ char *slurm_get_state_save_location(void)
 	return state_save_loc;
 }
 
+/* slurm_get_tmp_fs
+ * returns the TmpFS configuration parameter from slurmctld_conf object
+ * RET char *    - tmp_fs, MUST be xfreed by caller
+ */
+extern char *slurm_get_tmp_fs(void)
+{
+	char *tmp_fs = NULL;
+	slurm_ctl_conf_t *conf = NULL;
+
+	if (slurmdbd_conf) {
+	} else {
+		conf = slurm_conf_lock();
+		tmp_fs = xstrdup(conf->tmp_fs);
+		slurm_conf_unlock();
+	}
+	return tmp_fs;
+}
+
 /* slurm_get_auth_type
  * returns the authentication type from slurmctld_conf object
  * RET char *    - auth type, MUST be xfreed by caller
@@ -991,6 +1009,24 @@ extern char *slurm_get_checkpoint_type(void)
 		slurm_conf_unlock();
 	}
 	return checkpoint_type;
+}
+
+/* slurm_get_checkpoint_dir
+ * returns the job_ckpt_dir from slurmctld_conf object
+ * RET char *    - checkpoint dir, MUST be xfreed by caller
+ */
+extern char *slurm_get_checkpoint_dir(void)
+{
+	char *checkpoint_dir = NULL;
+	slurm_ctl_conf_t *conf;
+
+	if (slurmdbd_conf) {
+	} else {
+		conf = slurm_conf_lock();
+		checkpoint_dir = xstrdup(conf->job_ckpt_dir);
+		slurm_conf_unlock();
+	}
+	return checkpoint_dir;
 }
 
 /* slurm_get_cluster_name
@@ -4623,4 +4659,3 @@ uint16_t slurm_get_prolog_timeout(void)
 
 	return timeout;
 }
-

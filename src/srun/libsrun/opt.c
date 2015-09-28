@@ -76,11 +76,11 @@
 #include "src/common/cpu_frequency.h"
 #include "src/common/list.h"
 #include "src/common/log.h"
-#include "src/common/mpi.h"
 #include "src/common/optz.h"
 #include "src/common/parse_time.h"
 #include "src/common/plugstack.h"
 #include "src/common/proc_args.h"
+#include "src/common/slurm_mpi.h"
 #include "src/common/slurm_protocol_api.h"
 #include "src/common/slurm_protocol_interface.h"
 #include "src/common/slurm_rlimits_info.h"
@@ -427,7 +427,7 @@ static void _opt_default(void)
 	opt.time_min_str = NULL;
 	opt.ckpt_interval = 0;
 	opt.ckpt_interval_str = NULL;
-	opt.ckpt_dir = NULL;
+	opt.ckpt_dir = slurm_get_checkpoint_dir();
 	opt.restart_dir = NULL;
 	opt.partition = NULL;
 	opt.max_threads = MAX_THREADS;
@@ -660,6 +660,14 @@ static void _opt_env(void)
 		if ((val = getenv(e->var)) != NULL)
 			_process_env_var(e, val);
 		e++;
+	}
+
+	/* Running srun within an existing srun. Don't inherit values. */
+	if (getenv("SLURM_STEP_ID")) {
+		xfree(opt.cpu_bind);
+		opt.cpu_bind_type = 0;
+		xfree(opt.mem_bind);
+		opt.mem_bind_type = 0;
 	}
 }
 

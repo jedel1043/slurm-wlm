@@ -119,7 +119,7 @@ static void _opt_args(int, char **);
 /* verify options sanity  */
 static bool _opt_verify(void);
 
-static void _xlate_job_step_ids(char **rest);
+static char **_xlate_job_step_ids(char **rest);
 
 /* translate job state name to number */
 static uint32_t _xlate_state_name(const char *state_name, bool env_var);
@@ -362,8 +362,8 @@ static void _opt_env(void)
  */
 static void _opt_args(int argc, char **argv)
 {
-	int opt_char;
-	int option_index;
+	char **rest = NULL;
+	int i, opt_char, option_index;
 	static struct option long_options[] = {
 		{"account",	required_argument, 0, 'A'},
 		{"batch",	no_argument,       0, 'b'},
@@ -372,6 +372,7 @@ static void _opt_args(int argc, char **argv)
 		{"interactive", no_argument,       0, 'i'},
 		{"cluster",     required_argument, 0, 'M'},
 		{"clusters",    required_argument, 0, 'M'},
+		{"jobname",     required_argument, 0, 'n'},
 		{"name",        required_argument, 0, 'n'},
 		{"nodelist",    required_argument, 0, 'w'},
 		{"partition",   required_argument, 0, 'p'},
@@ -464,22 +465,28 @@ static void _opt_args(int argc, char **argv)
 		}
 	}
 
-	if (optind < argc) {
-		char **rest = argv + optind;
-		opt.job_list = rest;
-		_xlate_job_step_ids(rest);
+	if (optind < argc)
+		rest = argv + optind;
+	if (rest && (rest[0][0] >= '0') && (rest[0][0] <= '9')) {
+		opt.job_list = _xlate_job_step_ids(rest);
+	} else if (rest) {
+		for (i = optind; i < argc; i++) {
+			if (opt.job_name)
+				xstrcat(opt.job_name, ",");
+			xstrcat(opt.job_name, argv[i]);
+		}
 	}
 
 	if (!_opt_verify())
 		exit(1);
 }
 
-static void
+static char **
 _xlate_job_step_ids(char **rest)
 {
-	int buf_size, buf_offset, i;
+	int buf_size, buf_offset, id_args_size, i, j;
 	long job_id, tmp_l;
-	char *next_str;
+	char **id_args = NULL, *next_str;
 
 	opt.job_cnt = 0;
 
@@ -489,10 +496,21 @@ _xlate_job_step_ids(char **rest)
 	opt.job_id   = xmalloc(buf_size * sizeof(uint32_t));
 	opt.step_id  = xmalloc(buf_size * sizeof(uint32_t));
 
-	for (i = 0; rest[i] && (buf_offset < buf_size); i++) {
-		job_id = strtol(rest[i], &next_str, 10);
+	id_args_size = 128;
+	id_args = xmalloc(sizeof(char *) * id_args_size);
+	for (i = 0; rest[i]; i++) {
+		id_args[i] = xstrdup(rest[i]);
+		if ((i + 4) >= id_args_size) {
+			id_args_size *= 2;
+			id_args = xrealloc(id_args, sizeof(char *) *
+					   id_args_size);
+		}
+	}
+
+	for (i = 0; id_args[i] && (buf_offset < buf_size); i++) {
+		job_id = strtol(id_args[i], &next_str, 10);
 		if (job_id <= 0) {
-			error ("Invalid job_id %s", rest[i]);
+			error ("Invalid job_id %s", id_args[i]);
 			exit (1);
 		}
 		opt.job_id[buf_offset] = job_id;
@@ -502,20 +520,20 @@ _xlate_job_step_ids(char **rest)
 			char save_char, *next_elem;
 			char *end_char = strchr(next_str + 2, ']');
 			if (!end_char || (end_char[1] != '\0')) {
-				error ("Invalid job id %s", rest[i]);
+				error ("Invalid job id %s", id_args[i]);
 				exit (1);
 			}
 			save_char = end_char[1];
 			end_char[1] = '\0';
 			hl = hostlist_create(next_str + 1);
 			if (!hl) {
-				error ("Invalid job id %s", rest[i]);
+				error ("Invalid job id %s", id_args[i]);
 				exit (1);
 			}
 			while ((next_elem = hostlist_shift(hl))) {
 				tmp_l = strtol(next_elem, &next_str, 10);
 				if (tmp_l < 0) {
-					error ("Invalid job id %s", rest[i]);
+					error ("Invalid job id %s", id_args[i]);
 					exit (1);
 				}
 				opt.job_id[buf_offset]   = job_id;
@@ -535,7 +553,7 @@ _xlate_job_step_ids(char **rest)
 		} else if (next_str[0] == '_') {
 			tmp_l = strtol(&next_str[1], &next_str, 10);
 			if (tmp_l < 0) {
-				error ("Invalid job id %s", rest[i]);
+				error ("Invalid job id %s", id_args[i]);
 				exit (1);
 			}
 			opt.array_id[buf_offset] = tmp_l;
@@ -547,7 +565,7 @@ _xlate_job_step_ids(char **rest)
 		if (next_str[0] == '.') {
 			tmp_l = strtol(&next_str[1], &next_str, 10);
 			if (tmp_l < 0) {
-				error ("Invalid job id %s", rest[i]);
+				error ("Invalid job id %s", id_args[i]);
 				exit (1);
 			}
 			opt.step_id[buf_offset] = tmp_l;
@@ -555,12 +573,26 @@ _xlate_job_step_ids(char **rest)
 			opt.step_id[buf_offset] = SLURM_BATCH_SCRIPT;
 		buf_offset++;
 
-		if (next_str[0] != '\0') {
-			error ("Invalid job ID %s", rest[i]);
+		if ((next_str[0] == ',') && (next_str[0] != '\0')) {
+			/* Shift args if job IDs are comma separated.
+			 * Commas may be embedded in the task IDs, so we can't
+			 * simply split the string on commas. */
+			if ((j + 4) >= id_args_size) {
+				id_args_size *= 2;
+				id_args = xrealloc(id_args, sizeof(char *) *
+						   id_args_size);
+			}
+			for (j = id_args_size - 1; j > (i + 1); j--)
+				id_args[j] = id_args[j-1];
+			next_str[0] = '\0';
+			id_args[i+1] = xstrdup(next_str + 1);
+		} else if (next_str[0] != '\0') {
+			error ("Invalid job ID %s", id_args[i]);
 			exit (1);
 		}
 	}
 	opt.job_cnt = buf_offset;
+	return id_args;
 }
 
 

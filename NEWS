@@ -1,6 +1,80 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 15.08.1
+==========================
+ -- Fix test21.30 and 21.34 to check grpwall better.
+ -- Add time to the partition QOS the job is running on instead of just the
+    job QOS.
+ -- Print usage for GrpJobs, GrpSubmitJobs and GrpWall even if there is no
+    limit.
+ -- If AccountingEnforce=safe is set make sure a job can finish before going
+    over the limit with grpwall on a QOS or association.
+ -- burst_buffer/cray - Major updates based upon recent Cray changes.
+ -- Improve clean up logic of pmi2 plugin.
+ -- Improve job state reason string when required nodes not available.
+ -- Fix missing else when packing an update partition message
+ -- Fix srun from inheriting the SLURM_CPU_BIND and SLURM_MEM_BIND environment
+    variables when running in an existing srun (e.g. an srun within an salloc).
+ -- Fix missing else when packing an update partition message.
+ -- Use more flexible mechnanism to find json installation.
+ -- Make sure safe_limits was initialized before processing limits in the
+    slurmctld.
+ -- Fix for burst_buffer/cray to parse type option correctly.
+ -- Fix memory error and version number in the nonstop plugin and reservation
+    code.
+ -- When requesting GRES in a step check for correct variable for the count.
+ -- Fix issue with GRES in steps so that if you have multiple exclusive steps
+    and you use all the GRES up instead of reporting the configuration isn't
+    available you hold the requesting step until the GRES is available.
+ -- MYSQL - Change debug to print out with DebugFlags=DB_Step instead of debug4
+ -- Simplify code when user is selecting a job/step/array id and removed
+    anomaly when only asking for 1 (task_id was never set to INFINITE).
+ -- MYSQL - If user is requesting various task_ids only return requested steps.
+ -- Fix issue when tres cnt for energy is 0 for total reported.
+ -- Resolved scalability issues of power adaptive scheduling with layouts.
+ -- Burst_buffer/cray bug - Fix teardown race condition that can result in
+    infinite loop.
+ -- Add support for --mail-type=NONE option.
+ -- Job "--reboot" option automatically, set's exclusive node mode.
+ -- Fix memory leak when using PrologFlags=Alloc.
+ -- Fix truncation of job reason in squeue.
+ -- If a node is in DOWN or DRAIN state, leave it unavailable for allocation
+    when powered down.
+ -- Update the slurm.conf man page documenting better nohold_on_prolog_fail
+    variable.
+ -- Don't trucate task ID information in "squeue --array/-r" or "sview".
+ -- Fix a bug which caused scontrol to core dump when releasing or
+    holding a job by name.
+ -- Fix unit conversion bug in slurmd which caused wrong memory calculation
+    for cgroups.
+ -- Fix issue with GRES in steps so that if you have multiple exclusive steps
+    and you use all the GRES up instead of reporting the configuration isn't
+    available you hold the requesting step until the GRES is available.
+ -- Fix slurmdbd backup to use DbdAddr when contacting the primary.
+ -- Fix error in MPI documentation.
+ -- Fix to handle arrays with respect to number of jobs submitted.  Previously
+    only 1 job was accounted (against MaxSubmitJob) for when an array was
+    submitted.
+ -- Correct counting for job array limits, job count limit underflow possible
+    when master cancellation of master job record.
+ -- Combine 2 _valid_uid_gid functions into a single function to avoid
+    diversion.
+ -- Pending job array records will be combined into single line by default,
+    even if started and requeued or modified.
+ -- Fix sacct --format=nnodes to print out correct information for pending
+    jobs.
+ -- Make is so 'scontrol update job 1234 qos='' will set the qos back to
+    the default qos for the association.
+ -- Add [Alloc|Req]Nodes to sacct to be more like cpus.
+ -- Fix sacct documentation about [Alloc|Req]TRES
+ -- Put node count in TRES string for steps.
+ -- Fix issue with wrong protocol version when using the srun --no-allocate
+    option.
+ -- Fix TRES counts on GRES on a clean start of the slurmctld.
+ -- Add ability to change a job array's maximum running task count:
+    "scontrol update jobid=# arraytaskthrottle=#"
+
 * Changes in Slurm 15.08.0
 ==========================
  -- Fix issue with frontend systems (outside ALPs or BlueGene) where srun
@@ -348,6 +422,30 @@ documents those changes that are of interest to users and administrators.
     to give user greater control over task distribution. The srun --dist options
     has been modified to accept a "Pack" and "NoPack" option. These options can
     be used to override the CR_PACK_NODE configuration option.
+
+* Changes in Slurm 14.11.10
+===========================
+ -- Fix truncation of job reason in squeue.
+ -- If a node is in DOWN or DRAIN state, leave it unavailable for allocation
+    when powered down.
+ -- Update the slurm.conf man page documenting better nohold_on_prolog_fail
+    variable.
+ -- Don't trucate task ID information in "squeue --array/-r" or "sview".
+ -- Fix a bug which caused scontrol to core dump when releasing or
+    holding a job by name.
+ -- Fix unit conversion bug in slurmd which caused wrong memory calculation
+    for cgroups.
+ -- Fix issue with GRES in steps so that if you have multiple exclusive steps
+    and you use all the GRES up instead of reporting the configuration isn't
+    available you hold the requesting step until the GRES is available.
+ -- Fix slurmdbd backup to use DbdAddr when contacting the primary.
+ -- Fix error in MPI documentation.
+ -- Fix to handle arrays with respect to number of jobs submitted.  Previously
+    only 1 job was accounted (against MaxSubmitJob) for when an array was
+    submitted.
+ -- Correct counting for job array limits, job count limit underflow possible
+    when master cancellation of master job record.
+ -- For pending jobs have sacct print 0 for nnodes instead of the bogus 2.
 
 * Changes in Slurm 14.11.9
 ==========================
@@ -1178,6 +1276,7 @@ documents those changes that are of interest to users and administrators.
  -- Use the slurm_getpwuid_r wrapper of getpwuid_r to handle possible
     interrupts.
  -- Allow --ignore-pbs to take effect when read as an #SBATCH argument.
+ -- Do not launch step if job killed while the prolog was running.
 
 * Changes in Slurm 14.03.11
 ===========================
