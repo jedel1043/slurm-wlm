@@ -359,6 +359,7 @@ libslurmdb.so.29 libslurmdb29 #MINVER#
 #MISSING: 2.6.2-1# slurm_get_avail_procs@Base 2.2.0
  slurm_get_batch_start_timeout@Base 2.2.0
  slurm_get_bb_type@Base 15.08.0
+ slurm_get_checkpoint_dir@Base 15.08.1
  slurm_get_checkpoint_type@Base 2.2.0
  slurm_get_cluster_name@Base 2.2.0
  slurm_get_complete_wait@Base 2.2.0
@@ -469,6 +470,7 @@ libslurmdb.so.29 libslurmdb29 #MINVER#
  slurm_get_task_plugin_param@Base 2.2.0
  slurm_get_task_prolog@Base 2.2.0
  slurm_get_time_slice@Base 14.11.0
+ slurm_get_tmp_fs@Base 15.08.1
  slurm_get_topology_param@Base 15.08.0
  slurm_get_topology_plugin@Base 2.2.0
  slurm_get_track_wckey@Base 2.2.0
@@ -899,6 +901,7 @@ libslurmdb.so.29 libslurmdb29 #MINVER#
  slurm_update_powercap@Base 15.08.0
  slurm_update_reservation@Base 2.2.0
  slurm_update_step@Base 2.2.0
+ slurm_valid_uid_gid@Base 15.08.1
  slurm_verbose@Base 2.2.0
  slurm_verify_cpu_bind@Base 2.2.0
  slurm_verify_mem_bind@Base 2.2.0
@@ -1025,6 +1028,7 @@ libslurmdb.so.29 libslurmdb29 #MINVER#
  slurmdb_events_get@Base 2.2.0
  slurmdb_find_cluster_accting_tres_in_list@Base 15.08.0
  slurmdb_find_qos_in_list_by_name@Base 15.08.0
+ slurmdb_find_selected_step_in_list@Base 15.08.1
  slurmdb_find_tres_count_in_string@Base 15.08.0
  slurmdb_find_tres_in_list@Base 15.08.0
  slurmdb_find_tres_in_list_by_count@Base 15.08.0

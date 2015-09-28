@@ -2,6 +2,7 @@ slurm-llnl (15.08.1-1) UNRELEASED; urgency=medium
 
   * New upstream release 
   * Remove man-pages patch included in upstream
+  * Update libslurm29 and libslurmdb29 symbol files 
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 28 Sep 2015 14:35:36 +0200
 
