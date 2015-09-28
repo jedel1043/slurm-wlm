@@ -1,11 +1,11 @@
-slurm-llnl (15.08.1-1) UNRELEASED; urgency=medium
+slurm-llnl (15.08.1-1) unstable; urgency=medium
 
   * New upstream release 
   * Remove man-pages patch included in upstream
   * Update libslurm29 and libslurmdb29 symbol files 
   * Fix a typo in scontrol.1 
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 28 Sep 2015 14:35:36 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 28 Sep 2015 15:41:18 +0200
 
 slurm-llnl (15.08.0-1) unstable; urgency=medium
 
