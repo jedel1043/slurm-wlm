@@ -381,6 +381,12 @@ uint16_t slurm_get_private_data(void);
  */
 char *slurm_get_state_save_location(void);
 
+/* slurm_get_tmp_fs
+ * returns the TmpFS configuration parameter from slurmctld_conf object
+ * RET char *    - tmp_fs, MUST be xfreed by caller
+ */
+extern char *slurm_get_tmp_fs(void);
+
 /* slurm_get_auth_type
  * returns the authentication type from slurmctld_conf object
  * RET char *    - auth type, MUST be xfreed by caller
@@ -417,6 +423,12 @@ extern char *slurm_get_bb_type(void);
  * RET char *    - checkpoint type, MUST be xfreed by caller
  */
 extern char *slurm_get_checkpoint_type(void);
+
+ /* slurm_get_checkpoint_dir
+  * returns the checkpoint_dir from slurmctld_conf object
+  * RET char *    - checkpoint dir, MUST be xfreed by caller
+  */
+extern char *slurm_get_checkpoint_dir(void);
 
 /* slurm_get_cluster_name
  * returns the cluster name from slurmctld_conf object

@@ -46,8 +46,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#if HAVE_JSON
+#if HAVE_JSON_C_INC
 #  include <json-c/json.h>
+#elif HAVE_JSON_INC
+#  include <json/json.h>
 #endif
 
 #include "slurm/slurm.h"
@@ -64,11 +66,14 @@
 #include "src/common/xstring.h"
 #include "src/slurmctld/job_scheduler.h"
 #include "src/slurmctld/locks.h"
+#include "src/slurmctld/node_scheduler.h"
 #include "src/slurmctld/reservation.h"
 #include "src/slurmctld/slurmctld.h"
 #include "src/slurmctld/state_save.h"
 #include "src/plugins/burst_buffer/common/burst_buffer_common.h"
 
+#define TIME_SLOP 5	/* time allowed to synchronize operations between
+			 * threads */
 /*
  * These variables are required by the generic plugin interface.  If they
  * are not found in the plugin, the plugin loader will ignore it.
@@ -441,6 +446,9 @@ static bb_job_t *_get_bb_job(struct job_record *job_ptr)
 				tok++;
 			if (!strncmp(tok, "create_persistent", 17)) {
 				have_bb = true;
+				bb_access = NULL;
+				bb_name = NULL;
+				bb_type = NULL;
 				if ((sub_tok = strstr(tok, "access_mode="))) {
 					bb_access = xstrdup(sub_tok + 12);
 					sub_tok = strchr(bb_access, ' ');
@@ -482,24 +490,22 @@ static bb_job_t *_get_bb_job(struct job_record *job_ptr)
 				bb_job->buf_ptr[inx].size = tmp_cnt;
 				bb_job->buf_ptr[inx].state = BB_STATE_PENDING;
 				bb_job->buf_ptr[inx].type = bb_type;
-				bb_access = NULL;
-				bb_name = NULL;
-				bb_type = NULL;
 			} else if (!strncmp(tok, "destroy_persistent", 17) ||
 				   !strncmp(tok, "delete_persistent", 16)) {
 				have_bb = true;
+				bb_name = NULL;
 				if ((sub_tok = strstr(tok, "name="))) {
 					bb_name = xstrdup(sub_tok + 5);
 					sub_tok = strchr(bb_name, ' ');
 					if (sub_tok)
 						sub_tok[0] = '\0';
 				}
-				if ((sub_tok = strstr(tok, "type="))) {
-					bb_type = xstrdup(sub_tok + 5);
-					sub_tok = strchr(bb_type, ' ');
-					if (sub_tok)
-						sub_tok[0] = '\0';
-				}
+				/* if ((sub_tok = strstr(tok, "type="))) { */
+				/* 	bb_type = xstrdup(sub_tok + 5); */
+				/* 	sub_tok = strchr(bb_type, ' '); */
+				/* 	if (sub_tok) */
+				/* 		sub_tok[0] = '\0'; */
+				/* } */
 				bb_hurry = strstr(tok, "hurry");
 				inx = bb_job->buf_cnt++;
 				bb_job->buf_ptr = xrealloc(bb_job->buf_ptr,
@@ -532,6 +538,7 @@ static bb_job_t *_get_bb_job(struct job_record *job_ptr)
 				bb_job->total_size += tmp_cnt;
 			} else if (!strncmp(tok, "persistentdw", 12)) {
 				have_bb = true;
+				bb_name = NULL;
 				if ((sub_tok = strstr(tok, "name="))) {
 					bb_name = xstrdup(sub_tok + 5);
 					sub_tok = strchr(bb_name, ' ');
@@ -618,7 +625,7 @@ static void _save_bb_state(void)
 {
 	static time_t last_save_time = 0;
 	static int high_buffer_size = 16 * 1024;
-	time_t save_time;
+	time_t save_time = time(NULL);
 	bb_alloc_t *bb_alloc;
 	uint32_t rec_count = 0;
 	Buf buffer;
@@ -940,8 +947,10 @@ static void _set_assoc_mgr_ptrs(bb_alloc_t *bb_alloc)
 				    &bb_alloc->assoc_ptr,
 				    true) == SLURM_SUCCESS) {
 		xfree(bb_alloc->assocs);
-		bb_alloc->assocs =
-			xstrdup_printf(",%u,", bb_alloc->assoc_ptr->id);
+		if (bb_alloc->assoc_ptr) {
+			bb_alloc->assocs =
+				xstrdup_printf(",%u,", bb_alloc->assoc_ptr->id);
+		}
 	}
 
 	memset(&qos_rec, 0, sizeof(slurmdb_qos_rec_t));
@@ -1043,7 +1052,7 @@ static void _load_state(bool init_config)
 				bb_alloc->seen_time = bb_state.last_load_time;
 				continue;
 			}
-			if (difftime(now, sessions[i].created) < 2) {
+			if (difftime(now, sessions[i].created) < TIME_SLOP) {
 				/* Newly created in other thread. Give that
 				 * thread a chance to add the entry */
 				continue;
@@ -1299,7 +1308,7 @@ static void *_start_stage_in(void *x)
 	if (stage_args->timeout)
 		timeout = stage_args->timeout * 1000;
 	else
-		timeout = 5000;
+		timeout = 60 * 60 * 1000;	/* 3600 secs == 1 hour */
 	op = "setup";
 	START_TIMER;
 	resp_msg = bb_run_script("setup",
@@ -1518,7 +1527,7 @@ static void *_start_stage_out(void *x)
 		if (stage_args->timeout)
 			timeout = stage_args->timeout * 1000;
 		else
-			timeout = 5000;
+			timeout = 60 * 60 * 1000;     /* 3600 secs == 1 hour */
 		op = "dws_post_run";
 		START_TIMER;
 		xfree(resp_msg);
@@ -1674,7 +1683,7 @@ static void *_start_teardown(void *x)
 	if (teardown_args->timeout)
 		timeout = teardown_args->timeout * 1000;
 	else
-		timeout = 5000;
+		timeout = 60 * 60 * 1000;	/* 3600 secs == 1 hour */
 	resp_msg = bb_run_script("teardown",
 				 bb_state.bb_config.get_sys_state,
 				 teardown_argv, timeout, &status);
@@ -2004,7 +2013,13 @@ static void _timeout_bb_rec(void)
 		bb_pptr = &bb_state.bb_ahash[i];
 		bb_alloc = bb_state.bb_ahash[i];
 		while (bb_alloc) {
-			if (bb_alloc->seen_time < bb_state.last_load_time) {
+			if (((bb_alloc->seen_time + TIME_SLOP) <
+			     bb_state.last_load_time) &&
+			    (bb_alloc->state == BB_STATE_TEARDOWN)) {
+				/* Teardown complete, but bb_alloc state not yet
+				 * updated; go to next allocation */
+			} else if ((bb_alloc->seen_time + TIME_SLOP) <
+				   bb_state.last_load_time) {
 				if (bb_alloc->job_id == 0) {
 					info("%s: Persistent burst buffer %s "
 					     "purged",
@@ -2020,8 +2035,7 @@ static void _timeout_bb_rec(void)
 				*bb_pptr = bb_alloc->next;
 				bb_free_alloc_buf(bb_alloc);
 				break;
-			}
-			if (bb_alloc->state == BB_STATE_COMPLETE) {
+			} else if (bb_alloc->state == BB_STATE_COMPLETE) {
 				job_ptr = find_job_record(bb_alloc->job_id);
 				if (!job_ptr || IS_JOB_PENDING(job_ptr)) {
 					/* Job purged or BB preempted */
@@ -2044,7 +2058,7 @@ static int _parse_bb_opts(struct job_descriptor *job_desc, uint64_t *bb_size,
 	char *bb_name = NULL, *capacity;
 	char *end_ptr = NULL, *sub_tok, *tok;
 	uint64_t tmp_cnt;
-	int rc = SLURM_SUCCESS, swap_cnt;
+	int rc = SLURM_SUCCESS, swap_cnt = 0;
 	bool enable_persist = false, have_bb = false;
 
 	xassert(bb_size);
@@ -2080,6 +2094,7 @@ static int _parse_bb_opts(struct job_descriptor *job_desc, uint64_t *bb_size,
 				break;
 			} else if (!strncmp(tok, "create_persistent", 17)) {
 				have_bb = true;
+				bb_name = NULL;
 				if ((sub_tok = strstr(tok, "capacity="))) {
 					tmp_cnt = bb_get_size_num(
 						sub_tok + 9,
@@ -2095,7 +2110,9 @@ static int _parse_bb_opts(struct job_descriptor *job_desc, uint64_t *bb_size,
 				} else {
 					rc =ESLURM_INVALID_BURST_BUFFER_REQUEST;
 				}
-				if ((bb_name[0] >= '0') && (bb_name[0] <= '9'))
+				if (!bb_name ||
+				    ((bb_name[0] >= '0') &&
+				     (bb_name[0] <= '9')))
 					rc =ESLURM_INVALID_BURST_BUFFER_REQUEST;
 				xfree(bb_name);
 				if (rc != SLURM_SUCCESS)
@@ -2221,10 +2238,10 @@ static int _xlate_interactive(struct job_descriptor *job_desc)
 
 	if ((tok = strstr(job_desc->burst_buffer, "type="))) {
 		type = xstrdup(tok + 5);
-		tok = strchr(access, ',');
+		tok = strchr(type, ',');
 		if (tok)
 			tok[0] = '\0';
-		tok = strchr(access, ' ');
+		tok = strchr(type, ' ');
 		if (tok)
 			tok[0] = '\0';
 	}
@@ -2492,7 +2509,7 @@ extern int bb_p_job_validate(struct job_descriptor *job_desc,
 
 	if (job_desc->user_id == 0) {
 		info("%s: User root can not allocate burst buffers", __func__);
-		return EPERM;
+		return ESLURM_BURST_BUFFER_PERMISSION;
 	}
 
 	pthread_mutex_lock(&bb_state.bb_mutex);
@@ -2611,7 +2628,11 @@ fini:	xfree(data_buf);
  *
  * NOTE: We run several DW APIs at job submit time so that we can notify the
  * user immediately if there is some error, although that can be a relatively
- * slow operation.
+ * slow operation. We have a timeout of 3 seconds on the DW APIs here and log
+ * any times over 0.2 seconds.
+ *
+ * NOTE: We do this work inline so the user can be notified immediately if
+ * there is some problem with their script.
  *
  * Returns a SLURM errno.
  */
@@ -2675,7 +2696,7 @@ extern int bb_p_job_validate2(struct job_record *job_ptr, char **err_msg)
 	START_TIMER;
 	resp_msg = bb_run_script("job_process",
 				 bb_state.bb_config.get_sys_state,
-				 script_argv, 2000, &status);
+				 script_argv, 3000, &status);
 	END_TIMER;
 	if (DELTA_TIMER > 200000)	/* 0.2 secs */
 		info("%s: job_process ran for %s", __func__, TIME_STR);
@@ -2708,13 +2729,22 @@ extern int bb_p_job_validate2(struct job_record *job_ptr, char **err_msg)
 	START_TIMER;
 	resp_msg = bb_run_script("paths",
 				 bb_state.bb_config.get_sys_state,
-				 script_argv, 2000, &status);
+				 script_argv, 3000, &status);
 	END_TIMER;
 	if (DELTA_TIMER > 200000)	/* 0.2 secs */
 		info("%s: paths ran for %s", __func__, TIME_STR);
 	else if (bb_state.bb_config.debug_flag)
 		debug("%s: paths ran for %s", __func__, TIME_STR);
 	_log_script_argv(script_argv, resp_msg);
+#if 1
+	//FIXME: Cray API returning valid response, but exit 1 in some cases
+	if ((!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) &&
+	    (resp_msg && !strncmp(resp_msg, "job_file_valid True", 19))) {
+		error("%s: paths for job %u status:%u response:%s",
+		      __func__, job_ptr->job_id, status, resp_msg);
+		_update_job_env(job_ptr, path_file);
+	} else
+#endif
 	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
 		error("%s: paths for job %u status:%u response:%s",
 		      __func__, job_ptr->job_id, status, resp_msg);
@@ -3059,6 +3089,22 @@ extern int bb_p_job_begin(struct job_record *job_ptr)
 	return rc;
 }
 
+/* Kill job from CONFIGURING state */
+static void _kill_job(struct job_record *job_ptr)
+{
+	last_job_update = time(NULL);
+	job_ptr->end_time = last_job_update;
+	job_ptr->job_state = JOB_PENDING | JOB_COMPLETING;
+	job_ptr->priority = 0;	/* Hold job */
+	build_cg_bitmap(job_ptr);
+	job_ptr->exit_code = 1;
+	job_ptr->state_reason = WAIT_HELD;
+	xfree(job_ptr->state_desc);
+	job_ptr->state_desc = xstrdup("Burst buffer pre_run error");
+	job_completion_logger(job_ptr, false);
+	deallocate_nodes(job_ptr, false, false, false);
+}
+
 static void *_start_pre_run(void *x)
 {
 	/* Locks: write job */
@@ -3070,12 +3116,13 @@ static void *_start_pre_run(void *x)
 	bb_job_t *bb_job;
 	int status = 0;
 	struct job_record *job_ptr;
+	bool run_kill_job = false;
 	DEF_TIMERS;
 
 	START_TIMER;
 	resp_msg = bb_run_script("dws_pre_run",
 				 bb_state.bb_config.get_sys_state,
-				 pre_run_args->args, 2000, &status);
+				 pre_run_args->args, 10000, &status);
 	END_TIMER;
 
 	lock_slurmctld(job_write_lock);
@@ -3097,17 +3144,11 @@ static void *_start_pre_run(void *x)
 		      jobid_buf, TIME_STR);
 	}
 	_log_script_argv(pre_run_args->args, resp_msg);
-//	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
-	if (0) { // FIXME: Cray API is always returning an exit code of 1
-		time_t now = time(NULL);
+	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
 		error("%s: dws_pre_run for %s status:%u response:%s", __func__,
 		      jobid_buf, status, resp_msg);
 		if (job_ptr) {
-			xfree(job_ptr->state_desc);
-			job_ptr->state_desc =
-				xstrdup("Burst buffer pre_run error");
-			job_ptr->state_reason = FAIL_BAD_CONSTRAINTS;
-			last_job_update = now;
+			run_kill_job = true;
 			bb_job = _get_bb_job(job_ptr);
 			if (bb_job)
 				bb_job->state = BB_STATE_TEARDOWN;
@@ -3118,6 +3159,8 @@ static void *_start_pre_run(void *x)
 		prolog_running_decr(job_ptr);
 	}
 	pthread_mutex_unlock(&bb_state.bb_mutex);
+	if (run_kill_job)
+		_kill_job(job_ptr);
 	unlock_slurmctld(job_write_lock);
 
 	xfree(resp_msg);
@@ -3510,14 +3553,13 @@ static void *_create_persistent(void *x)
 	START_TIMER;
 	resp_msg = bb_run_script("create_persistent",
 				 bb_state.bb_config.get_sys_state,
-				 script_argv, 3000, &status);
+				 script_argv, 10000, &status);
 	_log_script_argv(script_argv, resp_msg);
 	_free_script_argv(script_argv);
 	END_TIMER;
 	if (bb_state.bb_config.debug_flag)
 		debug("%s: ran for %s", __func__, TIME_STR);
-//	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
-	if (0) { //FIXME: Cray bug: API exit code NOT 0 on success as documented
+	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
 		error("%s: For JobID=%u Name=%s status:%u response:%s",
 		      __func__, create_args->job_id, create_args->name,
 		      status, resp_msg);
@@ -3648,7 +3690,7 @@ static void *_destroy_persistent(void *x)
 	START_TIMER;
 	resp_msg = bb_run_script("destroy_persistent",
 				 bb_state.bb_config.get_sys_state,
-				 script_argv, 3000, &status);
+				 script_argv, 10000, &status);
 	_log_script_argv(script_argv, resp_msg);
 	_free_script_argv(script_argv);
 	END_TIMER;
@@ -3733,15 +3775,19 @@ _bb_get_configs(int *num_ent, bb_state_t *state_ptr)
 	START_TIMER;
 	resp_msg = bb_run_script("show_configurations",
 				 state_ptr->bb_config.get_sys_state,
-				 script_argv, 3000, &status);
+				 script_argv, 10000, &status);
 	END_TIMER;
 	if (bb_state.bb_config.debug_flag)
 		debug("%s: show_configurations ran for %s", __func__, TIME_STR);
 	_log_script_argv(script_argv, resp_msg);
 	_free_script_argv(script_argv);
-//FIXME: Cray API returning error if no configurations
-//	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
-	if (0) {
+#if 0
+	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+#else
+//FIXME: Cray bug: API returning error if no configurations, use above code when fixed
+	if ((!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) &&
+	    (!resp_msg || (resp_msg[0] != '{'))) {
+#endif
 		error("%s: show_configurations status:%u response:%s",
 		      __func__, status, resp_msg);
 	}
@@ -3792,15 +3838,19 @@ _bb_get_instances(int *num_ent, bb_state_t *state_ptr)
 	START_TIMER;
 	resp_msg = bb_run_script("show_instances",
 				 state_ptr->bb_config.get_sys_state,
-				 script_argv, 3000, &status);
+				 script_argv, 10000, &status);
 	END_TIMER;
 	if (bb_state.bb_config.debug_flag)
 		debug("%s: show_instances ran for %s", __func__, TIME_STR);
 	_log_script_argv(script_argv, resp_msg);
 	_free_script_argv(script_argv);
-//FIXME: Cray API returning error if no instances
-//	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
-	if (0) {
+#if 0
+	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+#else
+//FIXME: Cray bug: API returning error if no instances, use above code when fixed
+	if ((!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) &&
+	    (!resp_msg || (resp_msg[0] != '{'))) {
+#endif
 		error("%s: show_instances status:%u response:%s",
 		      __func__, status, resp_msg);
 	}
@@ -3850,7 +3900,7 @@ _bb_get_pools(int *num_ent, bb_state_t *state_ptr)
 	START_TIMER;
 	resp_msg = bb_run_script("pools",
 				 state_ptr->bb_config.get_sys_state,
-				 script_argv, 3000, &status);
+				 script_argv, 10000, &status);
 	END_TIMER;
 	if (bb_state.bb_config.debug_flag) {
 		/* Only log pools data if different to limit volume of logs */
@@ -3910,15 +3960,19 @@ _bb_get_sessions(int *num_ent, bb_state_t *state_ptr)
 	START_TIMER;
 	resp_msg = bb_run_script("show_sessions",
 				 state_ptr->bb_config.get_sys_state,
-				 script_argv, 3000, &status);
+				 script_argv, 10000, &status);
 	END_TIMER;
 	if (bb_state.bb_config.debug_flag)
 		debug("%s: show_sessions ran for %s", __func__, TIME_STR);
 	_log_script_argv(script_argv, resp_msg);
 	_free_script_argv(script_argv);
-//FIXME: Cray API returning error if no sessions
-//	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
-	if (0) {
+#if 0
+	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+#else
+//FIXME: Cray bug: API returning error if no sessions, use above code when fixed
+	if ((!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) &&
+	    (!resp_msg || (resp_msg[0] != '{'))) {
+#endif
 		error("%s: show_sessions status:%u response:%s",
 		      __func__, status, resp_msg);
 	}

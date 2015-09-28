@@ -284,6 +284,7 @@ test4.10   Confirm that sinfo reports a proper version number (--version
 test4.11   Test down node reason display (--list-reasons option).
 test4.12   Test cpu total and allocation numbers.
 test4.13   Test sinfo's -O (--Format) option.
+test4.14   Test that multiple partitions can be specified in the env variable.
 
 
 test5.#    Testing of squeue options.
@@ -568,7 +569,8 @@ test17.36  Test that the shared option in partitions is enforced.
 test17.37  Validate that afternotok dependency is enforced.
 test17.38  Test for sbatch --signal.
 test17.39  Validate dependecy OR option.
-test17.34  Test of --thread-spec option.
+test17.40  Test of --thread-spec option.
+test17.41  Validate that sbatch, srun, salloc return partition error message.
 
 
 test19.#   Testing of strigger options.
@@ -636,6 +638,7 @@ test21.30  sacctmgr test if the QoS values are enforced
 test21.31  sacctmgr modify Resource values
 test21.32  Validate that mod qos =,+=,-= change the preempt value
 test21.34  Validate that partition and job qos limits are enforced
+test21.35  Validate DenyOnLimit QoS flag is enforced on QoS and Associations.
 
 
 test22.#   Testing of sreport commands and options.
@@ -695,6 +698,7 @@ test28.6   Validates that when a job array is submitted to multiple
 test28.7   Confirms job array dependencies.
 test28.8   Test of job array suspend/resume.
 test28.9   Test of maximum running task count in a job array.
+test28.10  Test change to maximum running task count in a job array.
 
 
 test29.#   Testing of smd command and option.

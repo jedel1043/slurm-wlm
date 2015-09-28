@@ -2058,11 +2058,16 @@ static int _node_reconfig(char *node_name, char *orig_config, char **new_config,
 	if (gres_ptr->gres_data == NULL)
 		gres_ptr->gres_data = _build_gres_node_state();
 	gres_data = gres_ptr->gres_data;
+
+	/* remove the last count */
+	context_ptr->total_cnt -= gres_data->gres_cnt_config;
+
 	_get_gres_cnt(gres_data, orig_config,
 		      context_ptr->gres_name,
 		      context_ptr->gres_name_colon,
 		      context_ptr->gres_name_colon_len);
 
+	/* add the new */
 	context_ptr->total_cnt += gres_data->gres_cnt_config;
 
 	if ((gres_data->gres_cnt_config == 0) || (fast_schedule > 0))
@@ -4067,20 +4072,10 @@ static int _job_alloc(void *job_gres_data, void *node_gres_data,
 	    node_gres_ptr->topo_gres_bitmap &&
 	    node_gres_ptr->topo_gres_cnt_alloc) {
 		for (i = 0; i < node_gres_ptr->topo_cnt; i++) {
-			/* Insure that if specific CPUs are associated with
-			 * specific GRES and the CPU count matches the
-			 * slurmctld configuration that we only use the GRES
-			 * on the CPUs that have already been allocated. */
 			if (job_gres_ptr->type_model &&
 			    (!node_gres_ptr->topo_model[i] ||
 			     xstrcmp(job_gres_ptr->type_model,
 				     node_gres_ptr->topo_model[i])))
-				continue;
-			if (core_bitmap && node_gres_ptr->topo_cpus_bitmap[i] &&
-			    (bit_size(core_bitmap) ==
-			     bit_size(node_gres_ptr->topo_cpus_bitmap[i])) &&
-			    !bit_overlap(core_bitmap,
-					 node_gres_ptr->topo_cpus_bitmap[i]))
 				continue;
 			sz1 = bit_size(job_gres_ptr->gres_bit_alloc[node_offset]);
 			sz2 = bit_size(node_gres_ptr->topo_gres_bitmap[i]);
@@ -4975,8 +4970,11 @@ static uint64_t _step_test(void *step_gres_data, void *job_gres_data,
 			gres_cnt = NO_VAL64;
 	} else if (job_gres_ptr->gres_cnt_step_alloc &&
 		   job_gres_ptr->gres_cnt_step_alloc[node_offset]) {
-		gres_cnt = job_gres_ptr->gres_cnt_alloc -
-			   job_gres_ptr->gres_cnt_step_alloc[node_offset];
+		gres_cnt = job_gres_ptr->gres_cnt_alloc;
+		if (!ignore_alloc) {
+			gres_cnt -= job_gres_ptr->
+				    gres_cnt_step_alloc[node_offset];
+		}
 		if (step_gres_ptr->gres_cnt_alloc > gres_cnt)
 			gres_cnt = 0;
 		else

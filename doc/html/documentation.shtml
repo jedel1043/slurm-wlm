@@ -49,6 +49,7 @@ Documentation for other versions of Slurm is distributed with the code</b></p>
 <li><a href="power_save.html">Power Saving Guide (power down idle nodes)</a></li>
 <li><a href="prolog_epilog.html">Prolog and Epilog Guide</a></li>
 <li><a href="troubleshoot.html">Troubleshooting Guide</a></li>
+<li><a href="user_permissions.html">User Permissions</a></li>
 <li><a href="wckey.html">WCKey Management</a></li>
 <li>Workload Prioritization</li>
 <ul>
@@ -71,6 +72,7 @@ Documentation for other versions of Slurm is distributed with the code</b></p>
 <li><a href="reservations.html">Resource Reservation Guide</a></li>
 <li><a href="cons_res_share.html">Sharing Consumable Resources</a></li>
 <li><a href="topology.html">Topology</a></li>
+<li><a href="tres.html">Trackable Resources (TRES)</a></li>
 </ul>
 <li>External Schedulers</li>
 <ul>
@@ -134,6 +136,6 @@ Documentation for other versions of Slurm is distributed with the code</b></p>
 </li>
 </ul>
 
-<p style="text-align:center;">Last modified 25 August 2015</p>
+<p style="text-align:center;">Last modified 22 September 2015</p>
 
 <!--#include virtual="footer.txt"-->

@@ -4,6 +4,9 @@
  *  Copyright (C) 2011-2012 National University of Defense Technology.
  *  Written by Hongjia Cao <hjcao@nudt.edu.cn>.
  *  All rights reserved.
+ *  Portions copyright (C) 2015 Mellanox Technologies Inc.
+ *  Written by Artem Y. Polyakov <artemp@mellanox.com>.
+ *  All rights reserved.
  *
  *  This file is part of SLURM, a resource management program.
  *  For details, see <http://slurm.schedmd.com/>.
@@ -54,10 +57,10 @@
 #include <dlfcn.h>
 
 #include "src/common/slurm_xlator.h"
-#include "src/common/mpi.h"
-#include "src/common/xstring.h"
-#include "src/common/proc_args.h"
 #include "src/common/net.h"
+#include "src/common/proc_args.h"
+#include "src/common/slurm_mpi.h"
+#include "src/common/xstring.h"
 #include "src/slurmd/slurmstepd/slurmstepd_job.h"
 #include "src/slurmd/common/reverse_tree_math.h"
 
@@ -289,7 +292,6 @@ _setup_stepd_sockets(const stepd_step_rec_t *job, char ***env)
 
 	/* remove the tree socket file on exit */
 	strncpy(tree_sock_addr, sa.sun_path, 128);
-	atexit(_remove_tree_sock);
 
 	task_socks = xmalloc(2 * job->node_tasks * sizeof(int));
 	for (i = 0; i < job->node_tasks; i ++) {
@@ -380,6 +382,12 @@ pmi2_setup_stepd(const stepd_step_rec_t *job, char ***env)
 	return SLURM_SUCCESS;
 }
 
+extern void
+pmi2_cleanup_stepd()
+{
+	close(tree_sock);
+	_remove_tree_sock();
+}
 /**************************************************************/
 
 /* returned string should be xfree-ed by caller */

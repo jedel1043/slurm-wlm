@@ -4128,7 +4128,17 @@ extern int job_allocate(job_desc_msg_t * job_specs, int immediate,
 		slurm_sched_g_schedule();	/* work for external scheduler */
 	}
 
-	slurmctld_diag_stats.jobs_submitted++;
+       /* Moved this (_create_job_array) here to handle when a job
+	* array is submitted since we
+	* want to know the array task count when we check the job against
+	* QoS/Assoc limits
+	*/
+	_create_job_array(job_ptr, job_specs);
+
+	slurmctld_diag_stats.jobs_submitted +=
+		(job_ptr->array_recs && job_ptr->array_recs->task_cnt) ?
+		job_ptr->array_recs->task_cnt : 1;
+
 	acct_policy_add_job_submit(job_ptr);
 
 	if ((error_code == ESLURM_NODES_BUSY) ||
@@ -4150,7 +4160,6 @@ extern int job_allocate(job_desc_msg_t * job_specs, int immediate,
 			job_ptr->start_time = job_ptr->end_time = now;
 			job_completion_logger(job_ptr, false);
 		} else {	/* job remains queued */
-			_create_job_array(job_ptr, job_specs);
 			if ((error_code == ESLURM_NODES_BUSY) ||
 			    (error_code == ESLURM_RESERVATION_BUSY) ||
 			    (error_code == ESLURM_ACCOUNTING_POLICY)) {
@@ -4179,7 +4188,6 @@ extern int job_allocate(job_desc_msg_t * job_specs, int immediate,
 		jobacct_storage_g_job_start(acct_db_conn, job_ptr);
 
 	if (!will_run) {
-		_create_job_array(job_ptr, job_specs);
 		debug2("sched: JobId=%u allocated resources: NodeList=%s",
 		       job_ptr->job_id, job_ptr->nodes);
 		rebuild_job_part_list(job_ptr);
@@ -4597,9 +4605,7 @@ extern int job_str_signal(char *job_id_str, uint16_t signal, uint16_t flags,
 			orig_task_cnt = job_ptr->array_recs->task_cnt;
 			new_task_count = bit_set_count(job_ptr->array_recs->
 						       task_id_bitmap);
-			job_ptr->array_recs->task_cnt = new_task_count;
-			job_count -= (orig_task_cnt - new_task_count);
-			if (job_ptr->array_recs->task_cnt == 0) {
+			if (!new_task_count) {
 				last_job_update		= now;
 				job_ptr->job_state	= JOB_CANCELLED;
 				job_ptr->start_time	= now;
@@ -4607,7 +4613,18 @@ extern int job_str_signal(char *job_id_str, uint16_t signal, uint16_t flags,
 				job_ptr->requid		= uid;
 				srun_allocate_abort(job_ptr);
 				job_completion_logger(job_ptr, false);
-			}
+				/* Master job record, even wihtout tasks,
+				 * counts as one job record */
+				job_count -= (orig_task_cnt - 1);
+			} else
+				job_count -= (orig_task_cnt - new_task_count);
+
+			/* Set the task_cnt here since
+			 * job_completion_logger needs the total
+			 * pending count to handle the acct_policy
+			 * limit for submitted jobs correctly.
+			 */
+			job_ptr->array_recs->task_cnt = new_task_count;
 			bit_not(tmp_bitmap);
 			bit_and(array_bitmap, tmp_bitmap);
 			FREE_NULL_BITMAP(tmp_bitmap);
@@ -6120,6 +6137,8 @@ extern int validate_job_create_req(job_desc_msg_t * job_desc, uid_t submit_uid,
 	    (job_desc->min_cpus  <  job_desc->min_nodes) &&
 	    (job_desc->max_cpus  >= job_desc->min_nodes))
 		job_desc->min_cpus = job_desc->min_nodes;
+	if (job_desc->reboot && (job_desc->reboot != (uint16_t) NO_VAL))
+		job_desc->shared = 0;
 
 	return SLURM_SUCCESS;
 }
@@ -8047,7 +8066,12 @@ void pack_job(struct job_record *dump_job_ptr, uint16_t show_flags, Buf buffer,
 
 		pack32(dump_job_ptr->job_state,    buffer);
 		pack16(dump_job_ptr->batch_flag,   buffer);
-		pack16(dump_job_ptr->state_reason, buffer);
+		if ((dump_job_ptr->state_reason == WAIT_NO_REASON) &&
+		    IS_JOB_PENDING(dump_job_ptr)) {
+			/* Scheduling cycle in progress, send latest reason */
+			pack16(dump_job_ptr->state_reason_prev, buffer);
+		} else
+			pack16(dump_job_ptr->state_reason, buffer);
 		pack8(dump_job_ptr->power_flags,   buffer);
 		pack8(dump_job_ptr->reboot,        buffer);
 		pack8(dump_job_ptr->sicp_mode,     buffer);
@@ -9864,14 +9888,18 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 				resv_name = job_ptr->resv_name;
 
 			memset(&qos_rec, 0, sizeof(slurmdb_qos_rec_t));
-			qos_rec.name = job_specs->qos;
+
+			/* If the qos is blank that means we want the default */
+			if (job_specs->qos[0])
+				qos_rec.name = job_specs->qos;
 
 			new_qos_ptr = _determine_and_validate_qos(
 				resv_name, job_ptr->assoc_ptr,
 				authorized, &qos_rec, &error_code, false);
 			if (error_code == SLURM_SUCCESS) {
 				info("%s: setting QOS to %s for job_id %u",
-				     __func__, job_specs->qos, job_ptr->job_id);
+				     __func__, new_qos_ptr->name,
+				     job_ptr->job_id);
 				if (job_ptr->qos_id != qos_rec.id) {
 					job_ptr->qos_id = qos_rec.id;
 					job_ptr->qos_ptr = new_qos_ptr;
@@ -10512,8 +10540,9 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 			    (job_ptr->state_reason == WAIT_HELD_USER))) {
 			job_ptr->direct_set_prio = 0;
 			set_job_prio(job_ptr);
-			info("sched: update_job: releasing hold for job_id %u",
-			     job_ptr->job_id);
+			info("sched: update_job: releasing hold for job_id %u "
+			     "uid %u",
+			     job_ptr->job_id, uid);
 			job_ptr->state_reason = WAIT_NO_REASON;
 			job_ptr->job_state &= ~JOB_SPECIAL_EXIT;
 			xfree(job_ptr->state_desc);
@@ -10963,6 +10992,21 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 		}
 	}
 
+	if (job_specs->array_inx && job_ptr->array_recs) {
+		int throttle;
+		throttle = strtoll(job_specs->array_inx, (char **) NULL, 10);
+		if (throttle >= 0) {
+			info("update_job: set max_run_tasks to %d for "
+			     "job array %u", throttle, job_ptr->job_id);
+			job_ptr->array_recs->max_run_tasks = throttle;
+		} else {
+			info("update_job: invalid max_run_tasks of %d for "
+			     "job array %u, ignored",
+			     throttle, job_ptr->job_id);
+			error_code = ESLURM_BAD_TASK_COUNT;
+		}
+	}
+
 	if (job_specs->ntasks_per_node != (uint16_t) NO_VAL) {
 		if ((!IS_JOB_PENDING(job_ptr)) || (detail_ptr == NULL))
 			error_code = ESLURM_JOB_NOT_PENDING;
@@ -11377,6 +11421,8 @@ extern int update_job(slurm_msg_t *msg, uid_t uid)
 	}
 
 	slurm_send_rc_msg(msg, rc);
+	xfree(job_specs->job_id_str);
+
 	return rc;
 }
 
@@ -12618,7 +12664,13 @@ extern void job_completion_logger(struct job_record *job_ptr, bool requeue)
 	xassert(job_ptr);
 
 	acct_policy_remove_job_submit(job_ptr);
-	(void) bb_g_job_start_stage_out(job_ptr);
+	if (job_ptr->nodes) {
+		(void) bb_g_job_start_stage_out(job_ptr);
+	} else {
+		/* Never allocated compute nodes
+		 * Unless it ran, there is nothing to stage-out */
+		(void) bb_g_job_cancel(job_ptr);
+	}
 
 	if (!IS_JOB_RESIZING(job_ptr) &&
 	    ((job_ptr->array_task_id == NO_VAL) ||
