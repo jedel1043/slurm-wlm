@@ -1,0 +1,19 @@
+Description: Fix spelling error in scontrol.1 man page
+ Fix spelling error in scontrol.1 man page
+Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+---
+Origin: other
+Forwarded: http://bugs.schedmd.com/show_bug.cgi?id=1983
+Last-Update: 2015-09-28
+
+--- slurm-llnl-15.08.1.orig/doc/man/man1/scontrol.1
++++ slurm-llnl-15.08.1/doc/man/man1/scontrol.1
+@@ -484,7 +484,7 @@ Speciify the maximum number of tasks in
+ the same time.
+ Set the count to zero in order to eliminate any limit.
+ The task throttle count for a job array is reported as part of its ArrayTaskId
+-field, preceeded with a percent sign.
++field, preceded with a percent sign.
+ For example "ArrayTaskId=1\-10%2" indicates the maximum number of running tasks
+ is limited to 2.
+ .TP
