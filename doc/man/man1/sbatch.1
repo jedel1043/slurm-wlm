@@ -1068,9 +1068,10 @@ ignored if \fISchedulerType=sched/wiki\fR or
 
 .TP
 \fB\-\-no\-requeue\fR
-Specifies that the batch job should not be requeued after node failure.
+Specifies that the batch job should never be requeued under any circumstances.
 Setting this option will prevent system administrators from being able
-to restart the job (for example, after a scheduled downtime).
+to restart the job (for example, after a scheduled downtime), recover from
+a node failure, or be requeued upon preemption by a higher priority job.
 When a job is requeued, the batch script is initiated from its beginning.
 Also see the \fB\-\-requeue\fR option.
 The \fIJobRequeue\fR configuration parameter controls the default
@@ -1174,6 +1175,7 @@ may be disabled by the Slurm configuration option PowerParameters=job_no_level).
 \fB\-\-priority\fR=<value>
 Request a specific job priority.
 May be subject to configuration specific constraints.
+Only Slurm operators and administrators can set the priority of a job.
 
 .TP
 \fB\-\-profile\fR=<all|none|[energy[,|task[,|lustre[,|network]]]]>
@@ -1274,7 +1276,9 @@ silently ignored.
 
 .TP
 \fB\-\-requeue\fR
-Specifies that the batch job should be requeued after node failure.
+Specifies that the batch job should eligible to being requeue.
+The job may be requeued explicitly by a system administrator, after node
+failure, or upon preemption by a higher priority job.
 When a job is requeued, the batch script is initiated from its beginning.
 Also see the \fB\-\-no\-requeue\fR option.
 The \fIJobRequeue\fR configuration parameter controls the default
@@ -1717,6 +1721,39 @@ Do not free a block on Blue Gene L/P systems only.
 \fBMPIRUN_PARTITION\fR
 The block name on Blue Gene systems only.
 .TP
+\fBSBATCH_CPU_BIND\fR
+Set to value of the \-\-cpu_bind\fR option.
+.TP
+\fBSBATCH_CPU_BIND_VERBOSE\fR
+Set to "verbose" if the \-\-cpu_bind\fR option includes the verbose option.
+Set to "quiet" otherwise.
+.TP
+\fBSBATCH_CPU_BIND_TYPE\fR
+Set to the CPU binding type specified with the \-\-cpu_bind\fR option.
+Possible values two possible comma separated strings.
+The first possible string identifies the entity to be bound to: "threads",
+"cores", "sockets", "ldoms" and "boards".
+The second string identifies manner in which tasks are bound:
+"none", "rank", "map_cpu", "mask_cpu", "rank_ldom", "map_ldom" or "mask_ldom".
+.TP
+\fBSBATCH_CPU_BIND_LIST\fR
+Set to bit mask used for CPU binding.
+
+.TP
+\fBSBATCH_MEM_BIND\fR
+Set to value of the \-\-mem_bind\fR option.
+.TP
+\fBSBATCH_MEM_BIND_VERBOSE\fR
+Set to "verbose" if the \-\-mem_bind\fR option includes the verbose option.
+Set to "quiet" otherwise.
+.TP
+\fBSBATCH_MEM_BIND_TYPE\fR
+Set to the memory binding type specified with the \-\-mem_bind\fR option.
+Possible values are "none", "rank", "map_map", "mask_mem" and "local".
+.TP
+\fBSBATCH_MEM_BIND_LIST\fR
+Set to bit mask used for memory binding.
+.TP
 \fBSLURM_ARRAY_TASK_ID\fR
 Job array ID (index) number.
 .TP
@@ -1780,9 +1817,6 @@ Name of the partition in which the job is running.
 .TP
 \fBSLURM_LOCALID\fR
 Node local task ID for the process within a job.
-.TP
-\fBSLURM_MEM_BIND\fR
-Set to value of the \-\-mem_bind\fR option.
 .TP
 \fBSLURM_NODE_ALIASES\fR
 Sets of node name, communication address and hostname for nodes allocated to

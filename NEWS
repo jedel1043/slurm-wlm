@@ -1,6 +1,82 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 15.08.2
+==========================
+ -- Fix for tracking node state when jobs that have been allocated exclusive
+    access to nodes (i.e. entire nodes) and later relinquish some nodes. Nodes
+    would previously appear partly allocated and prevent use by other jobs.
+ -- Correct some cgroup paths ("step_batch" vs. "step_4294967294", "step_exter"
+    vs. "step_extern", and "step_extern" vs. "step_4294967295").
+ -- Fix advanced reservation core selection logic with network topology.
+ -- MYSQL - Remove restriction to have to be at least an operator to query TRES
+    values.
+ -- For pending jobs have sacct print 0 for nnodes instead of the bogus 2.
+ -- Fix for tracking node state when jobs that have been allocated exclusive
+    access to nodes (i.e. entire nodes) and later relinquish some nodes. Nodes
+    would previously appear partly allocated and prevent use by other jobs.
+ -- Fix updating job in db after extending job's timelimit past partition's
+    timelimit.
+ -- Fix srun -I<timeout> from flooding the controller with step create requests.
+ -- Requeue/hold batch job launch request if job already running (possible if
+    node went to DOWN state, but jobs remained active).
+ -- If a job's CPUs/task ratio is increased due to configured MaxMemPerCPU,
+    then increase it's allocated CPU count in order to enforce CPU limits.
+ -- Don't mark powered down node as not responding. This could be triggered by
+    race condition of the node suspend and ping logic, preventing use of the
+    node.
+ -- Don't requeue RPC going out from slurmctld to DOWN nodes (can generate
+    repeating communication errors).
+ -- Propagate sbatch "--dist=plane=#" option to srun.
+ -- Add acct_gather_energy/ibmaem plugin for systems with IBM Systems Director
+    Active Energy Manager.
+ -- Fix spec file to look for mariadb or mysql devel packages for build
+    requirements.
+ -- MySQL - Improve the code with asking for jobs in a suspended state.
+ -- Fix slurcmtld allowing root to see job steps using squeues -s.
+ -- Do not send burst buffer stage out email unless the job uses burst buffers.
+ -- Fix sacct to not return all jobs if the -j option is given with a trailing
+    ','.
+ -- Permit job_submit plugin to set a job's priority.
+ -- Fix occasional srun segfault.
+ -- Fix issue with sacct, printing 0_0 for array's that had finished in the
+    database but the start record hadn't made it yet.
+ -- sacctmgr - Don't allow default account associations to be removed
+    from a user.
+ -- Fix sacct -j, (nothing but a comma) to not return all jobs.
+ -- Fixed slurmctld not sending cold-start messages correctly to the database
+    when a cold-start (-c) happens to the slurmctld.
+ -- Fix case where if the backup slurmdbd has existing connections when it gives
+    up control that the it would be killed.
+ -- Fix task/cgroup affinity to work correctly with multi-socket
+    single-threaded cores.  A regression caused only 1 socket to be used on
+    this kind of node instead of all that were available.
+ -- MYSQL - Fix minor issue after an index was added to the database it would
+    previously take 2 restarts of the slurmdbd to make it stick correctly.
+ -- Add hv_to_qos_cond() and qos_rec_to_hv() functions to the Perl interface.
+ -- Add new burst_buffer.conf parameters: ValidateTimeout and OtherTimeout.
+    See man page for details.
+ -- Fix burst_buffer/cray support for interactive allocations >4GB.
+ -- Correct backfill scheduling logic for job with INFINITE time limit.
+ -- Fix issue on a scontrol reconfig all available GRES/TRES would be zeroed
+    out.
+ -- Set SLURM_HINT environment variable when --hint is used with sbatch or
+    salloc.
+ -- Add scancel -f/--full option to signal all steps including batch script and
+    all of its child processes.
+ -- Fix salloc -I to accept an argument.
+ -- Avoid reporting more allocated CPUs than exist on a node. This can be
+    triggered by resuming a previosly suspended job, resulting in
+    oversubscription of CPUs.
+ -- Fix the pty window manager in slurmstepd not to retry IO operation with
+    srun if it read EOF from the connection with it.
+ -- sbatch --ntasks option to take precedence over --ntasks-per-node plus node
+    count, as documented. Set SLURM_NTASKS/SLURM_NPROCS environment variables
+    accordingly.
+ -- MYSQL - Make sure suspended time is only subtracted from the CPU TRES
+    as it is the only TRES that can be given to another job while suspended.
+ -- Clarify how TRESBillingWeights operates on memory and burst buffers.
+
 * Changes in Slurm 15.08.1
 ==========================
  -- Fix test21.30 and 21.34 to check grpwall better.
@@ -446,6 +522,28 @@ documents those changes that are of interest to users and administrators.
  -- Correct counting for job array limits, job count limit underflow possible
     when master cancellation of master job record.
  -- For pending jobs have sacct print 0 for nnodes instead of the bogus 2.
+ -- Fix for tracking node state when jobs that have been allocated exclusive
+    access to nodes (i.e. entire nodes) and later relinquish some nodes. Nodes
+    would previously appear partly allocated and prevent use by other jobs.
+ -- Fix updating job in db after extending job's timelimit past partition's
+    timelimit.
+ -- Fix srun -I<timeout> from flooding the controller with step create requests.
+ -- Requeue/hold batch job launch request if job already running (possible if
+    node went to DOWN state, but jobs remained active).
+ -- If a job's CPUs/task ratio is increased due to configured MaxMemPerCPU,
+    then increase it's allocated CPU count in order to enforce CPU limits.
+ -- Don't mark powered down node as not responding. This could be triggered by
+    race condition of the node suspend and ping logic.
+ -- Don't requeue RPC going out from slurmctld to DOWN nodes (can generate
+    repeating communication errors).
+ -- Propagate sbatch "--dist=plane=#" option to srun.
+ -- Fix sacct to not return all jobs if the -j option is given with a trailing
+    ','.
+ -- Permit job_submit plugin to set a job's priority.
+ -- Fix occasional srun segfault.
+ -- Fix issue with sacct, printing 0_0 for array's that had finished in the
+    database but the start record hadn't made it yet.
+ -- Fix sacct -j, (nothing but a comma) to not return all jobs.
 
 * Changes in Slurm 14.11.9
 ==========================

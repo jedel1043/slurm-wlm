@@ -404,9 +404,11 @@ job_create_allocation(resource_allocation_response_msg_t *resp)
 	i->select_jobinfo = select_g_select_jobinfo_copy(resp->select_jobinfo);
 
 	job = _job_create_structure(i);
-	job->account = xstrdup(resp->account);
-	job->qos = xstrdup(resp->qos);
-	job->resv_name = xstrdup(resp->resv_name);
+	if (job) {
+		job->account = xstrdup(resp->account);
+		job->qos = xstrdup(resp->qos);
+		job->resv_name = xstrdup(resp->resv_name);
+	}
 
 	xfree(i->nodelist);
 	xfree(i);
@@ -474,6 +476,9 @@ extern void init_srun(int ac, char **av,
 
 	/* Set up slurmctld message handler */
 	slurmctld_msg_init();
+
+	/* save process startup time to be used with -I<timeout> */
+	srun_begin_time = time(NULL);
 }
 
 extern void create_srun_job(srun_job_t **p_job, bool *got_alloc,

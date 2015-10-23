@@ -256,9 +256,14 @@ task_dist_states_t verify_dist_type(const char *arg, uint32_t *plane_size)
 		} else {
 			/* -m plane=<plane_size> */
 			dist_str = strchr(tok, '=');
-			if (dist_str != NULL) {
-				*plane_size = atoi(dist_str + 1);
+			if (!dist_str)
+				dist_str = getenv("SLURM_DIST_PLANESIZE");
+			else {
 				len = dist_str - tok;
+				dist_str++;
+			}
+			if (dist_str) {
+				*plane_size = atoi(dist_str);
 				plane_dist = true;
 			}
 		}
@@ -964,6 +969,9 @@ bool verify_hint(const char *arg, int *min_sockets, int *min_cores,
 			return 1;
 		}
 	}
+
+	if (!cpu_bind_type)
+		setenvf(NULL, "SLURM_HINT", "%s", arg);
 
 	xfree(buf);
 	return 0;

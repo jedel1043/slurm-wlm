@@ -690,6 +690,7 @@ are allocated to jobs (\fBSelectType=select/cons_res\fR).
 The default value is 0 (unlimited).
 Also see \fBDefMemPerNode\fR and \fBMaxMemPerCPU\fR.
 \fBDefMemPerCPU\fR and \fBDefMemPerNode\fR are mutually exclusive.
+
 NOTE: Enforcement of memory limits currently requires enabling of
 accounting, which samples memory use on a periodic basis (data need
 not be stored, just collected).
@@ -704,6 +705,7 @@ resources are shared (\fBShared=yes\fR or \fBShared=force\fR).
 The default value is 0 (unlimited).
 Also see \fBDefMemPerCPU\fR and \fBMaxMemPerNode\fR.
 \fBDefMemPerCPU\fR and \fBDefMemPerNode\fR are mutually exclusive.
+
 NOTE: Enforcement of memory limits currently requires enabling of
 accounting, which samples memory use on a periodic basis (data need
 not be stored, just collected).
@@ -864,7 +866,7 @@ Consider which value you want to be used for scheduling purposes.
 \fB0\fR
 Base scheduling decisions upon the actual configuration of each individual
 node except that the node's processor count in Slurm's configuration must
-match the actual hardware configuration if \fBSchedulerType=sched/gang\fR
+match the actual hardware configuration if \fBPreemptMode=suspend,gang\fR
 or \fBSelectType=select/cons_res\fR are configured (both of those plugins
 maintain resource allocation information using bitmaps for the cores in the
 system and must remain static, while the node's memory and disk space can
@@ -1190,11 +1192,13 @@ By default, any existing file is truncated.
 
 .TP
 \fBJobRequeue\fR
-This option controls what to do by default after a node failure.
-If \fBJobRequeue\fR is set to a value of 1, then any batch job running
-on the failed node will be requeued for execution on different nodes.
-If \fBJobRequeue\fR is set to a value of 0, then any job running
-on the failed node will be terminated.
+This option controls the default ability for batch jobs to be requeued.
+Jobs may be requeued explicitly by a system administrator, after node
+failure, or upon preemption by a higher priority job.
+If \fBJobRequeue\fR is set to a value of 1, then batch job may be requeued
+unless explicitly disabled by the user.
+If \fBJobRequeue\fR is set to a value of 0, then batch job will not be requeued
+unless explicitly enabled by the user.
 Use the \fBsbatch\fR \fI\-\-no\-requeue\fR or \fI\-\-requeue\fR
 option to change the default behavior for individual jobs.
 The default value is 1.
@@ -1350,9 +1354,14 @@ are allocated to jobs (\fBSelectType=select/cons_res\fR).
 The default value is 0 (unlimited).
 Also see \fBDefMemPerCPU\fR and \fBMaxMemPerNode\fR.
 \fBMaxMemPerCPU\fR and \fBMaxMemPerNode\fR are mutually exclusive.
+
 NOTE: Enforcement of memory limits currently requires enabling of
 accounting, which samples memory use on a periodic basis (data need
 not be stored, just collected).
+
+NOTE: If a job specifies a memory per CPU limit that exceeds this system limit,
+that job's count of CPUs per task will automatically be increased. This may
+result in the job failing due to CPU count limits.
 
 .TP
 \fBMaxMemPerNode\fR
@@ -1364,6 +1373,7 @@ resources are shared (\fBShared=yes\fR or \fBShared=force\fR).
 The default value is 0 (unlimited).
 Also see \fBDefMemPerNode\fR and \fBMaxMemPerCPU\fR.
 \fBMaxMemPerCPU\fR and \fBMaxMemPerNode\fR are mutually exclusive.
+
 NOTE: Enforcement of memory limits currently requires enabling of
 accounting, which samples memory use on a periodic basis (data need
 not be stored, just collected).
@@ -1651,9 +1661,10 @@ not recommended.
 preempts jobs by requeuing them (if possible) or canceling them.
 .TP
 \fBSUSPEND\fR
-preempts jobs by suspending them.
-A suspended job will resume execution once the high priority job
-preempting it completes.
+If PreemptType=preempt/partition_prio is configured then suspend and
+automatically resume the low priority jobs.
+If PreemptType=preempt/qos is configured, then the jobs sharing resources
+will always time slice rather than one job remaining suspended.
 The \fBSUSPEND\fR may only be used with the \fBGANG\fR option
 (the gang scheduler module performs the job resume operation).
 .RE
@@ -2437,7 +2448,7 @@ Higher values result in more overhead and less responsiveness.
 The default value is 1440 minutes (one day).
 A value at least as long as the highest allowed time limit is generally
 advisable to prevent job starvation.
-In order limit the amount of data managed by the backfill scheduler,
+In order to limit the amount of data managed by the backfill scheduler,
 if the value of \fBbf_window\fR is increased, then it is generally advisable
 to also increase \fBbf_resolution\fR.
 This option applies only to \fBSchedulerType=sched/backfill\fR.
@@ -2624,7 +2635,7 @@ scheduling module "sched/backfill" (see \fBSchedulerType\fR).
 .TP
 \fBSchedulerTimeSlice\fR
 Number of seconds in each time slice when gang scheduling is enabled
-(\fBPreemptMode=GANG\fR).
+(\fBPreemptMode=SUSPEND,GANG\fR).
 The value must be between 5 seconds and 65533 seconds.
 The default value is 30 seconds.
 
@@ -2658,9 +2669,6 @@ An exception is made for jobs that can not run due to partition constraints
 (e.g. the time limit) or down/drained nodes.
 In that case, lower priority jobs can be initiated and not impact the higher
 priority job.
-.TP
-\fBsched/gang\fR
-Defunct option. See \fBPreemptType\fR and \fBPreemptMode\fR options.
 .TP
 \fBsched/hold\fR
 To hold all newly arriving jobs if a file "/etc/slurm.hold"
@@ -4074,13 +4082,19 @@ will be used in calcuating the usage of a job.
 Billing weights are specified as a comma-separated list of
 \fI<TRES Type>\fR=\fI<TRES Billing Weight>\fR pairs.
 
-Any TRES Type is available for billing. Note that the memory is weighted per
-gigabyte.
+Any TRES Type is available for billing. Note that base the unit for memory and
+burst buffers is megabytes.
 
 By default the billing of TRES is calculated as the sum of all TRES types
-multiplied by their corresponding billing weight.  For example, when a job is
-allocated 1 CPU and 8 GB of memory on a partition configured with
-TRESBillingWeights="CPU=1.0,Mem=0.25,GRES/gpu=2.0", the billable TRES will be:
+multiplied by their corresponding billing weight.
+
+The weighted amount of a resource can be adjusted by adding a suffix of K,M,G,T
+or P after the billing weight. For example, a memory weight of "mem=.25" on a
+job allocated 8GB will be billed 2048 (8192MB *.25) units. A memory weight of
+"mem=.25G" on the same job will be billed 2 (8192MB * (.25/1024)) units.
+
+When a job is allocated 1 CPU and 8 GB of memory on a partition configured with
+TRESBillingWeights="CPU=1.0,Mem=0.25G,GRES/gpu=2.0", the billable TRES will be:
 (1*1.0) + (8*0.25) + (0*2.0) = 3.0.
 
 If PriorityFlags=MAX_TRES is configured, the billable TRES is calculated as the
@@ -4351,7 +4365,7 @@ is very important.
 memory as a consumable resource and the \fB\-\-mem\fR option
 should be used for job allocations.
 Sharing of resources is typically useful only when using gang scheduling
-(\fBPreemptMode=suspend\fR or \fBPreemptMode=kill\fR).
+(\fBPreemptMode=suspend,gang\fR).
 Possible values for \fBShared\fR are "EXCLUSIVE", "FORCE", "YES", and "NO".
 Note that a value of "YES" or "FORCE" can negatively impact performance
 for systems with many thousands of running jobs.
@@ -4384,7 +4398,7 @@ For example "Shared=FORCE:4" enables each node, socket or
 core to execute up to four jobs at once.
 Recommended only for BlueGene systems configured with
 small blocks or for systems running
-with gang scheduling (\fBSchedulerType=sched/gang\fR).
+with gang scheduling (\fBPreemptMode=suspend,gang\fR).
 NOTE: \fIPreemptType=QOS\fR will permit one additional job to be run
 on the partition if started due to job preemption. For example, a configuration
 of \fIShared=FORCE:1\fR will only permit one job per resources normally,
@@ -4402,7 +4416,7 @@ running or suspended state.
 For example "Shared=YES:4" enables each node, socket or
 core to execute up to four jobs at once.
 Recommended only for systems running with gang scheduling
-(\fBSchedulerType=sched/gang\fR).
+(\fBPreemptMode=suspend,gang\fR).
 .TP
 \fBNO\fR
 Selected resources are allocated to a single job. No resource will be
