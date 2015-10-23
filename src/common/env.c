@@ -1205,11 +1205,9 @@ env_array_for_batch_job(char ***dest, const batch_job_launch_msg_t *batch,
 		cpus_per_task = 1;	/* default value */
 
 	if (num_tasks) {
-		env_array_overwrite_fmt(dest, "SLURM_NTASKS", "%u",
-					num_tasks);
+		env_array_append_fmt(dest, "SLURM_NTASKS", "%u", num_tasks);
 		/* keep around for old scripts */
-		env_array_overwrite_fmt(dest, "SLURM_NPROCS", "%u",
-					num_tasks);
+		env_array_append_fmt(dest, "SLURM_NPROCS", "%u", num_tasks);
 	} else {
 		num_tasks = num_cpus / cpus_per_task;
 	}
@@ -1319,6 +1317,8 @@ env_array_for_step(char ***dest,
 	env_array_overwrite_fmt(dest, "SLURM_STEP_ID", "%u", step->job_step_id);
 	env_array_overwrite_fmt(dest, "SLURM_STEP_NODELIST",
 				"%s", step->step_layout->node_list);
+	env_array_append_fmt(dest, "SLURM_JOB_NODELIST",
+			     "%s", step->step_layout->node_list);
 	if (cluster_flags & CLUSTER_FLAG_BG) {
 		char geo_char[HIGHEST_DIMENSIONS+1];
 

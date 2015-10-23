@@ -4336,9 +4336,10 @@ static int _job_signal(struct job_record *job_ptr, uint16_t signal,
 			build_cg_bitmap(job_ptr);
 			job_completion_logger(job_ptr, false);
 			deallocate_nodes(job_ptr, false, false, preempt);
-		} else if (job_ptr->batch_flag
-			   && (flags & KILL_STEPS_ONLY
-			       || flags & KILL_JOB_BATCH)) {
+		} else if (job_ptr->batch_flag &&
+			   ((flags & KILL_FULL_JOB)  ||
+			    (flags & KILL_JOB_BATCH) ||
+			    (flags & KILL_STEPS_ONLY))) {
 			_signal_batch_job(job_ptr, signal, flags);
 		} else if ((flags & KILL_JOB_BATCH) && !job_ptr->batch_flag) {
 			return ESLURM_JOB_SCRIPT_MISSING;
@@ -4705,12 +4706,10 @@ _signal_batch_job(struct job_record *job_ptr, uint16_t signal, uint16_t flags)
 	kill_tasks_msg->job_id      = job_ptr->job_id;
 	kill_tasks_msg->job_step_id = NO_VAL;
 
-	/* Encode the KILL_JOB_BATCH|KILL_STEPS_ONLY flags for stepd to know if
-	 * has to signal only the batch script or only the steps.
-	 * The job was submitted using the --signal=B:sig
-	 * or without B sbatch option.
-	 */
-	if (flags == KILL_JOB_BATCH)
+	/* Encode the flags for slurm stepd to know what steps get signalled */
+	if (flags == KILL_FULL_JOB)
+		z = KILL_FULL_JOB << 24;
+	else if (flags == KILL_JOB_BATCH)
 		z = KILL_JOB_BATCH << 24;
 	else if (flags == KILL_STEPS_ONLY)
 		z = KILL_STEPS_ONLY << 24;
@@ -4784,9 +4783,15 @@ extern int job_complete(uint32_t job_id, uid_t uid, bool requeue,
 		return ESLURM_INVALID_JOB_ID;
 	}
 
-	info("%s: %s WIFEXITED %d WEXITSTATUS %d",
-	     __func__, jobid2str(job_ptr, jbuf, sizeof(jbuf)),
-	     WIFEXITED(job_return_code), WEXITSTATUS(job_return_code));
+	if (WIFSIGNALED(job_return_code)) {
+		info("%s: %s WTERMSIG %d",  __func__,
+		     jobid2str(job_ptr, jbuf, sizeof(jbuf)),
+		     WTERMSIG(job_return_code));
+	} else {
+		info("%s: %s WEXITSTATUS %d",  __func__,
+		     jobid2str(job_ptr, jbuf, sizeof(jbuf)),
+		     WEXITSTATUS(job_return_code));
+	}
 
 	if (IS_JOB_FINISHED(job_ptr)) {
 		if (job_ptr->exit_code == 0)
@@ -5536,16 +5541,7 @@ static int _job_create(job_desc_msg_t *job_desc, int allocate, int will_run,
 		xmalloc(sizeof(uint16_t) * slurmctld_tres_cnt);
 
 	*job_pptr = (struct job_record *) NULL;
-	/*
-	 * Check user permission for negative 'nice' and non-0 priority values
-	 * (both restricted to SlurmUser) before running the job_submit plugin.
-	 */
-	if ((submit_uid != 0) && (submit_uid != slurmctld_conf.slurm_user_id)) {
-		if (job_desc->priority != 0)
-			job_desc->priority = NO_VAL;
-		if (job_desc->nice < NICE_OFFSET)
-			job_desc->nice = NICE_OFFSET;
-	}
+
 	user_submit_priority = job_desc->priority;
 
 	/* insure that selected nodes are in this partition */
@@ -6093,6 +6089,17 @@ extern int validate_job_create_req(job_desc_msg_t * job_desc, uid_t submit_uid,
 {
 	int rc;
 
+	/*
+	 * Check user permission for negative 'nice' and non-0 priority values
+	 * (restricted to root, SlurmUser, or SLURMDB_ADMIN_OPERATOR) _before_
+	 * running the job_submit plugin.
+	 */
+	if (!validate_operator(submit_uid)) {
+		if (job_desc->priority != 0)
+			job_desc->priority = NO_VAL;
+		if (job_desc->nice < NICE_OFFSET)
+			job_desc->nice = NICE_OFFSET;
+	}
 	rc = job_submit_plugin_submit(job_desc, (uint32_t) submit_uid, err_msg);
 	if (rc != SLURM_SUCCESS)
 		return rc;
@@ -6991,7 +6998,7 @@ static bool _valid_pn_min_mem(job_desc_msg_t * job_desc_msg,
 		return true;
 
 	if ((job_mem_limit & MEM_PER_CPU) && (sys_mem_limit & MEM_PER_CPU)) {
-		uint32_t mem_ratio;
+		uint32_t cpu_ratio, mem_ratio;
 		job_mem_limit &= (~MEM_PER_CPU);
 		sys_mem_limit &= (~MEM_PER_CPU);
 		if (job_mem_limit <= sys_mem_limit)
@@ -7006,6 +7013,19 @@ static bool _valid_pn_min_mem(job_desc_msg_t * job_desc_msg,
 			job_desc_msg->cpus_per_task *= mem_ratio;
 		job_desc_msg->pn_min_memory = ((job_mem_limit + mem_ratio - 1) /
 					       mem_ratio) | MEM_PER_CPU;
+		if ((job_desc_msg->num_tasks != NO_VAL) &&
+		    (job_desc_msg->min_cpus  != NO_VAL)) {
+			cpu_ratio = job_desc_msg->min_cpus /
+				    job_desc_msg->num_tasks;
+			if (cpu_ratio < mem_ratio) {
+				job_desc_msg->min_cpus =
+					job_desc_msg->num_tasks * mem_ratio;
+			}
+			if ((job_desc_msg->max_cpus != NO_VAL) &&
+			    (job_desc_msg->max_cpus < job_desc_msg->min_cpus)) {
+				job_desc_msg->max_cpus = job_desc_msg->min_cpus;
+			}
+		}
 		return true;
 	}
 
@@ -11139,12 +11159,15 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 			error_code = SLURM_SUCCESS;
 		else
 			error_code = ESLURM_REQUESTED_PART_CONFIG_UNAVAILABLE;
-		if ((job_ptr->state_reason != WAIT_HELD) &&
-		    (job_ptr->state_reason != WAIT_HELD_USER)) {
-			job_ptr->state_reason = fail_reason;
-			xfree(job_ptr->state_desc);
+
+		if (error_code != SLURM_SUCCESS) {
+			if ((job_ptr->state_reason != WAIT_HELD) &&
+			    (job_ptr->state_reason != WAIT_HELD_USER)) {
+				job_ptr->state_reason = fail_reason;
+				xfree(job_ptr->state_desc);
+			}
+			goto fini;
 		}
-		return error_code;
 	} else if ((job_ptr->state_reason != WAIT_HELD)
 		   && (job_ptr->state_reason != WAIT_HELD_USER)
 		   && job_ptr->state_reason != WAIT_MAX_REQUEUE) {

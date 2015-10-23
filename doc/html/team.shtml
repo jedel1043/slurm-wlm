@@ -38,6 +38,7 @@ Lead Slurm developers are:
 <li>P&auml;r Andersson (National Supercomputer Centre, Sweden)</li>
 <li>Don Albert (Bull)</li>
 <li>Ernest Artiaga (Barcelona Supercomputing Center, Spain)</li>
+<li>Axel Auweter (Leibniz Supercomputing Centre, Germany)</li>
 <br>
 <li>Jason W. Bacon</li>
 <li>Leith Bade (Australian National University)</li>
@@ -211,9 +212,11 @@ Lead Slurm developers are:
 <li>Marcin Stolarek</li>
 <li>Tyler Strickland (University of Florida)</li>
 <li>Jeff Squyres (LAM MPI)</li>
+<li>Deric Sullivan (Government of Canada)</li>
 <li>Nina Suvanphim (Cray)</li>
 <br>
 <li>Prashanth Tamraparni (HP, India)</li>
+<li>Koji Tanaka (Indiana University)</li>
 <li>Jimmy Tang (Trinity College, Ireland)</li>
 <li>Kevin Tew (Lawrence Livermore National Laboratory/Brigham Young University)</li>
 <li>John Thiltges (University of Nebraska-Lincoln)</li>
@@ -238,6 +241,6 @@ Lead Slurm developers are:
 <!-- INDIVIDUALS, PLEASE KEEP IN ALPHABETICAL ORDER -->
 </ul>
 
-<p style="text-align:center;">Last modified 21 September 2015</p>
+<p style="text-align:center;">Last modified 19 October 2015</p>
 
 <!--#include virtual="footer.txt"-->
