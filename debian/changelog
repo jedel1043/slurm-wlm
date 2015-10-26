@@ -1,11 +1,11 @@
-slurm-llnl (15.08.2-1) UNRELEASED; urgency=medium
+slurm-llnl (15.08.2-1) unstable; urgency=medium
 
   * New upstream release 
   * Remove scontrol-man-page included in upstream 
   * Remove unused override shlib-with-executable-stack in
     slurm-wlm-basic-plugins for a false-positive now fixed
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 23 Oct 2015 17:35:26 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 26 Oct 2015 12:23:09 +0100
 
 slurm-llnl (15.08.1-1) unstable; urgency=medium
 
