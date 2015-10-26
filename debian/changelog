@@ -2,6 +2,8 @@ slurm-llnl (15.08.2-1) UNRELEASED; urgency=medium
 
   * New upstream release 
   * Remove scontrol-man-page included in upstream 
+  * Remove unused override shlib-with-executable-stack in
+    slurm-wlm-basic-plugins for a false-positive now fixed
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 23 Oct 2015 17:35:26 +0200
 
