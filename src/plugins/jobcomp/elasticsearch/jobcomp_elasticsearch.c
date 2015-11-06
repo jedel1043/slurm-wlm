@@ -110,6 +110,18 @@ const uint32_t plugin_version = SLURM_VERSION_NUMBER;
 	"\"nodes\":\"%s\",\"total_cpus\":%lu,\"total_nodes\":%lu,"\
 	"\"derived_exitcode\":%lu,\"exitcode\":%lu,\"state\":\"%s\""
 
+/* These are defined here so when we link with something other than
+ * the slurmctld we will have these symbols defined.  They will get
+ * overwritten when linking with the slurmctld.
+ */
+#if defined (__APPLE__)
+int accounting_enforce __attribute__((weak_import)) = 0;
+void *acct_db_conn  __attribute__((weak_import)) = NULL;
+#else
+int accounting_enforce = 0;
+void *acct_db_conn = NULL;
+#endif
+
 /* Type for error string table entries */
 typedef struct {
 	int xe_number;
@@ -312,7 +324,7 @@ static int _index_job(const char *jobcomp)
 	static int error_cnt = 0;
 
 	if (log_url == NULL) {
-		if (((error_cnt++) % 100) == 0) {
+		if (((++error_cnt) % 100) == 0) {
 	                /* Periodically log errors */
                         error("%s: Unable to save job state for %d "
                                "jobs, caching data",
@@ -394,7 +406,7 @@ static int _index_job(const char *jobcomp)
 	curl_global_cleanup();
 
 	if (rc == SLURM_ERROR) {
-		if (((error_cnt++) % 100) == 0) {
+		if (((++error_cnt) % 100) == 0) {
                         /* Periodically log errors */
                         error("%s: Unable to save job state for %d "
                                "jobs, caching data",

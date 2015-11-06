@@ -4381,7 +4381,7 @@ extern uint16_t prolog_str2flags(char *prolog_flags)
 		if (strcasecmp(tok, "Alloc") == 0)
 			rc |= PROLOG_FLAG_ALLOC;
 		else if (strcasecmp(tok, "Contain") == 0)
-			rc |= PROLOG_FLAG_CONTAIN;
+			rc |= (PROLOG_FLAG_ALLOC | PROLOG_FLAG_CONTAIN);
 		else if (strcasecmp(tok, "NoHold") == 0)
 			rc |= PROLOG_FLAG_NOHOLD;
 		else {
@@ -4442,6 +4442,11 @@ extern char * debug_flags2str(uint64_t debug_flags)
 		if (rc)
 			xstrcat(rc, ",");
 		xstrcat(rc, "BurstBuffer");
+	}
+	if (debug_flags & DEBUG_FLAG_CPU_FREQ) {
+		if (rc)
+			xstrcat(rc, ",");
+		xstrcat(rc, "CpuFrequency");
 	}
 	if (debug_flags & DEBUG_FLAG_CPU_BIND) {
 		if (rc)
@@ -4563,6 +4568,11 @@ extern char * debug_flags2str(uint64_t debug_flags)
 			xstrcat(rc, ",");
 		xstrcat(rc, "NoRealTime");
 	}
+	if (debug_flags & DEBUG_FLAG_POWER) {
+		if (rc)
+			xstrcat(rc, ",");
+		xstrcat(rc, "Power");
+	}
 	if (debug_flags & DEBUG_FLAG_PRIO) {
 		if (rc)
 			xstrcat(rc, ",");
@@ -4629,16 +4639,7 @@ extern char * debug_flags2str(uint64_t debug_flags)
 			xstrcat(rc, ",");
 		xstrcat(rc, "Wiki");
 	}
-	if (debug_flags & DEBUG_FLAG_CPU_FREQ) {
-		if (rc)
-			xstrcat(rc, ",");
-		xstrcat(rc, "CpuFrequency");
-	}
-	if (debug_flags & DEBUG_FLAG_POWER) {
-		if (rc)
-			xstrcat(rc, ",");
-		xstrcat(rc, "Power");
-	}
+
 	return rc;
 }
 

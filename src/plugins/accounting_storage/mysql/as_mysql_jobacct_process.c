@@ -947,11 +947,13 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 				job->track_steps = 1;
 			else if (step &&
 				 (xstrcmp(step->stepname, job->jobname) ||
-				  ((j_cpus = slurmdb_find_tres_count_in_string(
-					job->tres_alloc_str, TRES_CPU)) &&
-				   (s_cpus = slurmdb_find_tres_count_in_string(
-					step->tres_alloc_str, TRES_CPU)) &&
-				   j_cpus != s_cpus)))
+				  (((j_cpus = slurmdb_find_tres_count_in_string(
+					     job->tres_alloc_str, TRES_CPU))
+				    != INFINITE64) &&
+				   ((s_cpus = slurmdb_find_tres_count_in_string(
+					     step->tres_alloc_str, TRES_CPU))
+				    != INFINITE64) &&
+				  j_cpus != s_cpus)))
 					job->track_steps = 1;
 		}
 	skip_steps:
@@ -1463,7 +1465,8 @@ extern int setup_job_cond_limits(slurmdb_job_cond_t *job_cond,
 					   job_cond->usage_start);
 			else
 				xstrfmtcat(*extra,
-					   "(t1.time_eligible < %ld "
+					   "(t1.time_eligible "
+					   "&& t1.time_eligible < %ld "
 					   "&& (t1.time_end >= %ld "
 					   "|| t1.time_end = 0)))",
 					   job_cond->usage_end,
@@ -1474,7 +1477,8 @@ extern int setup_job_cond_limits(slurmdb_job_cond_t *job_cond,
 			else
 				xstrcat(*extra, " where (");
 			xstrfmtcat(*extra,
-				   "(t1.time_eligible < %ld))",
+				   "(t1.time_eligible && "
+				   "t1.time_eligible < %ld))",
 				   job_cond->usage_end);
 		}
 	}

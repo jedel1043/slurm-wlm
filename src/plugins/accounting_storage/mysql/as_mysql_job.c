@@ -458,8 +458,6 @@ no_rollup_change:
 		gres_alloc = slurm_add_slash_to_quotes(job_ptr->gres_alloc);
 
 	if (!job_ptr->db_index) {
-		if (!begin_time)
-			begin_time = submit_time;
 		query = xstrdup_printf(
 			"insert into \"%s_%s\" "
 			"(id_job, mod_time, id_array_job, id_array_task, "
@@ -977,6 +975,12 @@ extern int as_mysql_step_start(mysql_conn_t *mysql_conn,
 		*/
 		snprintf(node_list, BUFFER_SIZE, "%s", step_ptr->gres);
 		nodes = tasks = 1;
+		if (!step_ptr->tres_alloc_str)
+			xstrfmtcat(step_ptr->tres_alloc_str,
+				   "%s%u=%u,%u=%u",
+				   step_ptr->tres_alloc_str ? "," : "",
+				   TRES_CPU, 1,
+				   TRES_NODE, 1);
 	} else {
 		char *ionodes = NULL, *temp_nodes = NULL;
 		char temp_bit[BUF_SIZE];
@@ -1001,14 +1005,14 @@ extern int as_mysql_step_start(mysql_conn_t *mysql_conn,
 			if (step_ptr->cpu_count)
 				tasks = step_ptr->cpu_count;
 			else {
-				if (!(tasks = slurmdb_find_tres_count_in_string(
-					      step_ptr->tres_alloc_str,
-					      TRES_CPU))) {
-					if (!(tasks =
-					      slurmdb_find_tres_count_in_string(
-						      step_ptr->job_ptr->
-						      tres_alloc_str,
-						      TRES_CPU)))
+				if ((tasks = slurmdb_find_tres_count_in_string(
+					     step_ptr->tres_alloc_str,
+					     TRES_CPU)) == INFINITE64) {
+					if ((tasks =
+					     slurmdb_find_tres_count_in_string(
+						     step_ptr->job_ptr->
+						     tres_alloc_str,
+						     TRES_CPU)) == INFINITE64)
 						tasks = step_ptr->job_ptr->
 							total_nodes;
 				}
@@ -1144,14 +1148,14 @@ extern int as_mysql_step_complete(mysql_conn_t *mysql_conn,
 			if (step_ptr->cpu_count)
 				tasks = step_ptr->cpu_count;
 			else {
-				if (!(tasks = slurmdb_find_tres_count_in_string(
-					      step_ptr->tres_alloc_str,
-					      TRES_CPU))) {
-					if (!(tasks =
-					      slurmdb_find_tres_count_in_string(
-						      step_ptr->job_ptr->
-						      tres_alloc_str,
-						      TRES_CPU)))
+				if ((tasks = slurmdb_find_tres_count_in_string(
+					     step_ptr->tres_alloc_str,
+					     TRES_CPU)) == INFINITE64) {
+					if ((tasks =
+					     slurmdb_find_tres_count_in_string(
+						     step_ptr->job_ptr->
+						     tres_alloc_str,
+						     TRES_CPU)) == INFINITE64)
 						tasks = step_ptr->job_ptr->
 							total_nodes;
 				}
