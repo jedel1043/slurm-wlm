@@ -675,6 +675,7 @@ extern void slurm_free_job_info_members(job_info_t * job)
 		xfree(job->array_task_str);
 		xfree(job->batch_host);
 		xfree(job->batch_script);
+		xfree(job->burst_buffer);
 		xfree(job->command);
 		xfree(job->comment);
 		xfree(job->dependency);
@@ -701,6 +702,7 @@ extern void slurm_free_job_info_members(job_info_t * job)
 		xfree(job->std_in);
 		xfree(job->std_out);
 		xfree(job->tres_alloc_str);
+		xfree(job->tres_req_str);
 		xfree(job->wckey);
 		xfree(job->work_dir);
 	}
@@ -2880,6 +2882,7 @@ extern void slurm_free_job_step_info_members (job_step_info_t * msg)
 {
 	if (msg != NULL) {
 		xfree(msg->ckpt_dir);
+		xfree(msg->gres);
 		xfree(msg->name);
 		xfree(msg->network);
 		xfree(msg->nodes);
@@ -2979,6 +2982,7 @@ extern void slurm_free_node_info_members(node_info_t * node)
 		select_g_select_nodeinfo_free(node->select_nodeinfo);
 		node->select_nodeinfo = NULL;
 		xfree(node->version);
+		xfree(node->tres_fmt_str);
 		/* Do NOT free node, it is an element of an array */
 	}
 }
@@ -3023,12 +3027,14 @@ extern void slurm_free_partition_info_members(partition_info_t * part)
 		xfree(part->allow_groups);
 		xfree(part->allow_qos);
 		xfree(part->alternate);
+		xfree(part->billing_weights_str);
 		xfree(part->deny_accounts);
 		xfree(part->deny_qos);
 		xfree(part->name);
 		xfree(part->nodes);
 		xfree(part->node_inx);
 		xfree(part->qos_char);
+		xfree(part->tres_fmt_str);
 	}
 }
 

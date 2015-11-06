@@ -202,13 +202,20 @@ static void _combine_pending_array_tasks(List job_list)
 		bitmap_size = bit_size(task_bitmap);
 		task_iterator = list_iterator_create(job_list);
 		while ((task_rec_ptr = list_next(task_iterator))) {
-			if (!IS_JOB_PENDING(task_rec_ptr->job_ptr) ||
-			    (task_rec_ptr == job_rec_ptr) ||
+			if (!IS_JOB_PENDING(task_rec_ptr->job_ptr))
+				continue;	/* Not pending */
+			if ((task_rec_ptr == job_rec_ptr) ||
 			    (task_rec_ptr->job_ptr->array_job_id !=
 			     job_rec_ptr->job_ptr->array_job_id) ||
 			    (task_rec_ptr->job_ptr->array_task_id >=
 			     bitmap_size))
-				continue;
+				continue;	/* Different job array ID */
+			if (xstrcmp(task_rec_ptr->job_ptr->name,
+				    job_rec_ptr->job_ptr->name))
+				continue;	/* Different name */
+			if (xstrcmp(task_rec_ptr->job_ptr->partition,
+				    job_rec_ptr->job_ptr->partition))
+				continue;	/* Different partition */
 			/* Combine this task into master job array record */
 			update_cnt++;
 			bit_set(task_bitmap,
@@ -959,6 +966,7 @@ int _print_job_reason_list(job_info_t * job, int width, bool right,
 			reason = job_reason_string(job->state_reason);
 		xstrfmtcat(reason_fmt, "(%s)", reason);
 		_print_str(reason_fmt, width, right, true);
+		xfree(reason_fmt);
 	} else {
 		char *nodes = xstrdup(job->nodes);
 		char *ionodes = NULL;

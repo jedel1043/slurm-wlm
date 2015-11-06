@@ -800,10 +800,12 @@ _forkexec_slurmstepd(uint16_t type, void *req,
 #ifndef SLURMSTEPD_MEMCHECK
 		i = read(to_slurmd[0], &rc, sizeof(int));
 		if (i < 0) {
-			error("Can not read return code from slurmstepd: %m");
+			error("\
+%s: Can not read return code from slurmstepd got %d: %m", __func__, i);
 			rc = SLURM_FAILURE;
 		} else if (i != sizeof(int)) {
-			error("slurmstepd failed to send return code");
+			error("\
+%s: slurmstepd failed to send return code got %d: %m", __func__, i);
 			rc = SLURM_FAILURE;
 		} else {
 			int delta_time = time(NULL) - start_time;
@@ -1724,16 +1726,15 @@ static void _rpc_prolog(slurm_msg_t *msg)
 		rc = ESLURMD_PROLOG_FAILED;
 	}
 
-	if (slurmctld_conf.prolog_flags & PROLOG_FLAG_CONTAIN)
-		_make_prolog_mem_container(msg);
-
-	if (container_g_create(req->job_id))
-		error("container_g_create(%u): %m", req->job_id);
-
 	slurm_mutex_lock(&prolog_mutex);
 	first_job_run = !slurm_cred_jobid_cached(conf->vctx, req->job_id);
-
 	if (first_job_run) {
+		if (slurmctld_conf.prolog_flags & PROLOG_FLAG_CONTAIN)
+			_make_prolog_mem_container(msg);
+
+		if (container_g_create(req->job_id))
+			error("container_g_create(%u): %m", req->job_id);
+
 		slurm_cred_insert_jobid(conf->vctx, req->job_id);
 		_add_job_running_prolog(req->job_id);
 		slurm_mutex_unlock(&prolog_mutex);
@@ -2518,7 +2519,7 @@ _rpc_health_check(slurm_msg_t *msg)
 	 * slurmctld in hopes of avoiding having the node set DOWN due to
 	 * slurmd paging and not being able to respond in a timely fashion. */
 	if (slurm_send_rc_msg(msg, rc) < 0) {
-		error("Error responding to ping: %m");
+		error("Error responding to health check: %m");
 		send_registration_msg(SLURM_SUCCESS, false);
 	}
 
@@ -2563,7 +2564,7 @@ _rpc_acct_gather_update(slurm_msg_t *msg)
 		 * due to slurmd paging and not being able to respond in a
 		 * timely fashion. */
 		if (slurm_send_rc_msg(msg, rc) < 0) {
-			error("Error responding to ping: %m");
+			error("Error responding to account gather: %m");
 			send_registration_msg(SLURM_SUCCESS, false);
 		}
 	} else {
@@ -2669,7 +2670,7 @@ _signal_jobstep(uint32_t jobid, uint32_t stepid, uid_t req_uid,
 	fd = stepd_connect(conf->spooldir, conf->node_name, jobid, stepid,
 			   &protocol_version);
 	if (fd == -1) {
-		debug("signal for nonexistant %u.%u stepd_connect failed: %m",
+		debug("signal for nonexistent %u.%u stepd_connect failed: %m",
 		      jobid, stepid);
 		return ESLURM_INVALID_JOB_ID;
 	}
@@ -2756,7 +2757,7 @@ _rpc_checkpoint_tasks(slurm_msg_t *msg)
 	fd = stepd_connect(conf->spooldir, conf->node_name,
 			   req->job_id, req->job_step_id, &protocol_version);
 	if (fd == -1) {
-		debug("checkpoint for nonexistant %u.%u stepd_connect "
+		debug("checkpoint for nonexistent %u.%u stepd_connect "
 		      "failed: %m", req->job_id, req->job_step_id);
 		rc = ESLURM_INVALID_JOB_ID;
 		goto done;
@@ -2802,7 +2803,7 @@ _rpc_terminate_tasks(slurm_msg_t *msg)
 	fd = stepd_connect(conf->spooldir, conf->node_name,
 			   req->job_id, req->job_step_id, &protocol_version);
 	if (fd == -1) {
-		debug("kill for nonexistant job %u.%u stepd_connect "
+		debug("kill for nonexistent job %u.%u stepd_connect "
 		      "failed: %m", req->job_id, req->job_step_id);
 		rc = ESLURM_INVALID_JOB_ID;
 		goto done;

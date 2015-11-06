@@ -175,6 +175,7 @@ static void _dump_job_state(struct job_record *dump_job_ptr, Buf buffer);
 static int  _find_batch_dir(void *x, void *key);
 static void _get_batch_job_dir_ids(List batch_dirs);
 static time_t _get_last_state_write_time(void);
+static void _job_array_comp(struct job_record *job_ptr, bool was_running);
 static int  _job_create(job_desc_msg_t * job_specs, int allocate, int will_run,
 			struct job_record **job_rec_ptr, uid_t submit_uid,
 			char **err_msg, uint16_t protocol_version);
@@ -4617,8 +4618,10 @@ extern int job_str_signal(char *job_id_str, uint16_t signal, uint16_t flags,
 				/* Master job record, even wihtout tasks,
 				 * counts as one job record */
 				job_count -= (orig_task_cnt - 1);
-			} else
+			} else {
+				_job_array_comp(job_ptr, false);
 				job_count -= (orig_task_cnt - new_task_count);
+			}
 
 			/* Set the task_cnt here since
 			 * job_completion_logger needs the total
@@ -7273,7 +7276,6 @@ extern void job_set_req_tres(
 	if (!assoc_mgr_locked)
 		assoc_mgr_lock(&locks);
 
-	xfree(job_ptr->tres_req_cnt);
 	job_ptr->tres_req_cnt = xmalloc(sizeof(uint64_t) * g_tres_count);
 
 	if (job_ptr->details) {
@@ -7335,6 +7337,7 @@ extern void job_set_alloc_tres(struct job_record *job_ptr,
 
 	xfree(job_ptr->tres_alloc_str);
 	xfree(job_ptr->tres_alloc_cnt);
+	xfree(job_ptr->tres_fmt_alloc_str);
 
 	/* We only need to do this on non-pending jobs */
 	if (IS_JOB_PENDING(job_ptr))
@@ -7342,7 +7345,6 @@ extern void job_set_alloc_tres(struct job_record *job_ptr,
 
 	if (!assoc_mgr_locked)
 		assoc_mgr_lock(&locks);
-	xfree(job_ptr->tres_alloc_cnt);
 
 	job_ptr->tres_alloc_cnt = xmalloc(
 		sizeof(uint64_t) * slurmctld_tres_cnt);
@@ -7381,11 +7383,9 @@ extern void job_set_alloc_tres(struct job_record *job_ptr,
 			      true);
 
 	/* now that the array is filled lets make the string from it */
-	xfree(job_ptr->tres_alloc_str);
 	job_ptr->tres_alloc_str = assoc_mgr_make_tres_str_from_array(
 		job_ptr->tres_alloc_cnt, TRES_STR_FLAG_SIMPLE, true);
 
-	xfree(job_ptr->tres_fmt_alloc_str);
 	job_ptr->tres_fmt_alloc_str = assoc_mgr_make_tres_str_from_array(
 		job_ptr->tres_alloc_cnt, 0, true);
 
@@ -10602,11 +10602,11 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 					job_ptr->state_reason = WAIT_HELD;
 				xfree(job_ptr->state_desc);
 			}
-		} else if (job_specs->priority == INFINITE
-			   && job_ptr->state_reason != WAIT_HELD_USER) {
-			/* If the job was already released ignore another
-			 * release request.
-			 */
+		} else if ((job_ptr->priority != 0) &&
+			   (job_specs->priority == INFINITE) &&
+			   (job_ptr->state_reason != WAIT_HELD_USER)) {
+			/* If the job was already released, ignore another
+			 * release request. */
 			debug("%s: job %d already release ignoring request",
 			      __func__, job_ptr->job_id);
 		} else {
@@ -11958,7 +11958,7 @@ static void _purge_missing_jobs(int node_inx, time_t now)
 		node_boot_time = node_ptr->boot_time - (msg_timeout + 5);
 	}
 	batch_startup_time  = now - batch_start_timeout;
-	batch_startup_time -= msg_timeout;
+	batch_startup_time -= MIN(DEFAULT_MSG_TIMEOUT, msg_timeout);
 
 	job_iterator = list_iterator_create(job_list);
 	while ((job_ptr = (struct job_record *) list_next(job_iterator))) {
@@ -12645,7 +12645,7 @@ extern bool job_array_start_test(struct job_record *job_ptr)
 	return true;
 }
 
-static void _job_array_comp(struct job_record *job_ptr)
+static void _job_array_comp(struct job_record *job_ptr, bool was_running)
 {
 	struct job_record *base_job_ptr;
 	uint32_t status;
@@ -12672,7 +12672,8 @@ static void _job_array_comp(struct job_record *job_ptr)
 					MAX(status, base_job_ptr->
 					    array_recs->max_exit_code);
 			}
-			if (base_job_ptr->array_recs->tot_run_tasks)
+			if (was_running &&
+			    base_job_ptr->array_recs->tot_run_tasks)
 				base_job_ptr->array_recs->tot_run_tasks--;
 			base_job_ptr->array_recs->tot_comp_tasks++;
 		}
@@ -12694,6 +12695,8 @@ extern void job_completion_logger(struct job_record *job_ptr, bool requeue)
 		 * Unless it ran, there is nothing to stage-out */
 		(void) bb_g_job_cancel(job_ptr);
 	}
+
+	_job_array_comp(job_ptr, true);
 
 	if (!IS_JOB_RESIZING(job_ptr) &&
 	    ((job_ptr->array_task_id == NO_VAL) ||
@@ -12720,8 +12723,6 @@ extern void job_completion_logger(struct job_record *job_ptr, bool requeue)
 				mail_job_info(job_ptr, MAIL_JOB_END);
 		}
 	}
-
-	_job_array_comp(job_ptr);
 
 	g_slurm_jobcomp_write(job_ptr);
 
