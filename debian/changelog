@@ -1,8 +1,9 @@
 slurm-llnl (15.08.4-1) UNRELEASED; urgency=medium
 
-  * New upstream release 
+  * New upstream release
+  * Change slurm user's home directory to /nonexistent
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 18 Nov 2015 11:37:39 +0100
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 18 Nov 2015 11:38:54 +0100
 
 slurm-llnl (15.08.3-1) unstable; urgency=medium
 
