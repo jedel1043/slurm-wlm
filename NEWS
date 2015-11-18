@@ -1,6 +1,41 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 15.08.4
+==========================
+ -- Fix typo for the "devices" cgroup subsystem in pam_slurm_adopt.c
+ -- Fix TRES_MAX flag to work correctly.
+ -- Improve the systemd startup files.
+ -- Added burst_buffer.conf flag parameter of "TeardownFailure" which will
+    teardown and remove a burst buffer after failed stage-in or stage-out.
+    By default, the buffer will be preserved for analysis and manual teardown.
+ -- Prevent a core dump in srun if the signal handler runs during the job
+    allocation causing the step context to be NULL.
+ -- Don't fail job if multiple prolog operations in progress at slurmctld
+    restart time.
+ -- Burst_buffer/cray: Fix to purge terminated jobs with burst buffer errors.
+ -- Burst_buffer/cray: Don't stall scheduling of other jobs while a stage-in
+    is in progress.
+ -- Make it possible to query 'extern' step with sstat.
+ -- Make 'extern' step show up in the database.
+ -- MYSQL - Quote assoc table name in mysql query.
+ -- Make SLURM_ARRAY_TASK_MIN, SLURM_ARRAY_TASK_MAX, and SLURM_ARRAY_TASK_STEP
+    environment variables available to PrologSlurmctld and EpilogSlurmctld.
+ -- Fix slurmctld bug in which a pending job array could be canceled
+    by a user different from the owner or the administrator.
+ -- Support taking node out of FUTURE state with "scontrol reconfig" command.
+ -- Sched/backfill: Fix to properly enforce SchedulerParameters of
+    bf_max_job_array_resv.
+ -- Enable operator to reset sdiag data.
+ -- jobcomp/elasticsearch plugin: Add array_job_id and array_task_id fields.
+ -- Remove duplicate #define IS_NODE_POWER_UP.
+ -- Added SchedulerParameters option of max_script_size.
+ -- Add REQUEST_ADD_EXTERN_PID option to add pid to the slurmstepd's extern
+    step.
+ -- Add unique identifiers to anchor tags in HTML generated from the man pages.
+ -- Add with_freeipmi option to spec file.
+ -- Minor elasticsearch code improvements
+
 * Changes in Slurm 15.08.3
 ==========================
  -- Correct Slurm's RPM build if Munge is not installed.

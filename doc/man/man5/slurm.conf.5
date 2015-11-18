@@ -1,4 +1,4 @@
-.TH "slurm.conf" "5" "Slurm Configuration File" "April 2015" "Slurm Configuration File"
+.TH "slurm.conf" "5" "Slurm Configuration File" "November 2015" "Slurm Configuration File"
 
 .SH "NAME"
 slurm.conf \- Slurm configuration file
@@ -2341,7 +2341,11 @@ consume any of the CPU or memory resources, configure it as a pseudo\-terminal,
 and preserve all of the job's environment variables (i.e. and not over\-write
 them with the job step's allocation information).
 
-For Cray systems, add \-\-gres=craynetwork:0. e.g.:
+For systems with generic resources (GRES) defined, the \fBSallocDefaultCommand\fR
+value should explicitly specify a zero count for the configured GRES.
+Failure to do so will result in the launched shell consuming those GRES and
+preventing subsequent srun commands from using them.
+For example, on Cray systems add "\-\-gres=craynetwork:0" as shown below:
 .nf
     SallocDefaultCommand = "srun \-n1 \-N1 \-\-mem\-per\-cpu=0 \-\-gres=craynetwork:0 \-\-pty \-\-preserve\-env \-\-mpi=none $SHELL"
 .fi
@@ -2555,6 +2559,11 @@ If a value is not explicitly configured, the default value is half of
 default value of 2 seconds.
 For example if MessageTimeout=10, the time limit will be 2 seconds
 (i.e. MIN(10/2, 2) = 2).
+.TP
+\fBmax_script_size=#\fR
+Specify the maximum size of a batch script, in bytes.
+The default value is 4 megabytes.
+Larger values may adversely impact system performance.
 .TP
 \fBmax_switch_wait=#\fR
 Maximum number of seconds that a job can delay execution waiting for the
@@ -4082,44 +4091,6 @@ Partition name of alternate partition to be used if the state of this partition
 is "DRAIN" or "INACTIVE."
 
 .TP
-\fBTRESBillingWeights\fR
-TRESBillingWeights is used to define the billing weights of each TRES type that
-will be used in calcuating the usage of a job.
-
-Billing weights are specified as a comma-separated list of
-\fI<TRES Type>\fR=\fI<TRES Billing Weight>\fR pairs.
-
-Any TRES Type is available for billing. Note that base the unit for memory and
-burst buffers is megabytes.
-
-By default the billing of TRES is calculated as the sum of all TRES types
-multiplied by their corresponding billing weight.
-
-The weighted amount of a resource can be adjusted by adding a suffix of K,M,G,T
-or P after the billing weight. For example, a memory weight of "mem=.25" on a
-job allocated 8GB will be billed 2048 (8192MB *.25) units. A memory weight of
-"mem=.25G" on the same job will be billed 2 (8192MB * (.25/1024)) units.
-
-When a job is allocated 1 CPU and 8 GB of memory on a partition configured with
-TRESBillingWeights="CPU=1.0,Mem=0.25G,GRES/gpu=2.0", the billable TRES will be:
-(1*1.0) + (8*0.25) + (0*2.0) = 3.0.
-
-If PriorityFlags=MAX_TRES is configured, the billable TRES is calculated as the
-MAX of individual TRES' on a node (e.g. cpus, mem, gres) plus the sum of all
-global TRES' (e.g. licenses). Using the same example above the billable TRES
-will be MAX(1*1.0, 8*0.25) + (0*2.0) = 2.0.
-
-If TRESBillingWeights is not defined then the job is billed against the total
-number of allocated CPUs.
-
-\fBNOTE:\fR TRESBillingWeights is only used when calcuating fairshare and
-doesn't affect job priority directly as it is currently not used for the size of
-the job. If you want TRES' to play a role in the job's priority then refer to
-the PriorityWeightTRES option.
-
-.RE
-
-.TP
 \fBDefault\fR
 If this keyword is set, jobs submitted without a partition
 specification will utilize this partition.
@@ -4459,6 +4430,44 @@ and jobs already queued may not be allocated nodes and run.
 See also the "Alternate" partition specification.
 .RE
 
+.TP
+\fBTRESBillingWeights\fR
+TRESBillingWeights is used to define the billing weights of each TRES type that
+will be used in calcuating the usage of a job.
+
+Billing weights are specified as a comma-separated list of
+\fI<TRES Type>\fR=\fI<TRES Billing Weight>\fR pairs.
+
+Any TRES Type is available for billing. Note that base the unit for memory and
+burst buffers is megabytes.
+
+By default the billing of TRES is calculated as the sum of all TRES types
+multiplied by their corresponding billing weight.
+
+The weighted amount of a resource can be adjusted by adding a suffix of K,M,G,T
+or P after the billing weight. For example, a memory weight of "mem=.25" on a
+job allocated 8GB will be billed 2048 (8192MB *.25) units. A memory weight of
+"mem=.25G" on the same job will be billed 2 (8192MB * (.25/1024)) units.
+
+When a job is allocated 1 CPU and 8 GB of memory on a partition configured with
+TRESBillingWeights="CPU=1.0,Mem=0.25G,GRES/gpu=2.0", the billable TRES will be:
+(1*1.0) + (8*0.25) + (0*2.0) = 3.0.
+
+If PriorityFlags=MAX_TRES is configured, the billable TRES is calculated as the
+MAX of individual TRES' on a node (e.g. cpus, mem, gres) plus the sum of all
+global TRES' (e.g. licenses). Using the same example above the billable TRES
+will be MAX(1*1.0, 8*0.25) + (0*2.0) = 2.0.
+
+If TRESBillingWeights is not defined then the job is billed against the total
+number of allocated CPUs.
+
+\fBNOTE:\fR TRESBillingWeights is only used when calcuating fairshare and
+doesn't affect job priority directly as it is currently not used for the size of
+the job. If you want TRES' to play a role in the job's priority then refer to
+the PriorityWeightTRES option.
+
+.RE
+
 .SH "Prolog and Epilog Scripts"
 There are a variety of prolog and epilog program options that
 execute with various permissions and at various times.
@@ -4521,6 +4530,24 @@ Otherwise it will not be set.
 To reference this specific task of a job array, combine
 SLURM_ARRAY_JOB_ID with SLURM_ARRAY_TASK_ID
 (e.g. "scontrol update ${SLURM_ARRAY_JOB_ID}_{$SLURM_ARRAY_TASK_ID} ...");
+Available in \fBPrologSlurmctld\fR and \fBEpilogSlurmctld\fR only.
+.TP
+\fBSLURM_ARRAY_TASK_MAX\fR
+If this job is part of a job array, this will be set to the maximum
+task ID.
+Otherwise it will not be set.
+Available in \fBPrologSlurmctld\fR and \fBEpilogSlurmctld\fR only.
+.TP
+\fBSLURM_ARRAY_TASK_MIN\fR
+If this job is part of a job array, this will be set to the minimum
+task ID.
+Otherwise it will not be set.
+Available in \fBPrologSlurmctld\fR and \fBEpilogSlurmctld\fR only.
+.TP
+\fBSLURM_ARRAY_TASK_STEP\fR
+If this job is part of a job array, this will be set to the step
+size of task IDs.
+Otherwise it will not be set.
 Available in \fBPrologSlurmctld\fR and \fBEpilogSlurmctld\fR only.
 .TP
 \fBSLURM_CLUSTER_NAME\fR

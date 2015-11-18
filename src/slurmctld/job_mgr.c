@@ -2415,7 +2415,7 @@ static int _load_job_details(struct job_record *job_ptr, Buf buffer,
 		      job_ptr->job_id, requeue, overcommit);
 		goto unpack_error;
 	}
-	if (prolog_running > 1) {
+	if (prolog_running > 4) {
 		error("Invalid data for job %u: prolog_running=%u",
 		      job_ptr->job_id, prolog_running);
 		goto unpack_error;
@@ -4479,10 +4479,26 @@ extern int job_str_signal(char *job_id_str, uint16_t signal, uint16_t flags,
 			return job_signal(job_id, signal, flags, uid, preempt);
 		}
 
+		if (job_ptr && (job_ptr->user_id != uid) &&
+		    !validate_operator(uid) &&
+		    !assoc_mgr_is_user_acct_coord(acct_db_conn, uid,
+						  job_ptr->account)) {
+			error("Security violation, REQUEST_KILL_JOB RPC for "
+			      "jobID %u from uid %d", job_ptr->job_id, uid);
+			return ESLURM_ACCESS_DENIED;
+		}
+
+		/* This will kill the meta record that holds all
+		 * pending jobs.  We want to kill this first so we
+		 * don't start jobs just to kill them as we are
+		 * killing other elements of the array.
+		 */
 		if (job_ptr && job_ptr->array_recs) {
 			/* This is a job array */
 			job_ptr_done = job_ptr;
 			rc = _job_signal(job_ptr, signal, flags, uid, preempt);
+			if (rc == ESLURM_ACCESS_DENIED)
+				return rc;
 			jobs_signalled++;
 			if (rc == ESLURM_ALREADY_DONE) {
 				jobs_done++;
@@ -4500,14 +4516,6 @@ extern int job_str_signal(char *job_id_str, uint16_t signal, uint16_t flags,
 			if (job_ptr->array_job_id == job_id)
 				break;
 			job_ptr = job_ptr->job_array_next_j;
-		}
-		if (job_ptr && (job_ptr->user_id != uid) &&
-		    !validate_operator(uid) &&
-		    !assoc_mgr_is_user_acct_coord(acct_db_conn, uid,
-						  job_ptr->account)) {
-			error("Security violation, REQUEST_KILL_JOB RPC for "
-			      "jobID %u from uid %d", job_ptr->job_id, uid);
-			return ESLURM_ACCESS_DENIED;
 		}
 		while (job_ptr) {
 			if ((job_ptr->array_job_id == job_id) &&
@@ -6048,6 +6056,19 @@ static bool _valid_array_inx(job_desc_msg_t *job_desc)
  * a denial of service attack due to memory demands by the slurmctld */
 static int _test_job_desc_fields(job_desc_msg_t * job_desc)
 {
+	static int max_script = -1;
+	char *sched_params, *tmp_ptr;
+
+	if (max_script == -1) {
+		max_script = 4 * 1024 * 1024;
+		sched_params = slurm_get_sched_params();
+		if (sched_params &&
+		    (tmp_ptr = strstr(sched_params, "max_script_size="))) {
+			max_script = atoi(tmp_ptr + 16);
+		}
+		xfree(sched_params);
+	}
+
 	if (_test_strlen(job_desc->account, "account", 1024)		||
 	    _test_strlen(job_desc->alloc_node, "alloc_node", 1024)	||
 	    _test_strlen(job_desc->array_inx, "array_inx", 1024 * 4)	||
@@ -6070,7 +6091,7 @@ static int _test_job_desc_fields(job_desc_msg_t * job_desc)
 	    _test_strlen(job_desc->qos, "qos", 1024)			||
 	    _test_strlen(job_desc->ramdiskimage, "ramdiskimage", 1024)	||
 	    _test_strlen(job_desc->reservation, "reservation", 1024)	||
-	    _test_strlen(job_desc->script, "script", 1024 * 1024 * 4)	||
+	    _test_strlen(job_desc->script, "script", max_script)	||
 	    _test_strlen(job_desc->std_err, "std_err", MAXPATHLEN)	||
 	    _test_strlen(job_desc->std_in, "std_in", MAXPATHLEN)	||
 	    _test_strlen(job_desc->std_out, "std_out", MAXPATHLEN)	||
@@ -9491,6 +9512,10 @@ static bool _top_priority(struct job_record *job_ptr)
 				top = false;
 				break;
 			}
+
+			if (bb_g_job_test_stage_in(job_ptr2, true) != 1)
+				continue;	/* Waiting for buffer */
+
 			if (job_ptr2->part_ptr == job_ptr->part_ptr) {
 				/* same partition */
 				if (job_ptr2->priority <= job_ptr->priority)
@@ -13333,7 +13358,7 @@ extern int job_suspend(suspend_msg_t *sus_ptr, uid_t uid,
 #endif
 
 	/* validate the request */
-	if ((uid != 0) && (uid != getuid())) {
+	if (!validate_operator(uid)) {
 		error("SECURITY VIOLATION: Attempt to suspend job from user %u",
 		      (int) uid);
 		rc = ESLURM_ACCESS_DENIED;
@@ -13410,7 +13435,7 @@ extern int job_suspend2(suspend_msg_t *sus_ptr, uid_t uid,
 	}
 
 	/* validate the request */
-	if ((uid != 0) && (uid != getuid())) {
+	if (!validate_operator(uid)) {
 		error("SECURITY VIOLATION: Attempt to suspend job from user %u",
 		      (int) uid);
 		rc = ESLURM_ACCESS_DENIED;
