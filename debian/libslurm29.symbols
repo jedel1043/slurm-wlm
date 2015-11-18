@@ -854,6 +854,7 @@ libslurm.so.29 libslurm29 #MINVER#
  slurm_step_layout_host_id@Base 1.3.8
  slurm_step_layout_host_name@Base 1.3.8
  slurm_step_layout_type_name@Base 2.0.0
+ slurm_stepd_add_extern_pid@Base 15.08.4
  slurm_stepd_available@Base 15.08.0
  slurm_stepd_connect@Base 15.08.0
  slurm_stepd_get_uid@Base 15.08.0

@@ -2,6 +2,7 @@ slurm-llnl (15.08.4-1) UNRELEASED; urgency=medium
 
   * New upstream release
   * Change slurm user's home directory to /nonexistent
+  * Update libslurm29 and libslurmdb29 symbol files
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 18 Nov 2015 11:38:54 +0100
 
