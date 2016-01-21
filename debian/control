@@ -437,7 +437,7 @@ Description: transitional dummy package for slurmdbd
 
 Package: slurm-wlm-emulator
 Architecture: any
-Depends: ${misc:Depends},
+Depends: ${misc:Depends}, ${shlibs:Depends},
  slurmctld (= ${binary:Version}),
  slurmd (= ${binary:Version})
 Description: SLURM emulator
