@@ -30,6 +30,8 @@ case "$1" in
         STARTOPTION="startclean"
       fi
 
+      update-alternatives --install /usr/sbin/slurmd slurmd /usr/sbin/slurmd-wlm 50 \
+	--slave /usr/sbin/slurmstepd slurmstepd /usr/sbin/slurmstepd-wlm
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

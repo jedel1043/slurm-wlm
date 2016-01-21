@@ -3,6 +3,18 @@ slurm-llnl (15.08.7-1) UNRELEASED; urgency=medium
   * New upstream release 
   * Call ldconfig in postinst/rm of library packages
 
+    [ Ana Guerrero Lopez ]
+  * Add package slurm-wlm-emulator. This package provides binaries that are
+    already in the slurmd and slurmctld package. These packages binaries
+    have now the suffix -wlm and the binaries in slurm-wln-emulator got
+    the suffix -wlm-emulator.
+    The binaries are handled with alternatives, having the emulator package
+    a higher priority value.
+  * Add slurm-client-emulator with all the same binaries from slurm-client
+    built in emulator mode, these are the binaries to use when running thr
+    daemons from slurm-wlm-emulator.
+    Binaries have appended suffix -emulator to avoid conflicts.
+
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 21 Jan 2016 09:54:48 +0100
 
 slurm-llnl (15.08.4-1) unstable; urgency=medium
