@@ -159,7 +159,6 @@ static int  _copy_job_desc_to_job_record(job_desc_msg_t * job_desc,
 					 struct job_record **job_ptr,
 					 bitstr_t ** exc_bitmap,
 					 bitstr_t ** req_bitmap);
-static int _copy_job_file(const char *src, const char *dst);
 static job_desc_msg_t * _copy_job_record_to_job_desc(
 				struct job_record *job_ptr);
 static char *_copy_nodelist_no_dup(char *node_list);
@@ -172,7 +171,6 @@ static slurmdb_qos_rec_t *_determine_and_validate_qos(
 	bool admin, slurmdb_qos_rec_t *qos_rec,	int *error_code, bool locked);
 static void _dump_job_details(struct job_details *detail_ptr, Buf buffer);
 static void _dump_job_state(struct job_record *dump_job_ptr, Buf buffer);
-static int  _find_batch_dir(void *x, void *key);
 static void _get_batch_job_dir_ids(List batch_dirs);
 static time_t _get_last_state_write_time(void);
 static void _job_array_comp(struct job_record *job_ptr, bool was_running);
@@ -202,10 +200,10 @@ static void _pack_pending_job_details(struct job_details *detail_ptr,
 static bool _parse_array_tok(char *tok, bitstr_t *array_bitmap, uint32_t max);
 static int  _purge_job_record(uint32_t job_id);
 static void _purge_missing_jobs(int node_inx, time_t now);
-static int  _read_data_array_from_file(char *file_name, char ***data,
+static int  _read_data_array_from_file(int fd, char *file_name, char ***data,
 				       uint32_t * size,
 				       struct job_record *job_ptr);
-static int  _read_data_from_file(char *file_name, char **data);
+static int   _read_data_from_file(int fd, char *file_name, char **data);
 static char *_read_job_ckpt_file(char *ckpt_file, int *size_ptr);
 static void _remove_defunct_batch_dirs(List batch_dirs);
 static void _remove_job_hash(struct job_record *job_ptr);
@@ -549,6 +547,9 @@ static void _delete_job_desc_files(uint32_t job_id)
 	f_dir = opendir(dir_name);
 	if (f_dir) {
 		while ((dir_ent = readdir(f_dir))) {
+			if (!strcmp(dir_ent->d_name, ".") ||
+			    !strcmp(dir_ent->d_name, ".."))
+				continue;
 			xstrfmtcat(file_name, "%s/%s", dir_name,
 				   dir_ent->d_name);
 			(void) unlink(file_name);
@@ -1480,6 +1481,7 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 			safe_unpack16(&step_flag, buffer);
 		}
 		safe_unpack32(&job_ptr->bit_flags, buffer);
+		job_ptr->bit_flags &= ~BACKFILL_TEST;
 		safe_unpackstr_xmalloc(&tres_alloc_str,
 				       &name_len, buffer);
 		safe_unpackstr_xmalloc(&tres_fmt_alloc_str,
@@ -3075,6 +3077,10 @@ extern int kill_job_by_front_end_name(char *node_name)
 						   "/%u", job_ptr->job_id);
 				}
 				job_ptr->restart_cnt++;
+
+				/* clear signal sent flag on requeue */
+				job_ptr->warn_flags &= ~WARN_SENT;
+
 				/* Since the job completion logger
 				 * removes the submit we need to add it
 				 * again. */
@@ -3312,6 +3318,10 @@ extern int kill_running_job_by_node_name(char *node_name)
 						   "/%u", job_ptr->job_id);
 				}
 				job_ptr->restart_cnt++;
+
+				/* clear signal sent flag on requeue */
+				job_ptr->warn_flags &= ~WARN_SENT;
+
 				/* Since the job completion logger
 				 * removes the submit we need to add it
 				 * again. */
@@ -3432,8 +3442,8 @@ void dump_job_desc(job_desc_msg_t * job_specs)
 	       min_cpus, job_specs->max_cpus, pn_min_cpus,
 	       spec_type, spec_count);
 
-	debug3("   -N min-[max]: %u-[%u]:%u:%u:%u",
-	       job_specs->min_nodes,   job_specs->max_nodes,
+	debug3("   Nodes=%u-[%u] Sock/Node=%u Core/Sock=%u Thread/Core=%u",
+	       job_specs->min_nodes, job_specs->max_nodes,
 	       job_specs->sockets_per_node, job_specs->cores_per_socket,
 	       job_specs->threads_per_core);
 
@@ -3675,8 +3685,7 @@ extern struct job_record *job_array_split(struct job_record *job_ptr)
 		      __func__, job_ptr->job_id);
 	}
 	if (_copy_job_desc_files(job_ptr_pend->job_id, job_ptr->job_id)) {
-		/* Need to quit here to preserve job record integrity */
-		fatal("%s: failed to copy enviroment/script files for job %u",
+		error("%s: failed to create working directory for job %u",
 		      __func__, job_ptr->job_id);
 	}
 
@@ -4873,6 +4882,10 @@ extern int job_complete(uint32_t job_id, uid_t uid, bool requeue,
 		if (!use_cloud)
 			job_ptr->batch_flag++;	/* only one retry */
 		job_ptr->restart_cnt++;
+
+		/* clear signal sent flag on requeue */
+		job_ptr->warn_flags &= ~WARN_SENT;
+
 		job_ptr->job_state = JOB_PENDING | job_comp_flag;
 		/* Since the job completion logger removes the job submit
 		 * information, we need to add it again. */
@@ -6156,13 +6169,19 @@ extern int validate_job_create_req(job_desc_msg_t * job_desc, uid_t submit_uid,
 		    (job_desc->min_nodes <  host_cnt))
 			job_desc->min_nodes = host_cnt;
 	}
+
+	/* If max nodes is different than min nodes don't set tasks or
+	 * it will hard code the range.
+	 */
 	if ((job_desc->ntasks_per_node != (uint16_t) NO_VAL) &&
 	    (job_desc->min_nodes       != NO_VAL) &&
-	    (job_desc->num_tasks       != NO_VAL)) {
-		uint32_t ntasks = job_desc->ntasks_per_node *
-				  job_desc->min_nodes;
-		job_desc->num_tasks = MAX(job_desc->num_tasks, ntasks);
+	    (job_desc->min_nodes       == job_desc->max_nodes) &&
+	    (job_desc->num_tasks       == NO_VAL)) {
+		job_desc->num_tasks =
+			job_desc->ntasks_per_node * job_desc->min_nodes;
 	}
+
+
 	if ((job_desc->min_cpus  != NO_VAL) &&
 	    (job_desc->min_nodes != NO_VAL) &&
 	    (job_desc->min_cpus  <  job_desc->min_nodes) &&
@@ -6256,13 +6275,13 @@ static bool _dup_job_file_test(uint32_t job_id)
 	return false;
 }
 
-/* _copy_job_desc_files - create copies of a job script and environment files */
+/* _copy_job_desc_files - Create work directory for job array task.
+ * No longer copies environment/script files. */
 static int
 _copy_job_desc_files(uint32_t job_id_src, uint32_t job_id_dest)
 {
 	int error_code = SLURM_SUCCESS, hash;
 	char *dir_name_src, *dir_name_dest, job_dir[40];
-	char *file_name_src, *file_name_dest;
 
 	/* Create state_save_location directory */
 	dir_name_src  = slurm_get_state_save_location();
@@ -6286,58 +6305,11 @@ _copy_job_desc_files(uint32_t job_id_src, uint32_t job_id_dest)
 			      job_id_dest);
 		}
 		error("mkdir(%s) error %m", dir_name_dest);
-		xfree(dir_name_src);
-		xfree(dir_name_dest);
-		return ESLURM_WRITING_TO_FILE;
+		error_code = ESLURM_WRITING_TO_FILE;
 	}
-
-	/* Identify job_id_src specific directory */
-	hash = job_id_src % 10;
-	sprintf(job_dir, "/hash.%d", hash);
-	xstrcat(dir_name_src, job_dir);
-	(void) mkdir(dir_name_src, 0700);
-	sprintf(job_dir, "/job.%u", job_id_src);
-	xstrcat(dir_name_src, job_dir);
-
-	file_name_src  = xstrdup(dir_name_src);
-	file_name_dest = xstrdup(dir_name_dest);
-	xstrcat(file_name_src,  "/environment");
-	xstrcat(file_name_dest, "/environment");
-	error_code = link(file_name_src, file_name_dest);
-	if (error_code < 0) {
-		error("%s: link() failed %m copy files src %s dest %s",
-		      __func__, file_name_src, file_name_dest);
-		error_code = _copy_job_file(file_name_src, file_name_dest);
-		if (error_code < 0) {
-			error("%s: failed copy files %m src %s dst %s",
-			      __func__, file_name_src, file_name_dest);
-		}
-	}
-	xfree(file_name_src);
-	xfree(file_name_dest);
-
-	if (error_code == 0) {
-		file_name_src  = xstrdup(dir_name_src);
-		file_name_dest = xstrdup(dir_name_dest);
-		xstrcat(file_name_src,  "/script");
-		xstrcat(file_name_dest, "/script");
-		error_code = link(file_name_src, file_name_dest);
-		if (error_code < 0) {
-			error("%s: link() failed %m copy files src %s dest %s",
-			      __func__, file_name_src, file_name_dest);
-			error_code = _copy_job_file(file_name_src,
-						    file_name_dest);
-			if (error_code < 0) {
-				error("%s: failed copy files %m src %s dst %s",
-				      __func__, file_name_src, file_name_dest);
-			}
-		}
-		xfree(file_name_src);
-		xfree(file_name_dest);
-	}
-
 	xfree(dir_name_src);
 	xfree(dir_name_dest);
+
 	return error_code;
 }
 
@@ -6435,28 +6407,56 @@ static int _write_data_to_file(char *file_name, char *data)
  */
 char **get_job_env(struct job_record *job_ptr, uint32_t * env_size)
 {
-	char *file_name, **environment = NULL;
-	int hash = job_ptr->job_id % 10;
-	int cc;
+	char *file_name = NULL, job_dir[40], **environment = NULL;
+	int cc, fd = -1, hash;
 
-	file_name = slurm_get_state_save_location();
-	xstrfmtcat(file_name, "/hash.%d/job.%u/environment",
-		   hash, job_ptr->job_id);
-
-	if (_read_data_array_from_file(file_name, &environment, env_size,
-				       job_ptr)) {
-		/* Read state from version 14.03 or earlier */
+	/* Standard file location for job arrays, version 16.05+ */
+	if (job_ptr->array_task_id != NO_VAL) {
+		hash = job_ptr->array_job_id % 10;
+		sprintf(job_dir, "/hash.%d/job.%u/environment",
+			hash, job_ptr->array_job_id);
 		xfree(file_name);
 		file_name = slurm_get_state_save_location();
-		xstrfmtcat(file_name, "/job.%u/environment", job_ptr->job_id);
-		cc = _read_data_array_from_file(file_name,
-						&environment,
-						env_size,
-						job_ptr);
-		if (cc < 0) {
-			xfree(file_name);
-			return NULL;
-		}
+		xstrcat(file_name, job_dir);
+		fd = open(file_name, 0);
+	}
+
+	/* Standard file location, versions 15.08 and 14.11 */
+	if (fd < 0) {
+		hash = job_ptr->job_id % 10;
+		sprintf(job_dir, "/hash.%d/job.%u/environment",
+			hash, job_ptr->job_id);
+		xfree(file_name);
+		file_name = slurm_get_state_save_location();
+		xstrcat(file_name, job_dir);
+		fd = open(file_name, 0);
+	}
+
+	/* Standard file location, version 14.3 and earlier
+	 * NOTE: Cannot remove this backwards compatibility as there is no
+	 * process to migrate jobs to the newer directory structure, and
+	 * sites may be jumping through multiple version to bring their
+	 * installation to current. E.g., going from v2.6 -> 14.03 -> 16.05
+	 * would update state files correctly, but leave pending jobs in
+	 * the old directory format.
+	 */
+	if (fd < 0) {
+		xfree(file_name);
+		file_name = slurm_get_state_save_location();
+		sprintf(job_dir, "/job.%u/environment", job_ptr->job_id);
+		xstrcat(file_name, job_dir);
+		fd = open(file_name, 0);
+	}
+
+	if (fd >= 0) {
+		cc = _read_data_array_from_file(fd, file_name, &environment,
+						env_size, job_ptr);
+		if (cc < 0)
+			environment = NULL;
+		close(fd);
+	} else {
+		error("Could not open environment file for job %u",
+		      job_ptr->job_id);
 	}
 
 	xfree(file_name);
@@ -6470,24 +6470,55 @@ char **get_job_env(struct job_record *job_ptr, uint32_t * env_size)
  */
 char *get_job_script(struct job_record *job_ptr)
 {
-	char *file_name, job_dir[40], *script = NULL;
-	int hash;
+	char *file_name = NULL, job_dir[40], *script = NULL;
+	int fd = -1, hash;
 
 	if (!job_ptr->batch_flag)
 		return NULL;
 
-	hash = job_ptr->job_id % 10;
-	file_name = slurm_get_state_save_location();
-	sprintf(job_dir, "/hash.%d/job.%u/script", hash, job_ptr->job_id);
-	xstrcat(file_name, job_dir);
+	/* Standard file location for job arrays, version 16.05+ */
+	if (job_ptr->array_task_id != NO_VAL) {
+		hash = job_ptr->array_job_id % 10;
+		sprintf(job_dir, "/hash.%d/job.%u/script",
+			hash, job_ptr->array_job_id);
+		xfree(file_name);
+		file_name = slurm_get_state_save_location();
+		xstrcat(file_name, job_dir);
+		fd = open(file_name, 0);
+	}
 
-	if (_read_data_from_file(file_name, &script)) {
-		/* Read version 14.03 or earlier state format */
+	/* Standard file location, versions 15.08 and 14.11 */
+	if (fd < 0) {
+		hash = job_ptr->job_id % 10;
+		sprintf(job_dir, "/hash.%d/job.%u/script",
+			hash, job_ptr->job_id);
+		xfree(file_name);
+		file_name = slurm_get_state_save_location();
+		xstrcat(file_name, job_dir);
+		fd = open(file_name, 0);
+	}
+
+	/* Standard file location, version 14.3 and earlier
+	 * NOTE: Cannot remove this backwards compatibility as there is no
+	 * process to migrate jobs to the newer directory structure, and
+	 * sites may be jumping through multiple version to bring their
+	 * installation to current. E.g., going from v2.6 -> 14.03 -> 16.05
+	 * would update state files correctly, but leave pending jobs in
+	 * the old directory format.
+	 */
+	if (fd < 0) {
 		xfree(file_name);
 		file_name = slurm_get_state_save_location();
 		sprintf(job_dir, "/job.%u/script", job_ptr->job_id);
 		xstrcat(file_name, job_dir);
-		(void) _read_data_from_file(file_name, &script);
+		fd = open(file_name, 0);
+	}
+
+	if (fd >= 0) {
+		_read_data_from_file(fd, file_name, &script);
+		close(fd);
+	} else {
+		error("Could not open script file for job %u", job_ptr->job_id);
 	}
 
 	xfree(file_name);
@@ -6496,6 +6527,7 @@ char *get_job_script(struct job_record *job_ptr)
 
 /*
  * Read a collection of strings from a file
+ * IN fd - file descriptor
  * IN file_name - file to read from
  * OUT data - pointer to array of pointers to strings (e.g. env),
  *	must be xfreed when no longer needed
@@ -6505,10 +6537,10 @@ char *get_job_script(struct job_record *job_ptr)
  * NOTE: The output format of this must be identical with _xduparray2()
  */
 static int
-_read_data_array_from_file(char *file_name, char ***data, uint32_t * size,
-			   struct job_record *job_ptr)
+_read_data_array_from_file(int fd, char *file_name, char ***data,
+			    uint32_t * size, struct job_record *job_ptr)
 {
-	int fd, pos, buf_size, amount, i, j;
+	int pos, buf_size, amount, i, j;
 	char *buffer, **array_ptr;
 	uint32_t rec_cnt;
 
@@ -6518,33 +6550,24 @@ _read_data_array_from_file(char *file_name, char ***data, uint32_t * size,
 	*data = NULL;
 	*size = 0;
 
-	fd = open(file_name, 0);
-	if (fd < 0) {
-		error("Error opening file %s, %m", file_name);
-		return -1;
-	}
-
 	amount = read(fd, &rec_cnt, sizeof(uint32_t));
 	if (amount < sizeof(uint32_t)) {
 		if (amount != 0)	/* incomplete write */
 			error("Error reading file %s, %m", file_name);
 		else
 			verbose("File %s has zero size", file_name);
-		close(fd);
 		return -1;
 	}
 
 	if (rec_cnt >= INT_MAX) {
 		error("%s: unreasonable record counter %d in file %s",
 		      __func__, rec_cnt, file_name);
-		close(fd);
 		return -1;
 	}
 
 	if (rec_cnt == 0) {
 		*data = NULL;
 		*size = 0;
-		close(fd);
 		return 0;
 	}
 
@@ -6556,7 +6579,6 @@ _read_data_array_from_file(char *file_name, char ***data, uint32_t * size,
 		if (amount < 0) {
 			error("Error reading file %s, %m", file_name);
 			xfree(buffer);
-			close(fd);
 			return -1;
 		}
 		pos += amount;
@@ -6565,7 +6587,6 @@ _read_data_array_from_file(char *file_name, char ***data, uint32_t * size,
 		buf_size += amount;
 		xrealloc(buffer, buf_size);
 	}
-	close(fd);
 
 	/* Allocate extra space for supplemental environment variables
 	 * as set by Moab */
@@ -6632,25 +6653,20 @@ _read_data_array_from_file(char *file_name, char ***data, uint32_t * size,
 
 /*
  * Read a string from a file
+ * IN fd - file descriptor to read from
  * IN file_name - file to read from
  * OUT data - pointer to  string
  *	must be xfreed when no longer needed
  * RET - 0 on success, -1 on error
  */
-static int _read_data_from_file(char *file_name, char **data)
+static int _read_data_from_file(int fd, char *file_name, char **data)
 {
-	int fd, pos, buf_size, amount;
+	int pos, buf_size, amount;
 	char *buffer;
 
 	xassert(file_name);
 	xassert(data);
 	*data = NULL;
-
-	fd = open(file_name, 0);
-	if (fd < 0) {
-		error("Error opening file %s, %m", file_name);
-		return -1;
-	}
 
 	pos = 0;
 	buf_size = BUF_SIZE;
@@ -6671,7 +6687,6 @@ static int _read_data_from_file(char *file_name, char **data)
 	}
 
 	*data = buffer;
-	close(fd);
 	return 0;
 }
 
@@ -6848,6 +6863,7 @@ _copy_job_desc_to_job_record(job_desc_msg_t * job_desc,
 	job_ptr->mail_type = job_desc->mail_type;
 	job_ptr->mail_user = xstrdup(job_desc->mail_user);
 	job_ptr->bit_flags = job_desc->bitflags;
+	job_ptr->bit_flags &= ~BACKFILL_TEST;
 	job_ptr->ckpt_interval = job_desc->ckpt_interval;
 	job_ptr->spank_job_env = job_desc->spank_job_env;
 	job_ptr->spank_job_env_size = job_desc->spank_job_env_size;
@@ -7152,6 +7168,7 @@ void job_time_limit(void)
 		if (job_ptr->preempt_time &&
 		    (IS_JOB_RUNNING(job_ptr) || IS_JOB_SUSPENDED(job_ptr))) {
 			if ((job_ptr->warn_time) &&
+			    (!(job_ptr->warn_flags & WARN_SENT)) &&
 			    (job_ptr->warn_time + PERIODIC_TIMEOUT + now >=
 			     job_ptr->end_time)) {
 				debug("%s: preempt warning signal %u to job %u ",
@@ -7161,8 +7178,9 @@ void job_time_limit(void)
 						  job_ptr->warn_signal,
 						  job_ptr->warn_flags, 0,
 						  false);
-				job_ptr->warn_signal = 0;
-				job_ptr->warn_time = 0;
+
+				/* mark job as signalled */
+				job_ptr->warn_flags |= WARN_SENT;
 			}
 			if (job_ptr->end_time <= now) {
 				last_job_update = now;
@@ -7195,6 +7213,7 @@ void job_time_limit(void)
 		}
 		if (job_ptr->time_limit != INFINITE) {
 			if ((job_ptr->warn_time) &&
+			    (!(job_ptr->warn_flags & WARN_SENT)) &&
 			    (job_ptr->warn_time + PERIODIC_TIMEOUT + now >=
 			     job_ptr->end_time)) {
 
@@ -7212,8 +7231,9 @@ void job_time_limit(void)
 						  job_ptr->warn_signal,
 						  job_ptr->warn_flags, 0,
 						  false);
-				job_ptr->warn_signal = 0;
-				job_ptr->warn_time = 0;
+
+				/* mark job as signalled */
+				job_ptr->warn_flags |= WARN_SENT;
 			}
 			if ((job_ptr->mail_type & MAIL_JOB_TIME100) &&
 			    (now >= job_ptr->end_time)) {
@@ -8587,7 +8607,11 @@ static void _pack_default_job_details(struct job_record *job_ptr,
 		if (detail_ptr) {
 			packstr(detail_ptr->features,   buffer);
 			packstr(detail_ptr->work_dir,   buffer);
-			packstr(detail_ptr->dependency, buffer);
+
+			if (job_ptr->state_reason == WAIT_DEP_INVALID)
+				packstr(detail_ptr->orig_dependency, buffer);
+			else
+				packstr(detail_ptr->dependency, buffer);
 
 			if (detail_ptr->argv) {
 				/* Determine size needed for a string
@@ -9027,16 +9051,16 @@ void purge_old_job(void)
 			if (job_ptr->bit_flags & KILL_INV_DEP) {
 				_kill_dependent(job_ptr);
 			} else if (job_ptr->bit_flags & NO_KILL_INV_DEP) {
-				debug("\
-%s: %s job dependency condition never satisfied", __func__,
+				debug("%s: %s job dependency never satisfied",
+				      __func__,
 				      jobid2str(job_ptr, jbuf, sizeof(jbuf)));
 				job_ptr->state_reason = WAIT_DEP_INVALID;
 				xfree(job_ptr->state_desc);
 			} else if (kill_invalid_dep) {
 				_kill_dependent(job_ptr);
 			} else {
-				debug("\
-%s: %s dependency condition never satisfied", __func__,
+				debug("%s: %s job dependency never satisfied",
+				      __func__,
 				      jobid2str(job_ptr, jbuf, sizeof(jbuf)));
 				job_ptr->state_reason = WAIT_DEP_INVALID;
 				xfree(job_ptr->state_desc);
@@ -9626,6 +9650,28 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 					&cpus_per_node);
 #endif
 
+	authorized = admin = validate_operator(uid);
+	if (job_specs->burst_buffer) {
+		/* burst_buffer contents are validated at job submit time and
+		 * data is possibly being staged at later times. It can not
+		 * be changed except to clear the value on a completed job and
+		 * purge the record in order to recover from a failure mode */
+		if (IS_JOB_COMPLETED(job_ptr) && authorized &&
+		    (job_specs->burst_buffer[0] == '\0')) {
+			xfree(job_ptr->burst_buffer);
+			last_job_update = now;
+		} else {
+			error_code = ESLURM_NOT_SUPPORTED;
+		}
+	}
+	if (error_code != SLURM_SUCCESS)
+		goto fini;
+
+	if (IS_JOB_FINISHED(job_ptr)) {
+		error_code = ESLURM_JOB_FINISHED;
+		goto fini;
+	}
+
 	if (job_specs->user_id == NO_VAL) {
 		/* Used by job_submit/lua to find default partition and
 		 * access control logic below to validate partition change */
@@ -9640,13 +9686,11 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 	if (error_code != SLURM_SUCCESS)
 		return error_code;
 
-	admin = validate_operator(uid);
-
 	memset(&acct_policy_limit_set, 0, sizeof(acct_policy_limit_set_t));
 	acct_policy_limit_set.tres = tres;
 
-	if ((authorized = admin || assoc_mgr_is_user_acct_coord(
-		     acct_db_conn, uid, job_ptr->account))) {
+	if (authorized ||
+	    assoc_mgr_is_user_acct_coord(acct_db_conn, uid, job_ptr->account)) {
 		/* set up the acct_policy if we are authorized */
 		for (tres_pos = 0; tres_pos < slurmctld_tres_cnt; tres_pos++)
 			acct_policy_limit_set.tres[tres_pos] = ADMIN_SET_LIMIT;
@@ -9813,7 +9857,7 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 		if ((job_specs->req_nodes[0] == '\0') ||
 		    node_name2bitmap(job_specs->req_nodes,false, &req_bitmap) ||
 		    !bit_super_set(req_bitmap, job_ptr->node_bitmap) ||
-		    job_ptr->details->expanding_jobid) {
+		    (job_ptr->details && job_ptr->details->expanding_jobid)) {
 			info("sched: Invalid node list (%s) for job %u update",
 			     job_specs->req_nodes, job_ptr->job_id);
 			error_code = ESLURM_INVALID_NODE_NAME;
@@ -9873,15 +9917,6 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 				     job_ptr->job_id);
 			}
 		}
-	}
-	if (error_code != SLURM_SUCCESS)
-		goto fini;
-
-	if (job_specs->burst_buffer) {
-		/* burst_buffer contents are validated at job submit time and
-		 * data is possibly being staged at later times. It can not
-		 * be changed. */
-		error_code = ESLURM_NOT_SUPPORTED;
 	}
 	if (error_code != SLURM_SUCCESS)
 		goto fini;
@@ -10278,53 +10313,6 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 	if (error_code != SLURM_SUCCESS)
 		goto fini;
 
-	if (job_specs->num_tasks != NO_VAL) {
-		if (!IS_JOB_PENDING(job_ptr))
-			error_code = ESLURM_JOB_NOT_PENDING;
-		else if (job_specs->num_tasks < 1)
-			error_code = ESLURM_BAD_TASK_COUNT;
-		else {
-#ifdef HAVE_BG
-			uint32_t node_cnt = job_specs->num_tasks;
-			if (cpus_per_node)
-				node_cnt /= cpus_per_node;
-			/* This is only set up so accounting is set up
-			   correctly */
-			select_g_select_jobinfo_set(job_ptr->select_jobinfo,
-						    SELECT_JOBDATA_NODE_CNT,
-						    &node_cnt);
-#endif
-			detail_ptr->num_tasks = job_specs->num_tasks;
-			info("update_job: setting num_tasks to %u for "
-			     "job_id %u", job_specs->num_tasks,
-			     job_ptr->job_id);
-			if (detail_ptr->cpus_per_task) {
-				uint32_t new_cpus = detail_ptr->num_tasks
-					/ detail_ptr->cpus_per_task;
-				if ((new_cpus < detail_ptr->min_cpus) ||
-				    (!detail_ptr->overcommit &&
-				     (new_cpus > detail_ptr->min_cpus))) {
-					detail_ptr->min_cpus = new_cpus;
-					detail_ptr->max_cpus = new_cpus;
-					info("update_job: setting "
-					     "min_cpus to %u for "
-					     "job_id %u", detail_ptr->min_cpus,
-					     job_ptr->job_id);
-					/* Always use the
-					 * acct_policy_limit_set.*
-					 * since if set by a
-					 * super user it be set correctly */
-					job_ptr->limit_set.
-						tres[TRES_ARRAY_CPU] =
-						acct_policy_limit_set.
-						tres[TRES_ARRAY_CPU];
-				}
-			}
-		}
-	}
-	if (error_code != SLURM_SUCCESS)
-		goto fini;
-
 	/* Reset min and max node counts as needed, insure consistency */
 	if (job_specs->min_nodes != NO_VAL) {
 		if (IS_JOB_RUNNING(job_ptr) || IS_JOB_SUSPENDED(job_ptr))
@@ -10398,6 +10386,92 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 			acct_policy_limit_set.tres[TRES_ARRAY_NODE];
 		update_accounting = true;
 	}
+
+	/* This also needs to be updated to make sure we are kosher
+	   after messing with the cpus and nodes. */
+	if (detail_ptr && detail_ptr->pn_min_cpus) {
+		uint16_t pn_min_cpus =
+			(uint16_t)(job_ptr->tres_req_cnt[TRES_ARRAY_CPU] /
+				   job_ptr->tres_req_cnt[TRES_ARRAY_NODE]);
+		if (detail_ptr->pn_min_cpus != pn_min_cpus) {
+			info("update_job: setting pn_min_cpus from "
+			     "%u to %u for job_id %u",
+			     detail_ptr->pn_min_cpus, pn_min_cpus,
+			     job_ptr->job_id);
+			detail_ptr->pn_min_cpus = pn_min_cpus;
+		}
+	}
+
+	/* This has to be figured out before num_tasks is */
+	if (detail_ptr && detail_ptr->cpus_per_task) {
+		uint16_t cpus_per_task;
+		/* Use the new value if given else use the current tasks */
+		uint32_t num_tasks = (job_specs->num_tasks != NO_VAL) ?
+			job_specs->num_tasks : detail_ptr->num_tasks;
+
+		if (num_tasks)
+			cpus_per_task = job_ptr->tres_req_cnt[TRES_ARRAY_CPU] /
+				num_tasks;
+		else if (detail_ptr->cpus_per_task > detail_ptr->pn_min_cpus)
+			cpus_per_task = detail_ptr->pn_min_cpus;
+		else
+			cpus_per_task = detail_ptr->cpus_per_task;
+
+		if (cpus_per_task != detail_ptr->cpus_per_task) {
+			info("update_job: setting cpus_per_task from "
+			     "%u to %u for job_id %u",
+			     detail_ptr->cpus_per_task, cpus_per_task,
+			     job_ptr->job_id);
+			detail_ptr->cpus_per_task = cpus_per_task;
+		}
+	}
+
+	if (job_specs->num_tasks != NO_VAL) {
+		if (!IS_JOB_PENDING(job_ptr))
+			error_code = ESLURM_JOB_NOT_PENDING;
+		else if (job_specs->num_tasks < 1)
+			error_code = ESLURM_BAD_TASK_COUNT;
+		else {
+#ifdef HAVE_BG
+			uint32_t node_cnt = job_specs->num_tasks;
+			if (cpus_per_node)
+				node_cnt /= cpus_per_node;
+			/* This is only set up so accounting is set up
+			   correctly */
+			select_g_select_jobinfo_set(job_ptr->select_jobinfo,
+						    SELECT_JOBDATA_NODE_CNT,
+						    &node_cnt);
+#endif
+			detail_ptr->num_tasks = job_specs->num_tasks;
+			info("update_job: setting num_tasks to %u for "
+			     "job_id %u", job_specs->num_tasks,
+			     job_ptr->job_id);
+			if (detail_ptr->cpus_per_task) {
+				uint32_t new_cpus = detail_ptr->num_tasks
+					/ detail_ptr->cpus_per_task;
+				if ((new_cpus < detail_ptr->min_cpus) ||
+				    (!detail_ptr->overcommit &&
+				     (new_cpus > detail_ptr->min_cpus))) {
+					detail_ptr->min_cpus = new_cpus;
+					detail_ptr->max_cpus = new_cpus;
+					info("update_job: setting "
+					     "min_cpus to %u for "
+					     "job_id %u", detail_ptr->min_cpus,
+					     job_ptr->job_id);
+					/* Always use the
+					 * acct_policy_limit_set.*
+					 * since if set by a
+					 * super user it be set correctly */
+					job_ptr->limit_set.
+						tres[TRES_ARRAY_CPU] =
+						acct_policy_limit_set.
+						tres[TRES_ARRAY_CPU];
+				}
+			}
+		}
+	}
+	if (error_code != SLURM_SUCCESS)
+		goto fini;
 
 	if (job_specs->time_limit != NO_VAL) {
 		if (IS_JOB_FINISHED(job_ptr) || job_ptr->preempt_time)
@@ -12288,44 +12362,69 @@ static void _get_batch_job_dir_ids(List batch_dirs)
 	closedir(f_dir);
 }
 
+static int _clear_state_dir_flag(void *x, void *arg)
+{
+	struct job_record *job_ptr = (struct job_record *)x;
+	job_ptr->bit_flags &= ~HAS_STATE_DIR;
+	return 0;
+}
+
+static int _test_state_dir_flag(void *x, void *arg)
+{
+	struct job_record *job_ptr = (struct job_record *)x;
+
+	if (job_ptr->bit_flags & HAS_STATE_DIR) {
+		job_ptr->bit_flags &= ~HAS_STATE_DIR;
+		return 0;
+	}
+
+	if (!job_ptr->batch_flag || !IS_JOB_PENDING(job_ptr))
+		return 0;	/* No files expected */
+
+	error("Script for job %u lost, state set to FAILED", job_ptr->job_id);
+	job_ptr->job_state = JOB_FAILED;
+	job_ptr->exit_code = 1;
+	job_ptr->state_reason = FAIL_SYSTEM;
+	xfree(job_ptr->state_desc);
+	job_ptr->start_time = job_ptr->end_time = time(NULL);
+	job_completion_logger(job_ptr, false);
+	return 0;
+}
+
 /* All pending batch jobs must have a batch_dir entry,
  *	otherwise we flag it as FAILED and don't schedule
  * If the batch_dir entry exists for a PENDING or RUNNING batch job,
  *	remove it the list (of directories to be deleted) */
 static void _validate_job_files(List batch_dirs)
 {
-	ListIterator job_iterator;
 	struct job_record *job_ptr;
-	int del_cnt;
+	ListIterator batch_dir_iter;
+	uint32_t *job_id_ptr, array_job_id;
 
-	job_iterator = list_iterator_create(job_list);
-	while ((job_ptr = (struct job_record *) list_next(job_iterator))) {
-		if (!job_ptr->batch_flag)
-			continue;
-		/* Want to keep this job's files */
-		del_cnt = list_delete_all(batch_dirs, _find_batch_dir,
-					  &(job_ptr->job_id));
-		if ((del_cnt == 0) && IS_JOB_PENDING(job_ptr)) {
-			error("Script for job %u lost, state set to FAILED",
-			      job_ptr->job_id);
-			job_ptr->job_state = JOB_FAILED;
-			job_ptr->exit_code = 1;
-			job_ptr->state_reason = FAIL_SYSTEM;
-			xfree(job_ptr->state_desc);
-			job_ptr->start_time = job_ptr->end_time = time(NULL);
-			job_completion_logger(job_ptr, false);
+	list_for_each(job_list, _clear_state_dir_flag, NULL);
+
+	batch_dir_iter = list_iterator_create(batch_dirs);
+	while ((job_id_ptr = list_next(batch_dir_iter))) {
+		job_ptr = find_job_record(*job_id_ptr);
+		if (job_ptr) {
+			job_ptr->bit_flags |= HAS_STATE_DIR;
+			list_delete_item(batch_dir_iter);
+		}
+		if (job_ptr && job_ptr->array_recs) { /* Update all tasks */
+			array_job_id = job_ptr->array_job_id;
+			job_ptr = job_array_hash_j[JOB_HASH_INX(array_job_id)];
+			while (job_ptr) {
+				if (job_ptr->array_job_id == array_job_id)
+					job_ptr->bit_flags |= HAS_STATE_DIR;
+				job_ptr = job_ptr->job_array_next_j;
+			}
 		}
 	}
-	list_iterator_destroy(job_iterator);
+	list_iterator_destroy(batch_dir_iter);
+
+	list_for_each(job_list, _test_state_dir_flag, NULL);
 }
 
-/* List matching function, see common/list.h */
-static int _find_batch_dir(void *x, void *key)
-{
-	uint32_t *key1 = x;
-	uint32_t *key2 = key;
-	return (int)(*key1 == *key2);
-}
 /* List entry deletion function, see common/list.h */
 static void _del_batch_list_rec(void *x)
 {
@@ -12341,7 +12440,7 @@ static void _remove_defunct_batch_dirs(List batch_dirs)
 
 	batch_dir_inx = list_iterator_create(batch_dirs);
 	while ((job_id_ptr = list_next(batch_dir_inx))) {
-		info("Purging files for defunct batch job %u",
+		info("Purged files for defunct batch job %u",
 		     *job_id_ptr);
 		_delete_job_desc_files(*job_id_ptr);
 	}
@@ -12821,14 +12920,14 @@ extern bool job_independent(struct job_record *job_ptr, int will_run)
 		if (job_ptr->bit_flags & KILL_INV_DEP) {
 			_kill_dependent(job_ptr);
 		} else if (job_ptr->bit_flags & NO_KILL_INV_DEP) {
-			debug("%s: %s job dependency condition never satisfied",
+			debug("%s: %s job dependency never satisfied",
 			      __func__, jobid2str(job_ptr, jbuf, sizeof(jbuf)));
 			job_ptr->state_reason = WAIT_DEP_INVALID;
 			xfree(job_ptr->state_desc);
 		} else if (kill_invalid_dep) {
 			_kill_dependent(job_ptr);
 		} else {
-			debug("%s: %s dependency condition never satisfied",
+			debug("%s: %s job dependency never satisfied",
 			      __func__, jobid2str(job_ptr, jbuf, sizeof(jbuf)));
 			job_ptr->state_reason = WAIT_DEP_INVALID;
 			xfree(job_ptr->state_desc);
@@ -13045,9 +13144,10 @@ static void _suspend_job(struct job_record *job_ptr, uint16_t op,
 
 #ifdef HAVE_FRONT_END
 	xassert(job_ptr->batch_host);
-	if (job_ptr->front_end_ptr)
+	if (job_ptr->front_end_ptr) {
 		agent_args->protocol_version =
 			job_ptr->front_end_ptr->protocol_version;
+	}
 	hostlist_push_host(agent_args->hostlist, job_ptr->batch_host);
 	agent_args->node_count = 1;
 #else
@@ -13668,6 +13768,10 @@ reply:
 	job_ptr->tot_sus_time = (time_t) 0;
 
 	job_ptr->restart_cnt++;
+
+	/* clear signal sent flag on requeue */
+	job_ptr->warn_flags &= ~WARN_SENT;
+
 	/* Since the job completion logger removes the submit we need
 	 * to add it again. */
 	acct_policy_add_job_submit(job_ptr);
@@ -14886,7 +14990,11 @@ extern void job_hold_requeue(struct job_record *job_ptr)
 	 */
 	flags = job_ptr->job_state & JOB_STATE_FLAGS;
 	job_ptr->job_state = JOB_PENDING | flags;
+
 	job_ptr->restart_cnt++;
+
+	/* clear signal sent flag on requeue */
+	job_ptr->warn_flags &= ~WARN_SENT;
 
 	/* Test if user wants to requeue the job
 	 * in hold or with a special exit value.
@@ -15170,58 +15278,6 @@ extern void job_array_post_sched(struct job_record *job_ptr)
 			      jobid2fmt(job_ptr, jobid_buf, sizeof(jobid_buf)));
 		}
 	}
-}
-
-/* _copy_job_file()
- *
- * This function is invoked in case the controller fails
- * to link the job array job files. If the link fails the
- * controller tries to copy the files instead.
- *
- */
-static int
-_copy_job_file(const char *src, const char *dst)
-{
-	struct stat stat_buf;
-	int fsrc;
-	int fdst;
-	int cc;
-	char buf[BUFSIZ];
-
-	if (stat(src, &stat_buf) < 0)
-		return -1;
-
-	fsrc = open(src, O_RDONLY);
-	if (fsrc < 0)
-		return -1;
-
-
-	fdst = creat(dst, stat_buf.st_mode);
-	if (fdst < 0) {
-		close(fsrc);
-		return -1;
-	}
-
-	while (1) {
-		cc = read(fsrc, buf, BUFSIZ);
-		if (cc == 0)
-			break;
-		if (cc < 0) {
-			close(fsrc);
-			close(fdst);
-			return -1;
-		}
-		if (write(fdst, buf, cc) != cc) {
-			close(fsrc);
-			close(fdst);
-			return -1;
-		}
-	}
-
-	close(fsrc);
-	close(fdst);
-
-	return 0;
 }
 
 /* _kill_dependent()

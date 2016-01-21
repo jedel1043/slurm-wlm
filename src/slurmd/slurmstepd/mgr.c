@@ -1034,11 +1034,23 @@ static int _spawn_job_container(stepd_step_rec_t *job)
 	}
 	acct_gather_profile_g_task_end(pid);
 	step_complete.rank = job->nodeid;
-
 	acct_gather_profile_endpoll();
 	acct_gather_profile_g_node_step_end();
 	acct_gather_profile_fini();
-	_send_step_complete_msgs(job);
+
+	/* Call the other plugins to clean up
+	 * the cgroup hierarchy.
+	 */
+	step_terminate_monitor_start(job->jobid, job->stepid);
+	proctrack_g_signal(job->cont_id, SIGKILL);
+	proctrack_g_wait(job->cont_id);
+	step_terminate_monitor_stop();
+
+	task_g_post_step(job);
+
+	/* Notify srun of completion AFTER frequency reset to avoid race
+	 * condition starting another job on these CPUs. */
+	while (_send_pending_exit_msgs(job)) {;}
 
 	return SLURM_SUCCESS;
 }

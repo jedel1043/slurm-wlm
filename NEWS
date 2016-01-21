@@ -1,6 +1,195 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 15.08.7
+==========================
+ -- sched/backfill: If a job can not be started within the configured
+    backfill_window, set it's start time to 0 (unknown) rather than the end
+    of the backfill_window.
+ -- Remove the 1024-character limit on lines in batch scripts.
+ -- burst_buffer/cray: Round up swap size by configured granularity.
+ -- select/cray: Log repeated aeld reconnects.
+ -- task/affinity: Disable core-level task binding if more CPUs required than
+    available cores.
+ -- Preemption/gang scheduling: If a job is suspended at slurmctld restart or
+    reconfiguration time, then leave it suspended rather than resume+suspend.
+ -- Don't use lower weight nodes for job allocation when topology/tree used.
+ -- BGQ - If a cable goes into error state remove the under lying block on
+    a dynamic system and mark the block in error on a static/overlap system.
+ -- BGQ - Fix regression in 9cc4ae8add7f where blocks would be deleted on
+    static/overlap systems when some hardware issue happens when restarting
+    the slurmctld.
+ -- Log if CLOUD node configured without a resume/suspend program or suspend
+    time.
+ -- MYSQL - Better locking around g_qos_count which was previously unprotected.
+ -- Correct size of buffer used for jobid2str to avoid truncation.
+ -- Fix allocation/distribution of tasks across multiple nodes when
+    --hint=nomultithread is requested.
+ -- If a reservation's nodes value is "all" then track the current nodes in the
+    system, even if those nodes change.
+ -- Fix formatting if using "tree" option with sreport.
+ -- Make it so sreport prints out a line for non-existent TRES instead of
+    error message.
+ -- Set job's reason to "Priority" when higher priority job in that partition
+    (or reservation) can not start rather than leaving the reason set to
+    "Resources".
+ -- Fix memory corruption when a new non-generic TRES is added to the
+    DBD for the first time.  The corruption is only noticed at shutdown.
+ -- burst_buffer/cray - Improve tracking of allocated resources to handle race
+    condition when reading state while buffer allocation is in progress.
+ -- If a job is submitted only with -c option and numcpus is updated before
+    the job starts update the cpus_per_task appropriately.
+ -- Update salloc/sbatch/srun documentation to mention time granularity.
+ -- Fixed memory leak when freeing assoc_mgr_info_msg_t.
+ -- Prevent possible use of empty reservation core bitmap, causing abort.
+ -- Remove unneeded pack32's from qos_rec when qos_rec is NULL.
+ -- Make sacctmgr print MaxJobsPerUser when adding/altering a QOS.
+ -- Correct dependency formatting to print array task ids if set.
+ -- Update sacctmgr help with current QOS options.
+ -- Update slurmstepd to initialize authentication before task launch.
+ -- burst_cray/cray: Eliminate need for dedicated nodes.
+ -- If no MsgAggregationParams is set don't set the internal string to
+    anything.  The slurmd will process things correctly after the fact.
+ -- Fix output from api when printing job step not found.
+ -- Don't allow user specified reservation names to disrupt the normal
+    reservation sequeuece numbering scheme.
+ -- Fix scontrol to be able to accept TRES as an option when creating
+    a reservation.
+ -- contrib/torque/qstat.pl - return exit code of zero even with no records
+    printed for 'qstat -u'.
+ -- When a reservation is created or updated, compress user provided node names
+    using hostlist functions (e.g. translate user input of "Nodes=tux1,tux2"
+    into "Nodes=tux[1-2]").
+ -- Change output routines for scontrol show partition/reservation to handle
+    unexpectedly large strings.
+ -- Add more partition fields to "scontrol write config" output file.
+ -- Backfill scheduling fix: If a job can't be started due to a "group" resource
+    limit, rather than reserve resources for it when the next job ends, don't
+    reserve any resources for it.
+ -- Avoid slurmstepd abort if malloc fails during accounting gather operation.
+ -- Fix nodes from being overallocated when allocation straddles multiple nodes.
+ -- Fix memory leak in slurmctld job array logic.
+ -- Prevent decrementing of TRESRunMins when AccountingStorageEnforce=limits is
+    not set.
+ -- Fix backfill scheduling bug which could postpone the scheduling of jobs due
+    to avoidance of nodes in COMPLETING state.
+ -- Properly account for memory, CPUs and GRES when slurmctld is reconfigured
+    while there is a suspended job. Previous logic would add the CPUs, but not
+    memory or GPUs. This would result in underflow/overflow errors in select
+    cons_res plugin.
+ -- Strip flags from a job state in qstat wrapper before evaluating.
+ -- Add missing job states from the qstat wrapper.
+
+* Changes in Slurm 15.08.6
+==========================
+ -- In slurmctld log file, log duplicate job ID found by slurmd. Previously was
+    being logged as prolog/epilog failure.
+ -- If a job is requeued while in the process of being launch, remove it's
+    job ID from slurmd's record of active jobs in order to avoid generating a
+    duplicate job ID error when launched for the second time (which would
+    drain the node).
+ -- Cleanup messages when handling job script and environment variables in
+    older directory structure formats.
+ -- Prevent triggering gang scheduling within a partition if configured with
+    PreemptType=partition_prio and PreemptMode=suspend,gang.
+ -- Decrease parallelism in job cancel request to prevent denial of service
+    when cancelling huge numbers of jobs.
+ -- If all ephemeral ports are in use, try using other port numbers.
+ -- Revert way lib lua is handled when doing a dlopen, fixing a regression in
+    15.08.5.
+ -- Set the debug level of the rmdir message in xcgroup_delete() to debug2.
+ -- Fix the qstat wrapper when user is removed from the system but still
+    has running jobs.
+ -- Log the request to terminate a job at info level if DebugFlags includes
+    the Steps keyword.
+ -- Fix potential memory corruption in _slurm_rpc_epilog_complete as well as
+    _slurm_rpc_complete_job_allocation.
+ -- Fix cosmetic display of AccountingStorageEnforce option "nosteps" when
+    in use.
+ -- If a job can never be started due to unsatisfied job dependencies, report
+    the full original job dependency specification rather than the dependencies
+    remaining to be satisfied (typically NULL).
+ -- Refactor logic to synchronize active batch jobs and their script/environment
+    files, reducing overhead dramatically for large numbers of active jobs.
+ -- Avoid hard-link/copy of script/environment files for job arrays. Use the
+    master job record file for all tasks of the job array.
+    NOTE: Job arrays submitted to Slurm version 15.08.6 or later will fail if
+    the slurmctld daemon is downgraded to an earlier version of Slurm.
+ -- Move slurmctld mail handler to separate thread for improved performance.
+ -- Fix containment of adopted processes from pam_slurm_adopt.
+ -- If a pending job array has multiple reasons for being in a pending state,
+    then print all reasons in a comma separated list.
+
+* Changes in Slurm 15.08.5
+==========================
+ -- Prevent "scontrol update job" from updating jobs that have already finished.
+ -- Show requested TRES in "squeue -O tres" when job is pending.
+ -- Backfill scheduler: Test association and QOS node limits before reserving
+    resources for pending job.
+ -- burst_buffer/cray: If teardown operations fails, sleep and retry.
+ -- Clean up the external pids when using the PrologFlags=Contain feature
+    and the job finishes.
+ -- burst_buffer/cray: Support file staging when job lacks job-specific buffer
+    (i.e. only persistent burst buffers).
+ -- Added srun option of --bcast to copy executable file to compute nodes.
+ -- Fix for advanced reservation of burst buffer space.
+ -- BurstBuffer/cray: Add logic to terminate dw_wlm_cli child processes at
+    shutdown.
+ -- If job can't be launch or requeued, then terminate it.
+ -- BurstBuffer/cray: Enable clearing of burst buffer string on completed job
+    as a means of recovering from a failure mode.
+ -- Fix wrong memory free when parsing SrunPortRange=0-0 configuration.
+ -- BurstBuffer/cray: Fix job record purging if cancelled from pending state.
+ -- BGQ - Handle database throw correctly when syncing users on blocks.
+ -- MySQL - Make sure we don't have a NULL string returned when not
+    requesting any specific association.
+ -- sched/backfill: If max_rpc_cnt is configured and the backlog of RPCs has
+    not cleared after yielding locks, then continue to sleep.
+ -- Preserve the job dependency description displayed in 'scontrol show job'
+    even if the dependee jobs was terminated and cleaned causing the
+    dependent to never run because of DependencyNeverSatisfied.
+ -- Correct job task count calculation if only node count and ntasks-per-node
+    options supplied.
+ -- Make sure the association manager converts any string to be lower case
+    as all the associations from the database will be lower case.
+ -- Sanity check for xcgroup_delete() to verify incoming parameter is valid.
+ -- Fix formatting for sacct with variables that switched from uint32_t to
+    uint64_t.
+ -- Fix a typo in sacct man page.
+ -- Set up extern step to track any childern of an ssh if it leaves anything
+    else behind.
+ -- Prevent slurmdbd divide by zero if no associations defined at rollup time.
+ -- Multifactor - Add sanity check to make sure pending jobs are handled
+    correctly when PriorityFlags=CALCULATE_RUNNING is set.
+ -- Add slurmdb_find_tres_count_in_string() to slurm db perl api.
+ -- Make lua dlopen() conditional on version found at build.
+ -- sched/backfill - Delay backfill scheduler for completing jobs only if
+    CompleteWait configuration parameter is set (make code match documentation).
+ -- Release a job's allocated licenses only after epilog runs on all nodes
+    rather than at start of termination process.
+ -- Cray job NHC delayed until after burst buffer released and epilog completes
+    on all allocated nodes.
+ -- Fix abort of srun if using PrologFlags=NoHold
+ -- Let devices step_extern cgroup inherit attributes of job cgroup.
+ -- Add new hook to Task plugin to be able to put adopted processes in the
+    step_extern cgroups.
+ -- Fix AllowUsers documentation in burst_buffer.conf man page. Usernames are
+    comma separated, not colon delimited.
+ -- Fix issue with time limit not being set correctly from a QOS when a job
+    requests no time limit.
+ -- Various CLANG fixes.
+ -- In both sched/basic and backfill: If a job can not be started due to some
+    account/qos limit, then don't start other jobs which could delay jobs. The
+    old logic would skip the job and start other jobs, which could delay the
+    higher priority job.
+ -- select/cray: Prevent NHC from running more than once per job or step.
+ -- Fix fields not properly printed when adding an account through sacctmgr.
+ -- Update LBNL Node Health Check (NHC) link on FAQ.
+ -- Fix multifactor plugin to prevent slurmctld from getting segmentation fault
+    should the tres_alloc_cnt be NULL.
+ -- sbatch/salloc - Move nodelist logic before the time min_nodes is used
+    so we can set it correctly before tasks are set.
+
 * Changes in Slurm 15.08.4
 ==========================
  -- Fix typo for the "devices" cgroup subsystem in pam_slurm_adopt.c
@@ -581,9 +770,23 @@ documents those changes that are of interest to users and administrators.
     has been modified to accept a "Pack" and "NoPack" option. These options can
     be used to override the CR_PACK_NODE configuration option.
 
+* Changes in Slurm 14.11.12
+===========================
+ -- Correct dependency formatting to print array task ids if set.
+ -- Fix for configuration of "AuthType=munge" and "AuthInfo=socket=..." with
+    alternate munge socket path.
+
 * Changes in Slurm 14.11.11
 ===========================
  -- Fix systemd's slurmd service from killing slurmstepds on shutdown.
+ -- Fix the qstat wrapper when user is removed from the system but still
+    has running jobs.
+ -- Log the request to terminate a job at info level if DebugFlags includes
+    the Steps keyword.
+ -- Fix potential memory corruption in _slurm_rpc_epilog_complete as well as
+    _slurm_rpc_complete_job_allocation.
+ -- Fix incorrectly sized buffer used by jobid2str which will cause buffer
+    overflow in slurmctld. (Bug 2295.)
 
 * Changes in Slurm 14.11.10
 ===========================

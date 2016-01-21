@@ -1003,12 +1003,14 @@ enum ctx_keys {
 						 * pending jobs. */
 #define PRIORITY_FLAGS_FAIR_TREE	0x0020	/* Prioritize by level in
 						 * account hierarchy. */
-/* These bits are set in job_desc_msg_t and are used by the
- * slurmctld. The first two bits indicate if job should be canceled
+/* These bits are set in the bit_flags field of job_desc_msg_t and are used
+ * by the slurmctld. The first two bits indicate if job should be canceled
  * if it has invalid dependency or should stay pending indefinitely.
  */
-#define KILL_INV_DEP       0x01
-#define NO_KILL_INV_DEP    0x02
+#define KILL_INV_DEP       0x00000001
+#define NO_KILL_INV_DEP    0x00000002
+#define HAS_STATE_DIR      0x00000004
+#define BACKFILL_TEST      0x00000008	/* Backfill test in progress */
 
 /*****************************************************************************\
  *      SLURM HOSTLIST FUNCTIONS
@@ -2356,6 +2358,8 @@ void slurm_init_update_block_msg PARAMS((update_block_msg_t *update_block_msg));
 							 * relative */
 #define RESERVE_FLAG_REPLACE		0x00040000	/* Replace resources
 							 * as assigned to jobs */
+#define RESERVE_FLAG_ALL_NODES		0x00080000	/* Use all compute
+							 * nodes */
 
 typedef struct reserve_info {
 	char *accounts;		/* names of accounts permitted to use */
@@ -2478,6 +2482,7 @@ typedef struct reservation_name_msg {
 #define DEBUG_FLAG_SICP		0x0000080000000000 /* Slurm Inter-Cluster */
 #define DEBUG_FLAG_DB_ARCHIVE	0x0000100000000000 /* DBD Archiving/Purging */
 #define DEBUG_FLAG_DB_TRES      0x0000200000000000 /* Database TRES debug */
+#define DEBUG_FLAG_ESEARCH      0x0000400000000000 /* Elasticsearch debug */
 
 #define GROUP_FORCE		0x8000	/* if set, update group membership
 					 * info even if no updates to
@@ -3185,6 +3190,9 @@ extern void slurm_free_assoc_mgr_info_request_msg PARAMS (
 #define KILL_JOB_ARRAY	0x0002	/* kill all elements of a job array */
 #define KILL_STEPS_ONLY	0x0004	/* Do not signal batch script */
 #define KILL_FULL_JOB	0x0008	/* Signal all steps, including batch script */
+/* use top bit to indicate signal has been sent to job previously */
+/* does not need to be passed to slurmd through 4-bit packing */
+#define WARN_SENT	0x8000  /* warn already sent, clear this on requeue */
 
 /*
  * slurm_kill_job - send the specified signal to all steps of an existing job
@@ -4687,8 +4695,8 @@ void slurm_init_trigger_msg PARAMS((trigger_info_t *trigger_info_msg));
 #define BB_STATE_STAGED_IN	0x0012		/* Cray: bbs_data_in complete */
 #define BB_STATE_RUNNING	0x0021		/* Job is running */
 #define BB_STATE_SUSPEND	0x0022		/* Job is suspended (future) */
-#define BB_STATE_STAGING_OUT	0x0031		/* Cray: bbs_post_run then
-						 * bbs_data_out started */
+#define BB_STATE_POST_RUN	0x0029		/* Cray: bbs_post_run started */
+#define BB_STATE_STAGING_OUT	0x0031		/* Cray: bbs_data_out started */
 #define BB_STATE_STAGED_OUT	0x0032		/* Cray: bbs_data_out complete */
 #define BB_STATE_TEARDOWN	0x0041		/* Cray: bbs_teardown started */
 #define BB_STATE_COMPLETE	0x0042		/* Cray: bbs_teardown complete */

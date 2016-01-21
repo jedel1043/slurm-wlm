@@ -772,7 +772,7 @@ _forkexec_slurmstepd(uint16_t type, void *req,
 		_remove_starting_step(type, req);
 		return SLURM_FAILURE;
 	} else if (pid > 0) {
-		int rc = 0;
+		int rc = SLURM_SUCCESS;
 #ifndef SLURMSTEPD_MEMCHECK
 		int i;
 		time_t start_time = time(NULL);
@@ -800,12 +800,12 @@ _forkexec_slurmstepd(uint16_t type, void *req,
 #ifndef SLURMSTEPD_MEMCHECK
 		i = read(to_slurmd[0], &rc, sizeof(int));
 		if (i < 0) {
-			error("\
-%s: Can not read return code from slurmstepd got %d: %m", __func__, i);
+			error("%s: Can not read return code from slurmstepd "
+			      "got %d: %m", __func__, i);
 			rc = SLURM_FAILURE;
 		} else if (i != sizeof(int)) {
-			error("\
-%s: slurmstepd failed to send return code got %d: %m", __func__, i);
+			error("%s: slurmstepd failed to send return code "
+			      "got %d: %m", __func__, i);
 			rc = SLURM_FAILURE;
 		} else {
 			int delta_time = time(NULL) - start_time;
@@ -814,6 +814,8 @@ _forkexec_slurmstepd(uint16_t type, void *req,
 				     "possible file system problem or full "
 				     "memory", delta_time);
 			}
+			if (rc != SLURM_SUCCESS)
+				error("slurmstepd return code %d", rc);
 		}
 #endif
 	done:
@@ -1178,14 +1180,6 @@ _rpc_launch_tasks(slurm_msg_t *msg)
 	req->envc = envcount(req->env);
 
 #ifndef HAVE_FRONT_END
-	/*
-	 *  Do not launch a new job step while prolog in progress:
-	 */
-	if (_prolog_is_running (req->job_id)) {
-		info("[job %u] prolog in progress\n", req->job_id);
-		errnum = EINPROGRESS;
-		goto done;
-	}
 	slurm_mutex_lock(&prolog_mutex);
 	first_job_run = !slurm_cred_jobid_cached(conf->vctx, req->job_id);
 #endif
@@ -1702,7 +1696,7 @@ static void _rpc_prolog(slurm_msg_t *msg)
 	if (req == NULL)
 		return;
 
-	req_uid = g_slurm_auth_get_uid(msg->auth_cred, NULL);
+	req_uid = g_slurm_auth_get_uid(msg->auth_cred, slurm_get_auth_info());
 	if (!_slurm_authorized_user(req_uid)) {
 		error("REQUEST_LAUNCH_PROLOG request from uid %u",
 		      (unsigned int) req_uid);
@@ -1929,6 +1923,8 @@ _rpc_batch_job(slurm_msg_t *msg, bool new_msg)
 	 * if the job was cancelled in the interim, run through the
 	 * abort logic below. */
 	revoked = slurm_cred_revoked(conf->vctx, req->cred);
+	if (revoked)
+		_launch_complete_rm(req->job_id);
 	if (revoked && _is_batch_job_finished(req->job_id)) {
 		/* If configured with select/serial and the batch job already
 		 * completed, consider the job sucessfully launched and do
@@ -2050,7 +2046,7 @@ _launch_job_fail(uint32_t job_id, uint32_t slurm_rc)
 	complete_batch_script_msg_t comp_msg;
 	struct requeue_msg req_msg;
 	slurm_msg_t resp_msg;
-	int rc;
+	int rc = 0, rpc_rc;
 	static time_t config_update = 0;
 	static bool requeue_no_hold = false;
 
@@ -2085,7 +2081,22 @@ _launch_job_fail(uint32_t job_id, uint32_t slurm_rc)
 		resp_msg.data = &req_msg;
 	}
 
-	return slurm_send_recv_controller_rc_msg(&resp_msg, &rc);
+	rpc_rc = slurm_send_recv_controller_rc_msg(&resp_msg, &rc);
+	if ((resp_msg.msg_type == REQUEST_JOB_REQUEUE) &&
+	    (rc == ESLURM_DISABLED)) {
+		info("Could not launch job %u and not able to requeue it, "
+		     "cancelling job", job_id);
+		comp_msg.job_id = job_id;
+		comp_msg.job_rc = INFINITE;
+		comp_msg.slurm_rc = slurm_rc;
+		comp_msg.node_name = conf->node_name;
+		comp_msg.jobacct = NULL; /* unused */
+		resp_msg.msg_type = REQUEST_COMPLETE_BATCH_SCRIPT;
+		resp_msg.data = &comp_msg;
+		rpc_rc = slurm_send_recv_controller_rc_msg(&resp_msg, &rc);
+	}
+
+	return rpc_rc;
 }
 
 static int
@@ -2891,7 +2902,7 @@ static int
 _rpc_step_complete_aggr(slurm_msg_t *msg)
 {
 	int rc;
-	uid_t uid = g_slurm_auth_get_uid(msg->auth_cred, NULL);
+	uid_t uid = g_slurm_auth_get_uid(msg->auth_cred, slurm_get_auth_info());
 
 	if (!_slurm_authorized_user(uid)) {
 		error("Security violation: step_complete_aggr from uid %d",
@@ -3152,7 +3163,7 @@ _rpc_network_callerid(slurm_msg_t *msg)
 	rc = _callerid_find_job(conn, &job_id);
 	if (rc == SLURM_SUCCESS) {
 		/* We found the job */
-		req_uid = g_slurm_auth_get_uid(msg->auth_cred, NULL);
+		req_uid = g_slurm_auth_get_uid(msg->auth_cred, slurm_get_auth_info());
 		if (!_slurm_authorized_user(req_uid)) {
 			/* Requestor is not root or SlurmUser */
 			job_uid = _get_job_uid(job_id);
@@ -3573,9 +3584,9 @@ _rpc_file_bcast(slurm_msg_t *msg)
 		error("sbcast: uid:%u can't chmod `%s`: %s",
 		      req_uid, req->fname, strerror(errno));
 	}
-	if (req->last_block && fchown(fd, req->uid, req->gid)) {
-		error("sbcast: uid:%u can't chown `%s`: %s",
-		      req_uid, req->fname, strerror(errno));
+	if (req->last_block && fchown(fd, req_uid, req_gid)) {
+		error("sbcast: uid:%u gid:%u can't chown `%s`: %s",
+		      req_uid, req_gid, req->fname, strerror(errno));
 	}
 	close(fd);
 	if (req->last_block && req->atime) {
