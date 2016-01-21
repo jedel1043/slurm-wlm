@@ -100,6 +100,7 @@ time_t last_job_update __attribute__((weak_import)) = (time_t) 0;
 uint16_t part_max_priority __attribute__((weak_import)) = 0;
 slurm_ctl_conf_t slurmctld_conf __attribute__((weak_import));
 int slurmctld_tres_cnt __attribute__((weak_import)) = 0;
+int accounting_enforce __attribute__((weak_import)) = 0;
 #else
 void *acct_db_conn = NULL;
 uint32_t cluster_cpus = NO_VAL;
@@ -108,6 +109,7 @@ time_t last_job_update = (time_t) 0;
 uint16_t part_max_priority = 0;
 slurm_ctl_conf_t slurmctld_conf;
 int slurmctld_tres_cnt = 0;
+int accounting_enforce = 0;
 #endif
 
 /*
@@ -756,6 +758,10 @@ static double _calc_billable_tres(struct job_record *job_ptr, time_t start_time)
 	double *billing_weights = NULL;
 	struct part_record *part_ptr = job_ptr->part_ptr;
 
+	/* We don't have any resources allocated, just return 0. */
+	if (!job_ptr->tres_alloc_cnt)
+		return 0;
+
 	/* Don't recalculate unless the job is new or resized */
 	if ((!fuzzy_equal(job_ptr->billable_tres, NO_VAL)) &&
 	    difftime(job_ptr->resize_time, start_time) < 0.0)
@@ -818,7 +824,7 @@ static void _handle_qos_tres_run_secs(long double *tres_run_decay,
 {
 	int i;
 
-	if (!qos)
+	if (!qos || !(accounting_enforce & ACCOUNTING_ENFORCE_LIMITS))
 		return;
 
 	for (i=0; i<slurmctld_tres_cnt; i++) {
@@ -862,7 +868,7 @@ static void _handle_assoc_tres_run_secs(long double *tres_run_decay,
 {
 	int i;
 
-	if (!assoc)
+	if (!assoc || !(accounting_enforce & ACCOUNTING_ENFORCE_LIMITS))
 		return;
 
 	for (i=0; i<slurmctld_tres_cnt; i++) {
@@ -1058,24 +1064,32 @@ static int _apply_new_usage(struct job_record *job_ptr,
 	if (priority_debug) {
 		info("job %u ran for %g seconds with TRES counts of",
 		     job_ptr->job_id, run_delta);
-		for (i=0; i<slurmctld_tres_cnt; i++) {
-			if (!job_ptr->tres_alloc_cnt[i])
-				continue;
-			info("TRES %s: %"PRIu64,
-			     assoc_mgr_tres_name_array[i],
-			     job_ptr->tres_alloc_cnt[i]);
-		}
+		if (job_ptr->tres_alloc_cnt) {
+			for (i=0; i<slurmctld_tres_cnt; i++) {
+				if (!job_ptr->tres_alloc_cnt[i])
+					continue;
+				info("TRES %s: %"PRIu64,
+				     assoc_mgr_tres_name_array[i],
+				     job_ptr->tres_alloc_cnt[i]);
+			}
+		} else
+			info("No alloced TRES, state is %s",
+			     job_state_string(job_ptr->job_state));
 	}
 	/* get the time in decayed fashion */
 	run_decay = run_delta * pow(decay_factor, run_delta);
 	/* clang needs these memset to avoid a warning */
 	memset(tres_run_decay, 0, sizeof(tres_run_decay));
 	memset(tres_run_delta, 0, sizeof(tres_run_delta));
-	for (i=0; i<slurmctld_tres_cnt; i++) {
-		tres_run_delta[i] = tres_time_delta *
-			job_ptr->tres_alloc_cnt[i];
-		tres_run_decay[i] = (long double)run_decay *
-			(long double)job_ptr->tres_alloc_cnt[i];
+	if (job_ptr->tres_alloc_cnt) {
+		for (i=0; i<slurmctld_tres_cnt; i++) {
+			if (!job_ptr->tres_alloc_cnt[i])
+				continue;
+			tres_run_delta[i] = tres_time_delta *
+				job_ptr->tres_alloc_cnt[i];
+			tres_run_decay[i] = (long double)run_decay *
+				(long double)job_ptr->tres_alloc_cnt[i];
+		}
 	}
 
 	assoc_mgr_lock(&locks);

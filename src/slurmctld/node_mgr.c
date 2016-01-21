@@ -1117,8 +1117,17 @@ void set_slurmd_addr (void)
 			continue;
 		if (IS_NODE_FUTURE(node_ptr))
 			continue;
-		if (IS_NODE_CLOUD(node_ptr) && IS_NODE_POWER_SAVE(node_ptr))
+		if (IS_NODE_CLOUD(node_ptr)) {
+                    if (slurmctld_conf.suspend_time < 1 ||
+                        slurmctld_conf.resume_program == NULL ||
+                        slurmctld_conf.suspend_program == NULL)
+                            error("%s: Node %s configured with CLOUD state but "
+                                  "missing any of SuspendTime, SuspendProgram "
+                                  "or ResumeProgram options",__func__,
+				  node_ptr->name);
+		    if (IS_NODE_POWER_SAVE(node_ptr))
 			continue;
+		}
 		if (node_ptr->port == 0)
 			node_ptr->port = slurmctld_conf.slurmd_port;
 		slurm_set_addr(&node_ptr->slurm_addr, node_ptr->port,
@@ -1647,7 +1656,7 @@ static int _update_node_weight(char *node_names, uint32_t weight)
 		} else {
 			/* partial update, split config_record */
 			new_config_ptr = _dup_config(config_ptr);
-			if (first_new == NULL);
+			if (first_new == NULL)
 				first_new = new_config_ptr;
 			/* Change weight for the given node */
 			new_config_ptr->weight      = weight;
@@ -1719,7 +1728,7 @@ static int _update_node_features(char *node_names, char *features)
 		} else {
 			/* partial update, split config_record */
 			new_config_ptr = _dup_config(config_ptr);
-			if (first_new == NULL);
+			if (first_new == NULL)
 				first_new = new_config_ptr;
 			xfree(new_config_ptr->feature);
 			if (features && features[0])
@@ -1793,7 +1802,7 @@ static int _update_node_gres(char *node_names, char *gres)
 		} else {
 			/* partial update, split config_record */
 			new_config_ptr = _dup_config(config_ptr);
-			if (first_new == NULL);
+			if (first_new == NULL)
 				first_new = new_config_ptr;
 			xfree(new_config_ptr->gres);
 			if (gres && gres[0])

@@ -370,6 +370,9 @@ Any dependency may be satisfied if the "?" separator is used.
 Many jobs can share the same dependency and these jobs may even belong to
 different  users. The  value may be changed after job submission using the
 scontrol command.
+Once a job dependency fails due to the termination state of a preceding job,
+the dependent job will never be run, even if the preceding job is requeued and
+has a different termination state in a subsequent execution.
 .PD
 .RS
 .TP
@@ -1184,10 +1187,13 @@ be left in a PENDING state (possibly indefinitely).  The default time
 limit is the partition's default time limit.  When the time limit is reached,
 each task in each job step is sent SIGTERM followed by SIGKILL.  The
 interval between signals is specified by the Slurm configuration
-parameter \fBKillWait\fR.  A time limit of zero requests that no time
-limit be imposed.  Acceptable time formats include "minutes",
-"minutes:seconds", "hours:minutes:seconds", "days\-hours",
-"days\-hours:minutes" and "days\-hours:minutes:seconds".
+parameter \fBKillWait\fR.  The \fBOverTimeLimit\fR configuration parameter may
+permit the job to run longer than scheduled.  Time resolution is one minute
+and second values are rounded up to the next minute.
+
+A time limit of zero requests that no time limit be imposed.  Acceptable time
+formats include "minutes", "minutes:seconds", "hours:minutes:seconds",
+"days\-hours", "days\-hours:minutes" and "days\-hours:minutes:seconds".
 
 .TP
 \fB\-\-thread\-spec\fR=<\fInum\fR>
