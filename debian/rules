@@ -81,7 +81,6 @@ override_dh_auto_install:
 	mv debian/tmp-emulator/usr/bin/scontrol debian/tmp-emulator/usr/bin/scontrol-emulator
 	mv debian/tmp-emulator/usr/bin/sstat	debian/tmp-emulator/usr/bin/sstat-emulator
 
-
 override_dh_strip:
 	dh_strip -plibslurm29 --dbg-package=libslurm29-dbg
 	dh_strip -plibslurmdb29 --dbg-package=libslurmdb29-dbg
@@ -96,5 +95,7 @@ override_dh_strip:
 	dh_strip -plibslurm-perl
 	dh_strip -psview
 	dh_strip -plibpam-slurm
+	dh_strip -pslurm-wlm-emulator
+	dh_strip -pslurm-client-emulator
 
 override_dh_auto_test:
