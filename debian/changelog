@@ -1,6 +1,7 @@
 slurm-llnl (15.08.7-1) UNRELEASED; urgency=medium
 
   * New upstream release 
+  * Call ldconfig in postinst/rm of library packages
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 21 Jan 2016 09:54:48 +0100
 
