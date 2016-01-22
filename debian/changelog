@@ -1,4 +1,4 @@
-slurm-llnl (15.08.7-1) UNRELEASED; urgency=medium
+slurm-llnl (15.08.7-1) unstable; urgency=medium
 
   * New upstream release 
   * Call ldconfig in postinst/rm of library packages
@@ -15,7 +15,7 @@ slurm-llnl (15.08.7-1) UNRELEASED; urgency=medium
     daemons from slurm-wlm-emulator.
     Binaries have appended suffix -emulator to avoid conflicts.
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 21 Jan 2016 09:54:48 +0100
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 22 Jan 2016 21:20:36 +0100
 
 slurm-llnl (15.08.4-1) unstable; urgency=medium
 
