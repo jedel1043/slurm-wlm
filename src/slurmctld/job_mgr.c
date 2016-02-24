@@ -446,8 +446,8 @@ static struct job_record *_create_job_record(int *error_code, uint32_t num_jobs)
 	struct job_details *detail_ptr;
 
 	if ((job_count + num_jobs) >= slurmctld_conf.max_job_cnt) {
-		error("_create_job_record: MaxJobCount reached (%u)",
-		      slurmctld_conf.max_job_cnt);
+		error("%s: MaxJobCount limit from slurm.conf reached (%u)",
+		      __func__, slurmctld_conf.max_job_cnt);
 	}
 
 	job_count += num_jobs;
@@ -4012,17 +4012,14 @@ extern int job_allocate(job_desc_msg_t * job_specs, int immediate,
 	struct job_record *job_ptr;
 	time_t now = time(NULL);
 
-	if (job_specs->array_bitmap) {
+	if (job_specs->array_bitmap)
 		i = bit_set_count(job_specs->array_bitmap);
-		if ((job_count + i) >= slurmctld_conf.max_job_cnt) {
-			info("%s: MaxJobCount limit reached (%d + %d >= %u)",
-			     __func__, job_count, i,
-			     slurmctld_conf.max_job_cnt);
-			return EAGAIN;
-		}
-	} else if (job_count >= slurmctld_conf.max_job_cnt) {
-		info("%s: MaxJobCount limit reached (%u)",
-		     __func__, slurmctld_conf.max_job_cnt);
+	else
+		i = 1;
+
+	if ((job_count + i) >= slurmctld_conf.max_job_cnt) {
+		error("%s: MaxJobCount limit from slurm.conf reached (%u)",
+		      __func__, slurmctld_conf.max_job_cnt);
 		return EAGAIN;
 	}
 
@@ -4756,7 +4753,6 @@ extern int prolog_complete(uint32_t job_id,
 {
 	struct job_record *job_ptr;
 
-	debug("completing prolog for job %u", job_id);
 	job_ptr = find_job_record(job_id);
 	if (job_ptr == NULL) {
 		info("prolog_complete: invalid JobId=%u", job_id);
@@ -10446,28 +10442,6 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 			info("update_job: setting num_tasks to %u for "
 			     "job_id %u", job_specs->num_tasks,
 			     job_ptr->job_id);
-			if (detail_ptr->cpus_per_task) {
-				uint32_t new_cpus = detail_ptr->num_tasks
-					/ detail_ptr->cpus_per_task;
-				if ((new_cpus < detail_ptr->min_cpus) ||
-				    (!detail_ptr->overcommit &&
-				     (new_cpus > detail_ptr->min_cpus))) {
-					detail_ptr->min_cpus = new_cpus;
-					detail_ptr->max_cpus = new_cpus;
-					info("update_job: setting "
-					     "min_cpus to %u for "
-					     "job_id %u", detail_ptr->min_cpus,
-					     job_ptr->job_id);
-					/* Always use the
-					 * acct_policy_limit_set.*
-					 * since if set by a
-					 * super user it be set correctly */
-					job_ptr->limit_set.
-						tres[TRES_ARRAY_CPU] =
-						acct_policy_limit_set.
-						tres[TRES_ARRAY_CPU];
-				}
-			}
 		}
 	}
 	if (error_code != SLURM_SUCCESS)

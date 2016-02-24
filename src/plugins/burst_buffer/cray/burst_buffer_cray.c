@@ -133,7 +133,7 @@ typedef struct bb_configs {
  */
 typedef struct bb_instances {
 	uint32_t id;
-	uint32_t bytes;
+	uint64_t bytes;
 	char *label;
 } bb_instances_t;
 
@@ -786,7 +786,7 @@ static void _recover_bb_state(void)
 	uint16_t protocol_version = (uint16_t)NO_VAL;
 	uint32_t data_size = 0, rec_count = 0, name_len = 0;
 	uint32_t id = 0, user_id = 0;
-	uint64_t size;
+	uint64_t size = 0;
 	int i, state_fd;
 	char *account = NULL, *name = NULL, *partition = NULL, *qos = NULL;
 	char *end_ptr = NULL;
@@ -4399,7 +4399,7 @@ _parse_instance_capacity(json_object *instance, bb_instances_t *ent)
 {
 	enum json_type type;
 	struct json_object_iter iter;
-	int x;
+	int64_t x;
 
 	json_object_object_foreachC(instance, iter) {
 		type = json_object_get_type(iter.val);

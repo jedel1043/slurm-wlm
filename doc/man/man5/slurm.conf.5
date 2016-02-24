@@ -1571,6 +1571,12 @@ maximum power consumption.
 The default value is 50 percent.
 Supported by the power/cray plugin.
 .TP
+\fBget_timeout=#\fR
+Amount of time allowed to get power state information in milliseconds.
+The default value is 5,000 milliseconds or 5 seconds.
+Supported by the power/cray plugin and represents the time allowed for the
+capmc command to respond to various "get" options.
+.TP
 \fBincrease_rate=#\fR
 Specifies the maximum rate of change in the power cap for a node where the
 actual power usage is within \fBupper_threshold\fR (see below) of the power cap.
@@ -1603,6 +1609,12 @@ within this number of seconds from the current time, the node's power cap will
 be increased to the maximum.
 The default value is 300 seconds.
 Supported by the power/cray plugin.
+.TP
+\fBset_timeout=#\fR
+Amount of time allowed to set power state information in milliseconds.
+The default value is 30,000 milliseconds or 30 seconds.
+Supported by the power/cray plugin and represents the time allowed for the
+capmc command to respond to various "set" options.
 .TP
 \fBset_watts=#\fR
 Specifies the power limit to be set on every compute nodes managed by Slurm.
@@ -2366,6 +2378,12 @@ The interpretation of this parameter varies by \fBSchedulerType\fR.
 Multiple options may be comma separated.
 .RS
 .TP
+\fBassoc_limit_continue\fR
+If set, continue to schedule lower priority jobs in each partition if the
+higher priority jobs cannot start due to association limits. Setting this
+can improve throughput and utlization, but may potentially starve larger
+jobs and prevent them from launching indefinitely.
+.TP
 \fBbatch_sched_delay=#\fR
 How long, in seconds, the scheduling of batch jobs can be delayed.
 This can be useful in a high\-throughput environment in which batch jobs are
@@ -2391,7 +2409,7 @@ extended period of time.
 Setting this option will cause the backfill scheduler to continue processing
 pending jobs from its original job list after releasing locks even if job
 or node state changes.
-This can result in lower priority jobs from being backfill scheduled instead
+This can result in lower priority jobs being backfill scheduled instead
 of newly arrived higher priority jobs, but will permit more queued jobs to be
 considered for backfill scheduling.
 .TP

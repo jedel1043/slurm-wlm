@@ -43,7 +43,7 @@
 
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/poll.h>
+#include <poll.h>
 #include <sys/types.h>
 #include <pwd.h>
 
@@ -719,7 +719,7 @@ job_desc_msg_create_from_opts (void)
 	}
 	j->user_id        = opt.uid;
 	j->dependency     = opt.dependency;
-	if (opt.nice)
+	if (opt.nice != NO_VAL)
 		j->nice   = NICE_OFFSET + opt.nice;
 	if (opt.priority)
 		j->priority = opt.priority;

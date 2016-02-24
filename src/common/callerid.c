@@ -48,11 +48,19 @@
 #endif  /*  HAVE_CONFIG_H */
 
 
-//#ifndef _GNU_SOURCE
-//#define _GNU_SOURCE
-//#endif
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <arpa/inet.h>
 #include <ctype.h>
+
+#ifdef __FreeBSD__
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#define s6_addr32 __u6_addr.__u6_addr32
+#endif
+
 #if HAVE_DIRENT_H
 #  include <dirent.h>
 #endif
