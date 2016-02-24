@@ -1,6 +1,82 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 15.08.9
+==========================
+
+* Changes in Slurm 15.08.8
+==========================
+ -- Backfill scheduling properly synchronized with Cray Node Health Check.
+    Prior logic could result in highest priority job getting improperly
+    postponed.
+ -- Make it so daemons also support TopologyParam=NoInAddrAny.
+ -- If scancel is operating on large number of jobs and RPC responses from
+    slurmctld daemon are slow then introduce a delay in sending the cancel job
+    requests from scancel in order to reduce load on slurmctld.
+ -- Remove redundant logic when updating a job's task count.
+ -- MySQL - Fix querying jobs with reservations when the id's have rolled.
+ -- Perl - Fix use of uninitialized variable in slurm_job_step_get_pids.
+ -- Launch batch job requsting --reboot after the boot completes.
+ -- Move debug messages like "not the right user" from association manager
+    to debug3 when trying to find the correct association.
+ -- Fix incorrect logic when querying assoc_mgr information.
+ -- Move debug messages to debug3 notifying a gres_bit_alloc was NULL for
+    gres types without a file.
+ -- Sanity Check Patch to setup variables for RAPL if in a race for it.
+ -- GRES - Fix minor typecast issues.
+ -- burst_buffer/cray - Increase size of intermediate variable used to store
+    buffer byte size read from DW instance from 32 to 64-bits to avoid overflow
+    and reporting invalid buffer sizes.
+ -- Allow an existing reservation with running jobs to be modified without
+    Flags=IGNORE_JOBS.
+ -- srun - don't attempt to execve() a directory with a name matching the
+    requested command
+ -- Do not automatically relocate an advanced reservation for individual cores
+    that spans multiple nodes when nodes in that reservation go down (e.g.
+    a 1 core reservation on node "tux1" will be moved if node "tux1" goes
+    down, but a reservation containing 2 cores on node "tux1" and 3 cores on
+    "tux2" will not be moved node "tux1" goes down). Advanced reservations for
+    whole nodes will be moved by default for down nodes.
+ -- Avoid possible double free of memory (and likely abort) for slurmctld in
+    background mode.
+ -- contribs/cray/csm/slurmconfgen_smw.py - avoid including repurposed compute
+    nodes in configs.
+ -- Support AuthInfo in slurmdbd.conf that is different from the value in
+    slurm.conf.
+ -- Fix build on FreeBSD 10.
+ -- Fix hdf5 build on ppc64 by using correct fprintf formatting for types.
+ -- Fix cosmetic printing of NO_VALs in scontrol show assoc_mgr.
+ -- Fix perl api for newer perl versions.
+ -- Fix for jobs requesting cpus-per-task (eg. -c3) that exceed the number of
+    cpus on a core.
+ -- Remove unneeded perl files from the .spec file.
+ -- Flesh out filters for scontrol show assoc_mgr.
+ -- Add function to remove assoc_mgr_info_request_t members without freeing
+    structure.
+ -- Fix build on some non-glibc systems by updating includes.
+ -- Add new PowerParameters options of get_timeout and set_timeout. The default
+    set_timeout was increased from 5 seconds to 30 seconds. Also re-read current
+    power caps periodically or after any failed "set" operation.
+ -- Fix slurmdbd segfault when listing users with blank user condition.
+ -- Save the ClusterName to a file in SaveStateLocation, and use that to
+    verify the state directory belongs to the given cluster at startup to avoid
+    corruption from multiple clusters attempting to share a state directory.
+ -- MYSQL - Fix issue when rerolling monthly data to work off correct time
+    period.  This would only hit you if you rerolled a 15.08 prior to this
+    commit.
+ -- If FastSchedule=0 is used make sure TRES are set up correctly in accounting.
+ -- Fix sreport's truncation of columns with large TRES and not using
+    a parsing option.
+ -- Make sure count of boards are restored when slurmctld has option -R.
+ -- When determine if a job can fit into a TRES time limit after resources
+    have been selected set the time limit appropriately if the job didn't
+    request one.
+ -- Fix inadequate locks when updating a partition's TRES.
+ -- Add new assoc_limit_continue flag to SchedulerParameters.
+ -- Avoid race in acct_gather_energy_cray if energy requested before available.
+ -- MYSQL - Avoid having multiple default accounts when a user is added to
+    a new account and making it a default all at once.
+
 * Changes in Slurm 15.08.7
 ==========================
  -- sched/backfill: If a job can not be started within the configured
@@ -156,7 +232,7 @@ documents those changes that are of interest to users and administrators.
  -- Fix formatting for sacct with variables that switched from uint32_t to
     uint64_t.
  -- Fix a typo in sacct man page.
- -- Set up extern step to track any childern of an ssh if it leaves anything
+ -- Set up extern step to track any children of an ssh if it leaves anything
     else behind.
  -- Prevent slurmdbd divide by zero if no associations defined at rollup time.
  -- Multifactor - Add sanity check to make sure pending jobs are handled
@@ -6339,7 +6415,7 @@ documents those changes that are of interest to users and administrators.
  -- Add slurm_*_trigger.3 man pages for event trigger APIs.
  -- Fix bug in job preemption logic that would free allocated memory twice.
  -- Fix spelling issues (from Gennaro Oliva)
- -- Fix issue when changing parents of an account in accounting all childern
+ -- Fix issue when changing parents of an account in accounting all children
     weren't always sent to their respected slurmctlds until a restart.
  -- Restore support for srun/salloc/sbatch option --hint=nomultithread to
     bind tasks to cores rather than threads (broken in slurm v2.1.0-pre5).
