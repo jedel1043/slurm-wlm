@@ -1,0 +1,558 @@
+Description: fix some spelling errors in binary and documentation
+Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+Bug: http://bugs.schedmd.com/show_bug.cgi?id=2461
+Last-Update: <2016-02-20>
+
+--- slurm-llnl-15.08.8.orig/contribs/perlapi/libslurm/perl/lib/Slurm/Bitstr.pm
++++ slurm-llnl-15.08.8/contribs/perlapi/libslurm/perl/lib/Slurm/Bitstr.pm
+@@ -191,7 +191,7 @@ Find position of the $n-th set bit(0 bas
+ 
+ =head3 $n = $bitmap->get_pos_num($pos);
+ 
+-Find the number of bits set minus one in $bitmap between bit postion [0 .. $pos]. Returns -1 if no bits are set between [0 .. $pos].
++Find the number of bits set minus one in $bitmap between bit position [0 .. $pos]. Returns -1 if no bits are set between [0 .. $pos].
+ 
+ 
+ =head1 SEE ALSO
+--- slurm-llnl-15.08.8.orig/contribs/perlapi/libslurm/perl/reservation.c
++++ slurm-llnl-15.08.8/contribs/perlapi/libslurm/perl/reservation.c
+@@ -136,7 +136,7 @@ hv_to_reserve_info_msg(HV *hv, reserve_i
+ 
+ 	svp = hv_fetch(hv, "reservation_array", 17, FALSE);
+ 	if (! (svp && SvROK(*svp) && SvTYPE(SvRV(*svp)) == SVt_PVAV)) {
+-		Perl_warn (aTHX_ "reservation_array is not an array refrence in HV for reservation_info_msg_t");
++		Perl_warn (aTHX_ "reservation_array is not an array reference in HV for reservation_info_msg_t");
+ 		return -1;
+ 	}
+ 
+--- slurm-llnl-15.08.8.orig/contribs/perlapi/libslurm/perl/topo.c
++++ slurm-llnl-15.08.8/contribs/perlapi/libslurm/perl/topo.c
+@@ -82,7 +82,7 @@ hv_to_topo_info_response_msg(HV *hv, top
+ 
+ 	svp = hv_fetch(hv, "topo_array", 10, FALSE);
+ 	if (! (svp && SvROK(*svp) && SvTYPE(SvRV(*svp)) == SVt_PVAV)) {
+-		Perl_warn (aTHX_ "topo_array is not an array refrence in HV for topo_info_response_msg_t");
++		Perl_warn (aTHX_ "topo_array is not an array reference in HV for topo_info_response_msg_t");
+ 		return -1;
+ 	}
+ 
+--- slurm-llnl-15.08.8.orig/doc/man/man1/salloc.1
++++ slurm-llnl-15.08.8/doc/man/man1/salloc.1
+@@ -269,7 +269,7 @@ which will set the governor to the corre
+ If \fBp3\fR is UserSpace, the frequency scaling_speed will be set by a power
+ or energy aware scheduling strategy to a value between p1 and p2 that lets the
+ job run within the site's power goal. The job may be delayed if p1 is higher
+-than a frequency that allows the job to run withing the goal.
++than a frequency that allows the job to run within the goal.
+ 
+ If the current frequency is < min, it will be set to min. Likewise,
+ if the current frequency is > max, it will be set to max.
+--- slurm-llnl-15.08.8.orig/doc/man/man1/sbatch.1
++++ slurm-llnl-15.08.8/doc/man/man1/sbatch.1
+@@ -296,7 +296,7 @@ which will set the governor to the corre
+ If \fBp3\fR is UserSpace, the frequency scaling_speed will be set by a power
+ or energy aware scheduling strategy to a value between p1 and p2 that lets the
+ job run within the site's power goal. The job may be delayed if p1 is higher
+-than a frequency that allows the job to run withing the goal.
++than a frequency that allows the job to run within the goal.
+ 
+ If the current frequency is < min, it will be set to min. Likewise,
+ if the current frequency is > max, it will be set to max.
+--- slurm-llnl-15.08.8.orig/doc/man/man1/srun.1
++++ slurm-llnl-15.08.8/doc/man/man1/srun.1
+@@ -454,7 +454,7 @@ which will set the governor to the corre
+ If \fBp3\fR is UserSpace, the frequency scaling_speed will be set by a power
+ or energy aware scheduling strategy to a value between p1 and p2 that lets the
+ job run within the site's power goal. The job may be delayed if p1 is higher
+-than a frequency that allows the job to run withing the goal.
++than a frequency that allows the job to run within the goal.
+ 
+ If the current frequency is < min, it will be set to min. Likewise,
+ if the current frequency is > max, it will be set to max.
+--- slurm-llnl-15.08.8.orig/doc/man/man5/slurm.conf.5
++++ slurm-llnl-15.08.8/doc/man/man5/slurm.conf.5
+@@ -2548,7 +2548,7 @@ separate socket by default. Use the Igno
+ socket count, but \fBnot\fR optimize resource allocations on the NUMA nodes.
+ .TP
+ \fBinventory_interval=#\fR
+-On a Cray system using Slurm on top of ALPS this limits the amount of times
++On a Cray system using Slurm on top of ALPS this limits the number of times
+ a Basil Inventory call is made.  Normally this call happens every scheduling
+ consideration to attempt to close a node state change window with respects to
+ what ALPS has.  This call is rather slow, so making it less frequently improves
+--- slurm-llnl-15.08.8.orig/src/common/assoc_mgr.h
++++ slurm-llnl-15.08.8/src/common/assoc_mgr.h
+@@ -125,7 +125,7 @@ extern slurmdb_assoc_rec_t *assoc_mgr_ro
+ 
+ extern uint32_t g_qos_max_priority; /* max priority in all qos's */
+ extern uint32_t g_qos_count; /* count used for generating qos bitstr's */
+-extern uint32_t g_user_assoc_count; /* Number of assocations which are users */
++extern uint32_t g_user_assoc_count; /* Number of associations which are users */
+ extern uint32_t g_tres_count; /* Number of TRES from the database
+ 			       * which also is the number of elements
+ 			       * in the assoc_mgr_tres_array */
+@@ -374,7 +374,7 @@ extern int assoc_mgr_validate_assoc_id(v
+ 				       int enforce);
+ 
+ /*
+- * clear the used_* fields from every assocation,
++ * clear the used_* fields from every association,
+  *	used on reconfiguration
+  */
+ extern void assoc_mgr_clear_used_info(void);
+--- slurm-llnl-15.08.8.orig/src/common/slurmdb_defs.c
++++ slurm-llnl-15.08.8/src/common/slurmdb_defs.c
+@@ -150,7 +150,7 @@ static int _sort_children_list(void *v1,
+ 	assoc_a = *(slurmdb_hierarchical_rec_t **)v1;
+ 	assoc_b = *(slurmdb_hierarchical_rec_t    **)v2;
+ 
+-	/* Since all these assocations are on the same level we don't
++	/* Since all these associations are on the same level we don't
+ 	 * have to check the lfts
+ 	 */
+ 
+--- slurm-llnl-15.08.8.orig/src/common/slurmdbd_defs.h
++++ slurm-llnl-15.08.8/src/common/slurmdbd_defs.h
+@@ -72,7 +72,7 @@ typedef enum {
+ 	DBD_FLUSH_JOBS, 	/* End jobs that are still running
+ 				 * when a controller is restarted.	*/
+ 	DBD_GET_ACCOUNTS,	/* Get account information		*/
+-	DBD_GET_ASSOCS,         /* Get assocation information   	*/
++	DBD_GET_ASSOCS,         /* Get association information   	*/
+ 	DBD_GET_ASSOC_USAGE,  	/* Get assoc usage information  	*/
+ 	DBD_GET_CLUSTERS,	/* Get account information		*/
+ 	DBD_GET_CLUSTER_USAGE, 	/* Get cluster usage information	*/
+--- slurm-llnl-15.08.8.orig/src/plugins/accounting_storage/mysql/accounting_storage_mysql.c
++++ slurm-llnl-15.08.8/src/plugins/accounting_storage/mysql/accounting_storage_mysql.c
+@@ -259,7 +259,7 @@ static void _process_running_jobs_result
+ 		if (!row[JASSOC_USER][0]) {
+ 			/* This should never happen */
+ 			error("How did we get a job running on an association "
+-			      "that isn't a user assocation job %s cluster "
++			      "that isn't a user association job %s cluster "
+ 			      "'%s' acct '%s'?", row[JASSOC_JOB],
+ 			      cluster_name, row[JASSOC_ACCT]);
+ 			continue;
+--- slurm-llnl-15.08.8.orig/src/plugins/accounting_storage/mysql/as_mysql_assoc.c
++++ slurm-llnl-15.08.8/src/plugins/accounting_storage/mysql/as_mysql_assoc.c
+@@ -442,7 +442,7 @@ static int _move_account(mysql_conn_t *m
+ 	}
+ 	xfree(query);
+ 	if (!(row = mysql_fetch_row(result))) {
+-		debug4("Can't move a none existant association");
++		debug4("Can't move a none existent association");
+ 		mysql_free_result(result);
+ 		return ESLURM_INVALID_PARENT_ACCOUNT;
+ 	}
+@@ -1914,7 +1914,7 @@ static int _cluster_get_assocs(mysql_con
+ 			xstrcat(extra, ")");
+ 		else {
+ 			xfree(extra);
+-			debug("User %s has no assocations, and is not admin, "
++			debug("User %s has no associations, and is not admin, "
+ 			      "so not returning any.", user->name);
+ 			/* This user has no valid associations, so
+ 			 * end. */
+@@ -3252,7 +3252,7 @@ extern List as_mysql_get_assocs(mysql_co
+ 				mysql_conn, &user, 1, NULL);
+ 		}
+ 		if (!is_admin && !user.name) {
+-			debug("User %u has no assocations, and is not admin, "
++			debug("User %u has no associations, and is not admin, "
+ 			      "so not returning any.", user.uid);
+ 			return NULL;
+ 		}
+--- slurm-llnl-15.08.8.orig/src/plugins/accounting_storage/mysql/as_mysql_jobacct_process.c
++++ slurm-llnl-15.08.8/src/plugins/accounting_storage/mysql/as_mysql_jobacct_process.c
+@@ -443,7 +443,7 @@ static int _cluster_get_jobs(mysql_conn_
+ 			xstrcat(extra, ")");
+ 		else {
+ 			xfree(extra);
+-			debug("User %s has no assocations, and is not admin, "
++			debug("User %s has no associations, and is not admin, "
+ 			      "so not returning any jobs.", user->name);
+ 			/* This user has no valid associations, so
+ 			 * they will not have any jobs. */
+@@ -1543,7 +1543,7 @@ extern List as_mysql_jobacct_process_get
+ 			is_user_any_coord(mysql_conn, &user);
+ 		}
+ 		if (!is_admin && !user.name) {
+-			debug("User %u has no assocations, and is not admin, "
++			debug("User %u has no associations, and is not admin, "
+ 			      "so not returning any jobs.", user.uid);
+ 			return NULL;
+ 		}
+--- slurm-llnl-15.08.8.orig/src/plugins/accounting_storage/mysql/as_mysql_resource.c
++++ slurm-llnl-15.08.8/src/plugins/accounting_storage/mysql/as_mysql_resource.c
+@@ -1169,7 +1169,7 @@ extern List as_mysql_modify_res(mysql_co
+ 			if (percent_used > 100) {
+ 				if (debug_flags & DEBUG_FLAG_DB_RES)
+ 					DB_DEBUG(mysql_conn->conn,
+-						 "Modifing resource %s@%s "
++						 "Modifying resource %s@%s "
+ 						 "with %u%% allowed to each "
+ 						 "cluster would put the usage "
+ 						 "at %u%%, (which is "
+--- slurm-llnl-15.08.8.orig/src/plugins/accounting_storage/mysql/as_mysql_user.c
++++ slurm-llnl-15.08.8/src/plugins/accounting_storage/mysql/as_mysql_user.c
+@@ -1177,7 +1177,7 @@ extern List as_mysql_get_users(mysql_con
+ 				mysql_conn, &user, 1, NULL);
+ 		}
+ 		if (!is_admin && !user.name) {
+-			debug("User %u has no assocations, and is not admin, "
++			debug("User %u has no associations, and is not admin, "
+ 			      "so not returning any users.", user.uid);
+ 			return NULL;
+ 		}
+--- slurm-llnl-15.08.8.orig/src/plugins/accounting_storage/mysql/as_mysql_wckey.c
++++ slurm-llnl-15.08.8/src/plugins/accounting_storage/mysql/as_mysql_wckey.c
+@@ -815,7 +815,7 @@ extern List as_mysql_get_wckeys(mysql_co
+ 				mysql_conn, &user, 1, NULL);
+ 		}
+ 		if (!is_admin && !user.name) {
+-			debug("User %u has no assocations, and is not admin, "
++			debug("User %u has no associations, and is not admin, "
+ 			      "so not returning any wckeys.", user.uid);
+ 			return NULL;
+ 		}
+--- slurm-llnl-15.08.8.orig/src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup_blkio.c
++++ slurm-llnl-15.08.8/src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup_blkio.c
+@@ -196,7 +196,7 @@
+ /* 	 * setting it up. As soon as the step cgroup is created, we can release */
+ /* 	 * the lock. */
+ /* 	 * Indeed, consecutive slurm steps could result in cg being removed */
+-/* 	 * between the next EEXIST instanciation and the first addition of */
++/* 	 * between the next EEXIST instantiation and the first addition of */
+ /* 	 * a task. The release_agent will have to lock the root blkio cgroup */
+ /* 	 * to avoid this scenario. */
+ /* 	 *\/ */
+@@ -227,7 +227,7 @@
+ 
+ /* 	if (xcgroup_instanciate(&user_blkio_cg) != XCGROUP_SUCCESS) { */
+ /* 		xcgroup_destroy(&user_blkio_cg); */
+-/* 		error("jobacct_gather/cgroup: unable to instanciate user %u " */
++/* 		error("jobacct_gather/cgroup: unable to instantiated user %u " */
+ /* 		      "blkio cgroup", uid); */
+ /* 		fstatus = SLURM_ERROR; */
+ /* 		goto error; */
+@@ -249,7 +249,7 @@
+ /* 	if (xcgroup_instanciate(&job_blkio_cg) != XCGROUP_SUCCESS) { */
+ /* 		xcgroup_destroy(&user_blkio_cg); */
+ /* 		xcgroup_destroy(&job_blkio_cg); */
+-/* 		error("jobacct_gather/cgroup: unable to instanciate job %u " */
++/* 		error("jobacct_gather/cgroup: unable to instantiated job %u " */
+ /* 		      "blkio cgroup", jobid); */
+ /* 		fstatus = SLURM_ERROR; */
+ /* 		goto error; */
+--- slurm-llnl-15.08.8.orig/src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup_cpuacct.c
++++ slurm-llnl-15.08.8/src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup_cpuacct.c
+@@ -264,7 +264,7 @@ jobacct_gather_cgroup_cpuacct_attach_tas
+ 	 * setting it up. As soon as the step cgroup is created, we can release
+ 	 * the lock.
+ 	 * Indeed, consecutive slurm steps could result in cg being removed
+-	 * between the next EEXIST instanciation and the first addition of
++	 * between the next EEXIST instantiation and the first addition of
+ 	 * a task. The release_agent will have to lock the root cpuacct cgroup
+ 	 * to avoid this scenario.
+ 	 */
+@@ -295,7 +295,7 @@ jobacct_gather_cgroup_cpuacct_attach_tas
+ 
+ 	if (xcgroup_instanciate(&user_cpuacct_cg) != XCGROUP_SUCCESS) {
+ 		xcgroup_destroy(&user_cpuacct_cg);
+-		error("jobacct_gather/cgroup: unable to instanciate user %u "
++		error("jobacct_gather/cgroup: unable to instantiated user %u "
+ 		      "cpuacct cgroup", uid);
+ 		fstatus = SLURM_ERROR;
+ 		goto error;
+@@ -317,7 +317,7 @@ jobacct_gather_cgroup_cpuacct_attach_tas
+ 	if (xcgroup_instanciate(&job_cpuacct_cg) != XCGROUP_SUCCESS) {
+ 		xcgroup_destroy(&user_cpuacct_cg);
+ 		xcgroup_destroy(&job_cpuacct_cg);
+-		error("jobacct_gather/cgroup: unable to instanciate job %u "
++		error("jobacct_gather/cgroup: unable to instantiated job %u "
+ 		      "cpuacct cgroup", jobid);
+ 		fstatus = SLURM_ERROR;
+ 		goto error;
+--- slurm-llnl-15.08.8.orig/src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup_memory.c
++++ slurm-llnl-15.08.8/src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup_memory.c
+@@ -275,7 +275,7 @@ jobacct_gather_cgroup_memory_attach_task
+ 	 * setting it up. As soon as the step cgroup is created, we can release
+ 	 * the lock.
+ 	 * Indeed, consecutive slurm steps could result in cg being removed
+-	 * between the next EEXIST instanciation and the first addition of
++	 * between the next EEXIST instantiation and the first addition of
+ 	 * a task. The release_agent will have to lock the root memory cgroup
+ 	 * to avoid this scenario.
+ 	 */
+@@ -309,7 +309,7 @@ jobacct_gather_cgroup_memory_attach_task
+ 
+ 	if (xcgroup_instanciate(&user_memory_cg) != XCGROUP_SUCCESS) {
+ 		xcgroup_destroy(&user_memory_cg);
+-		error("jobacct_gather/cgroup: unable to instanciate user %u "
++		error("jobacct_gather/cgroup: unable to instantiated user %u "
+ 		      "memory cgroup", uid);
+ 		fstatus = SLURM_ERROR;
+ 		goto error;
+@@ -331,7 +331,7 @@ jobacct_gather_cgroup_memory_attach_task
+ 	if (xcgroup_instanciate(&job_memory_cg) != XCGROUP_SUCCESS) {
+ 		xcgroup_destroy(&user_memory_cg);
+ 		xcgroup_destroy(&job_memory_cg);
+-		error("jobacct_gather/cgroup: unable to instanciate job %u "
++		error("jobacct_gather/cgroup: unable to instantiated job %u "
+ 		      "memory cgroup", jobid);
+ 		fstatus = SLURM_ERROR;
+ 		goto error;
+--- slurm-llnl-15.08.8.orig/src/plugins/power/cray/power_cray.c
++++ slurm-llnl-15.08.8/src/plugins/power/cray/power_cray.c
+@@ -380,7 +380,7 @@ static void _load_config(void)
+ 			level_str = "job_level,";
+ 		info("PowerParameters=balance_interval=%d,capmc_path=%s,"
+ 		     "cap_watts=%u,decrease_rate=%u,get_timeout=%d,"
+-		     "increase_rate=%u,%slower_threashold=%u,recent_job=%u,"
++		     "increase_rate=%u,%slower_threshold=%u,recent_job=%u,"
+ 		     "set_timeout=%d,set_watts=%u,upper_threshold=%u",
+ 		     balance_interval, capmc_path, cap_watts, decrease_rate,
+ 		     get_timeout, increase_rate, level_str, lower_threshold,
+--- slurm-llnl-15.08.8.orig/src/plugins/preempt/job_prio/preempt_job_prio.c
++++ slurm-llnl-15.08.8/src/plugins/preempt/job_prio/preempt_job_prio.c
+@@ -343,7 +343,7 @@ static int _get_nb_cpus(struct job_recor
+ 	return cpu_cnt;
+ }
+ 
+-/* Determine fair share assocation to use for some job */
++/* Determine fair share association to use for some job */
+ static slurmdb_assoc_rec_t *
+ _get_job_fs_ass(char *job_type, struct job_record *job_ptr)
+ {
+--- slurm-llnl-15.08.8.orig/src/plugins/task/cgroup/task_cgroup_cpuset.c
++++ slurm-llnl-15.08.8/src/plugins/task/cgroup/task_cgroup_cpuset.c
+@@ -1085,7 +1085,7 @@ again:
+ 			goto again;
+ 		}
+ 
+-		/* initialize the cpusets as it was inexistant */
++		/* initialize the cpusets as it was inexistent */
+ 		if (_xcgroup_cpuset_init(&slurm_cg) !=
+ 		    XCGROUP_SUCCESS) {
+ 			xfree(slurm_cgpath);
+@@ -1146,7 +1146,7 @@ again:
+ 	 * setting it up. As soon as the step cgroup is created, we can release
+ 	 * the lock.
+ 	 * Indeed, consecutive slurm steps could result in cg being removed
+-	 * between the next EEXIST instanciation and the first addition of
++	 * between the next EEXIST instantiation and the first addition of
+ 	 * a task. The release_agent will have to lock the root cpuset cgroup
+ 	 * to avoid this scenario.
+ 	 */
+@@ -1200,7 +1200,7 @@ again:
+ 	 */
+ 	rc = xcgroup_get_param(&user_cpuset_cg, cpuset_meta, &cpus,&cpus_size);
+ 	if (rc != XCGROUP_SUCCESS || cpus_size == 1) {
+-		/* initialize the cpusets as it was inexistant */
++		/* initialize the cpusets as it was inexistent */
+ 		if (_xcgroup_cpuset_init(&user_cpuset_cg) !=
+ 		    XCGROUP_SUCCESS) {
+ 			xcgroup_delete(&user_cpuset_cg);
+--- slurm-llnl-15.08.8.orig/src/plugins/task/cgroup/task_cgroup_devices.c
++++ slurm-llnl-15.08.8/src/plugins/task/cgroup/task_cgroup_devices.c
+@@ -213,7 +213,7 @@ extern int task_cgroup_devices_create(st
+ 	 * setting it up. As soon as the step cgroup is created, we can release
+ 	 * the lock.
+ 	 * Indeed, consecutive slurm steps could result in cg being removed
+-	 * between the next EEXIST instanciation and the first addition of
++	 * between the next EEXIST instantiation and the first addition of
+ 	 * a task. The release_agent will have to lock the root devices cgroup
+ 	 * to avoid this scenario.
+ 	 */
+--- slurm-llnl-15.08.8.orig/src/plugins/task/cgroup/task_cgroup_memory.c
++++ slurm-llnl-15.08.8/src/plugins/task/cgroup/task_cgroup_memory.c
+@@ -379,7 +379,7 @@ extern int task_cgroup_memory_create(ste
+ 	 * setting it up. As soon as the step cgroup is created, we can release
+ 	 * the lock.
+ 	 * Indeed, consecutive slurm steps could result in cg being removed
+-	 * between the next EEXIST instanciation and the first addition of
++	 * between the next EEXIST instantiation and the first addition of
+ 	 * a task. The release_agent will have to lock the root memory cgroup
+ 	 * to avoid this scenario.
+ 	 */
+--- slurm-llnl-15.08.8.orig/src/sacctmgr/user_functions.c
++++ slurm-llnl-15.08.8/src/sacctmgr/user_functions.c
+@@ -562,7 +562,7 @@ static int _check_coord_request(slurmdb_
+ 			list_iterator_reset(itr2);
+ 			if (!acct_rec) {
+ 				fprintf(stderr,
+-					" You specified a non-existant "
++					" You specified a non-existent "
+ 					"account '%s'.\n", name);
+ 				exit_code=1;
+ 				rc = SLURM_ERROR;
+@@ -596,7 +596,7 @@ static int _check_coord_request(slurmdb_
+ 			list_iterator_reset(itr2);
+ 			if (!user_rec) {
+ 				fprintf(stderr,
+-					" You specified a non-existant "
++					" You specified a non-existent "
+ 					"user '%s'.\n", name);
+ 				exit_code=1;
+ 				rc = SLURM_ERROR;
+--- slurm-llnl-15.08.8.orig/src/sattach/opt.c
++++ slurm-llnl-15.08.8/src/sattach/opt.c
+@@ -459,7 +459,7 @@ static bool _opt_verify(void)
+ 	 */
+ 	if ((opt.input_filter_set || opt.output_filter_set ||
+ 	     opt.error_filter_set) && opt.pty) {
+-		error("don't specifiy both --pty and I/O filtering");
++		error("don't specify both --pty and I/O filtering");
+ 		verified = false;
+ 	}
+ 	if (opt.input_filter_set)
+--- slurm-llnl-15.08.8.orig/src/scontrol/create_res.c
++++ slurm-llnl-15.08.8/src/scontrol/create_res.c
+@@ -127,7 +127,7 @@ static int _parse_resv_core_cnt(resv_des
+ 		param = slurm_get_select_type_param();
+ 		if (! (param & CR_OTHER_CONS_RES)) {
+ 			error("CoreCnt or CPUCnt is only "
+-			      "suported when "
++			      "supported when "
+ 			      "SelectTypeParameters "
+ 			      "includes OTHER_CONS_RES");
+ 			xfree(type);
+@@ -135,7 +135,7 @@ static int _parse_resv_core_cnt(resv_des
+ 		}
+ 	} else if (strcasestr(type, "cons_res") == NULL) {
+ 		error("CoreCnt or CPUCnt is only "
+-		      "suported when "
++		      "supported when "
+ 		      "SelectType includes "
+ 		      "select/cons_res");
+ 		xfree(type);
+--- slurm-llnl-15.08.8.orig/src/scontrol/update_job.c
++++ slurm-llnl-15.08.8/src/scontrol/update_job.c
+@@ -762,7 +762,7 @@ scontrol_update_job (int argc, char *arg
+ 			}
+ 			if (incr || decr) {
+ 				if (!job_msg.job_id_str) {
+-					error("JobId must preceed TimeLimit "
++					error("JobId must precede TimeLimit "
+ 					      "increment or decrement");
+ 					exit_code = 1;
+ 					return 0;
+--- slurm-llnl-15.08.8.orig/src/slurmctld/controller.c
++++ slurm-llnl-15.08.8/src/slurmctld/controller.c
+@@ -664,7 +664,7 @@ int main(int argc, char *argv[])
+ 
+ 	/* Purge our local data structures */
+ 	job_fini();
+-	part_fini();	/* part_fini() must preceed node_fini() */
++	part_fini();	/* part_fini() must precede node_fini() */
+ 	node_fini();
+ 	purge_front_end_state();
+ 	resv_fini();
+--- slurm-llnl-15.08.8.orig/src/slurmctld/job_mgr.c
++++ slurm-llnl-15.08.8/src/slurmctld/job_mgr.c
+@@ -5489,7 +5489,7 @@ extern int job_limits_check(struct job_r
+ 					shares_norm);
+ 		}
+ 		if (job_ptr->prio_factors->priority_fs < qos_ptr->usage_thres){
+-			debug2("Job %u exceeds usage threashold",
++			debug2("Job %u exceeds usage threshold",
+ 			       job_ptr->job_id);
+ 			fail_reason = WAIT_QOS_THRES;
+ 		}
+--- slurm-llnl-15.08.8.orig/src/slurmctld/reservation.h
++++ slurm-llnl-15.08.8/src/slurmctld/reservation.h
+@@ -82,7 +82,7 @@ extern int set_node_maint_mode(bool rese
+ /* checks if node within node_record_table_ptr is in maint reservation */
+ extern bool is_node_in_maint_reservation(int nodenum);
+ 
+-/* After an assocation has been added or removed update the lists. */
++/* After an association has been added or removed update the lists. */
+ extern void update_assocs_in_resvs(void);
+ 
+ /*
+--- slurm-llnl-15.08.8.orig/src/slurmd/common/xcgroup.h
++++ slurm-llnl-15.08.8/src/slurmd/common/xcgroup.h
+@@ -169,7 +169,7 @@ int xcgroup_create(xcgroup_ns_t* cgns,xc
+ int xcgroup_destroy(xcgroup_t* cg);
+ 
+ /*
+- * lock a cgroup (must have been instanciated)
++ * lock a cgroup (must have been instantiated)
+  * (system level using flock)
+  *
+  * returned values:
+@@ -188,7 +188,7 @@ int xcgroup_lock(xcgroup_t* cg);
+ int xcgroup_unlock(xcgroup_t* cg);
+ 
+ /*
+- * instanciate a cgroup in a cgroup namespace (mkdir)
++ * instantiated a cgroup in a cgroup namespace (mkdir)
+  *
+  * returned values:
+  *  - XCGROUP_ERROR
+--- slurm-llnl-15.08.8.orig/src/slurmd/slurmd/slurmd.c
++++ slurm-llnl-15.08.8/src/slurmd/slurmd/slurmd.c
+@@ -1456,7 +1456,7 @@ _slurmd_init(void)
+ 	/*
+ 	 * Build nodes table like in slurmctld
+ 	 * This is required by the topology stack
+-	 * Node tables setup must preceed _read_config() so that the
++	 * Node tables setup must precede _read_config() so that the
+ 	 * proper hostname is set.
+ 	 */
+ 	slurm_conf_init(conf->conffile);
+--- slurm-llnl-15.08.8.orig/src/strigger/opts.c
++++ slurm-llnl-15.08.8/src/strigger/opts.c
+@@ -531,7 +531,7 @@ Usage: strigger [--set | --get | --clear
+                       reset to default.\n\
+   -n, --node[=host]   trigger related to specific node, all nodes by default\n\
+   -N, --noheader      Do not print the message header\n\
+-  -o, --offset=#      trigger's offset time from event, negative to preceed\n\
++  -o, --offset=#      trigger's offset time from event, negative to precede\n\
+   -p, --program=path  pathname of program to execute when triggered\n\
+   -Q, --quiet         quiet mode (suppress informational messages)\n\
+   -r, --reconfig      trigger event on configuration changes\n\
+--- slurm-llnl-15.08.8.orig/testsuite/expect/test1.50
++++ slurm-llnl-15.08.8/testsuite/expect/test1.50
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env expect
+ ############################################################################
+ # Purpose: Test of SLURM functionality
+-#          Test of running non-existant job, confirm timely termination.
++#          Test of running non-existent job, confirm timely termination.
+ #
+ # Output:  "TEST: #.#" followed by "SUCCESS" if test was successful, OR
+ #          "FAILURE: ..." otherwise with an explanation of the failure, OR
+--- slurm-llnl-15.08.8.orig/testsuite/expect/test15.18
++++ slurm-llnl-15.08.8/testsuite/expect/test15.18
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env expect
+ ############################################################################
+ # Purpose: Test of SLURM functionality
+-#          Test of running non-existant job, confirm timely termination.
++#          Test of running non-existent job, confirm timely termination.
+ #
+ # Output:  "TEST: #.#" followed by "SUCCESS" if test was successful, OR
+ #          "FAILURE: ..." otherwise with an explanation of the failure, OR
+--- slurm-llnl-15.08.8.orig/testsuite/expect/test17.22
++++ slurm-llnl-15.08.8/testsuite/expect/test17.22
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env expect
+ ############################################################################
+ # Purpose: Test of SLURM functionality
+-#          Test of running non-existant job, confirm timely termination.
++#          Test of running non-existent job, confirm timely termination.
+ #
+ # Output:  "TEST: #.#" followed by "SUCCESS" if test was successful, OR
+ #          "FAILURE: ..." otherwise with an explanation of the failure, OR
+--- slurm-llnl-15.08.8.orig/testsuite/slurm_unit/common/xhash-test.c
++++ slurm-llnl-15.08.8/testsuite/slurm_unit/common/xhash-test.c
+@@ -172,7 +172,7 @@ START_TEST(test_delete)
+ 	/* invalid cases */
+ 	xhash_delete(NULL, "1");
+ 	fail_unless(xhash_get(ht, "1") != NULL, "invalid case null");
+-	/* Deleting inexistant item should do nothing. */
++	/* Deleting inexistent item should do nothing. */
+ 	xhash_delete(ht, NULL);
+ 	fail_unless(xhash_count(ht) == g_hashableslen,
+ 			"invalid delete has been done");
