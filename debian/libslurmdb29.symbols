@@ -212,6 +212,7 @@ libslurmdb.so.29 libslurmdb29 #MINVER#
  slurm_free_acct_gather_energy_req_msg@Base 2.6.2
  slurm_free_acct_gather_node_resp_msg@Base 2.5.3
  slurm_free_assoc_mgr_info_msg@Base 15.08.0
+ slurm_free_assoc_mgr_info_request_members@Base 15.08.8
  slurm_free_assoc_mgr_info_request_msg@Base 15.08.0
  slurm_free_block_info@Base 2.2.0
  slurm_free_block_info_members@Base 2.2.0
@@ -796,7 +797,7 @@ libslurmdb.so.29 libslurmdb29 #MINVER#
  slurm_set_addr@Base 2.2.0
 #MISSING: 15.08.0# slurm_set_addr_any@Base 2.2.0
  slurm_set_addr_char@Base 2.2.0
- slurm_set_addr_uint@Base 2.2.0
+#MISSING: 15.08.8# slurm_set_addr_uint@Base 2.2.0
  slurm_set_api_config@Base 2.2.0
  slurm_set_auth_type@Base 2.2.0
  slurm_set_debug_flags@Base 2.3.1

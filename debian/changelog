@@ -3,6 +3,7 @@ slurm-llnl (15.08.8-1) UNRELEASED; urgency=medium
   * New upstream release 
   * Upgrade to standard version 3.9.7
   * Use https uri for Vcs-Browser and Vcs-Git in d/control
+  * Update libslurm29 and libslurmdb29 symbol files 
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 24 Feb 2016 12:50:47 +0100
 
