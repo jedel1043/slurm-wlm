@@ -21,7 +21,7 @@ http://slurm.schedmd.com/cpu_management.html
 .TP
 \fB\-\-accel\-bind\fR=<\fIoptions\fR>
 Control how tasks are bound to generic resources of type gpu, mic and nic.
-Multiple options may be specified. Supported options are as include:
+Multiple options may be specified. Supported options include:
 .RS
 .TP
 \fBg\fR
@@ -454,7 +454,7 @@ which will set the governor to the corresponding value.
 If \fBp3\fR is UserSpace, the frequency scaling_speed will be set by a power
 or energy aware scheduling strategy to a value between p1 and p2 that lets the
 job run within the site's power goal. The job may be delayed if p1 is higher
-than a frequency that allows the job to run withing the goal.
+than a frequency that allows the job to run within the goal.
 
 If the current frequency is < min, it will be set to min. Likewise,
 if the current frequency is > max, it will be set to max.
@@ -979,7 +979,7 @@ configuration parameter.
 Notify user by email when certain event types occur.
 Valid \fItype\fR values are NONE, BEGIN, END, FAIL, REQUEUE, ALL (equivalent to
 BEGIN, END, FAIL, REQUEUE, and STAGE_OUT), STAGE_OUT (burst buffer stage out
-completed), TIME_LIMIT, TIME_LIMIT_90 (reached 90 percent of time limit),
+and teardown completed), TIME_LIMIT, TIME_LIMIT_90 (reached 90 percent of time limit),
 TIME_LIMIT_80 (reached 80 percent of time limit), and TIME_LIMIT_50
 (reached 50 percent of time limit).
 Multiple \fItype\fR values may be specified in a comma separated list.

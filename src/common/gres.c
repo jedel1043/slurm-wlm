@@ -2792,7 +2792,7 @@ static int _job_state_validate(char *config, gres_job_state_t **gres_data,
 		/* Did not find this GRES name, check for zero value */
 		num = strrchr(config, ':');
 		if (num) {
-			cnt = strtol(num + 1, &last_num, 10);
+			cnt = strtoll(num + 1, &last_num, 10);
 			if ((last_num[0] != '\0') || (cnt != 0))
 				return SLURM_ERROR;
 		} else
@@ -4885,7 +4885,7 @@ static int _step_state_validate(char *config, gres_step_state_t **gres_data,
 {
 	gres_step_state_t *gres_ptr;
 	char *type = NULL, *num = NULL, *last_num = NULL;
-	int cnt;
+	int64_t cnt;
 
 	if (!xstrcmp(config, context_ptr->gres_name)) {
 		cnt = 1;
@@ -4895,7 +4895,7 @@ static int _step_state_validate(char *config, gres_step_state_t **gres_data,
 		num = strrchr(config, ':');
 		if (!num)
 			return SLURM_ERROR;
-		cnt = strtol(num + 1, &last_num, 10);
+		cnt = strtoll(num + 1, &last_num, 10);
 		if (last_num[0] == '\0')
 			;
 		else if ((last_num[0] == 'k') || (last_num[0] == 'K'))
@@ -4912,7 +4912,7 @@ static int _step_state_validate(char *config, gres_step_state_t **gres_data,
 		/* Did not find this GRES name, check for zero value */
 		num = strrchr(config, ':');
 		if (num) {
-			 cnt = strtol(num + 1, &last_num, 10);
+			cnt = strtoll(num + 1, &last_num, 10);
 			if ((last_num[0] != '\0') || (cnt != 0))
 				return SLURM_ERROR;
 		} else
@@ -6591,7 +6591,7 @@ extern char *gres_2_tres_str(List gres_list, bool is_job, bool locked)
 	ListIterator itr;
 	slurmdb_tres_rec_t *tres_rec;
 	gres_state_t *gres_state_ptr;
-	char *name;
+	int i;
 	uint64_t count;
 	char *tres_str = NULL;
 	static bool first_run = 1;
@@ -6619,31 +6619,26 @@ extern char *gres_2_tres_str(List gres_list, bool is_job, bool locked)
 		if (is_job) {
 			gres_job_state_t *gres_data_ptr = (gres_job_state_t *)
 				gres_state_ptr->gres_data;
-			name = gres_data_ptr->type_model;
 			count = gres_data_ptr->gres_cnt_alloc
 				* (uint64_t)gres_data_ptr->node_cnt;
 		} else {
 			gres_step_state_t *gres_data_ptr = (gres_step_state_t *)
 				gres_state_ptr->gres_data;
-			name = gres_data_ptr->type_model;
 			count = gres_data_ptr->gres_cnt_alloc
 				* (uint64_t)gres_data_ptr->node_cnt;
 		}
 
-		if (!name) {
-			int i;
-			for (i=0; i < gres_context_cnt; i++) {
-				if (gres_context[i].plugin_id ==
-				    gres_state_ptr->plugin_id) {
-					name = gres_context[i].gres_name;
-					break;
-				}
+		for (i = 0; i < gres_context_cnt; i++) {
+			if (gres_context[i].plugin_id ==
+			    gres_state_ptr->plugin_id) {
+				tres_req.name = gres_context[i].gres_name;
+				break;
 			}
+		}
 
-			if (!name) {
-				debug("gres_add_tres: couldn't find name");
-				continue;
-			}
+		if (!tres_req.name) {
+			debug("%s: couldn't find name", __func__);
+			continue;
 		}
 
 		if (!(tres_rec = assoc_mgr_find_tres_rec(&tres_req)))
@@ -6700,27 +6695,23 @@ extern void gres_set_job_tres_cnt(List gres_list,
 	while ((gres_state_ptr = list_next(itr))) {
 		gres_job_state_t *gres_data_ptr = (gres_job_state_t *)
 			gres_state_ptr->gres_data;
-		tres_rec.name = gres_data_ptr->type_model;
 		count = gres_data_ptr->gres_cnt_alloc * (uint64_t)node_cnt;
 
-		if (!tres_rec.name) {
-			for (i=0; i < gres_context_cnt; i++) {
-				if (gres_context[i].plugin_id ==
-				    gres_state_ptr->plugin_id) {
-					tres_rec.name =
-						gres_context[i].gres_name;
-					break;
-				}
-			}
-
-			if (!tres_rec.name) {
-				debug("gres_add_tres: couldn't find name");
-				continue;
+		for (i=0; i < gres_context_cnt; i++) {
+			if (gres_context[i].plugin_id ==
+			    gres_state_ptr->plugin_id) {
+				tres_rec.name =	gres_context[i].gres_name;
+				break;
 			}
 		}
 
+		if (!tres_rec.name) {
+			debug("gres_add_tres: couldn't find name");
+			continue;
+		}
+
 		if ((tres_pos = assoc_mgr_find_tres_pos(
-			     &tres_rec, false)) != -1)
+			     &tres_rec, true)) != -1)
 			tres_cnt[tres_pos] = count;
 	}
 	list_iterator_destroy(itr);

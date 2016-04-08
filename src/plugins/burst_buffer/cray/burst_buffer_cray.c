@@ -60,10 +60,12 @@
 #include "src/common/pack.h"
 #include "src/common/parse_config.h"
 #include "src/common/slurm_protocol_api.h"
+#include "src/common/slurm_protocol_defs.h"
 #include "src/common/timers.h"
 #include "src/common/uid.h"
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
+#include "src/slurmctld/agent.h"
 #include "src/slurmctld/job_scheduler.h"
 #include "src/slurmctld/locks.h"
 #include "src/slurmctld/node_scheduler.h"
@@ -894,12 +896,14 @@ unpack_error:
 
 /* We just found an unexpected session, set default account, QOS, & partition.
  * Copy the information from any currently existing session for the same user.
- * If none found, use his default account and QOS. */
+ * If none found, use his default account and QOS.
+ * NOTE: assoc_mgr_locks need to be locked with
+ * assoc_mgr_lock_t assoc_locks = { READ_LOCK, NO_LOCK, READ_LOCK, NO_LOCK,
+ *				    NO_LOCK, NO_LOCK, NO_LOCK };
+ * before calling this.
+ */
 static void _pick_alloc_account(bb_alloc_t *bb_alloc)
 {
-	/* read locks on assoc & qos */
-	assoc_mgr_lock_t assoc_locks = { READ_LOCK, NO_LOCK, READ_LOCK, NO_LOCK,
-					 NO_LOCK, NO_LOCK, NO_LOCK };
 	slurmdb_assoc_rec_t assoc_rec;
 	slurmdb_qos_rec_t   qos_rec;
 	bb_alloc_t *bb_ptr = NULL;
@@ -929,7 +933,7 @@ static void _pick_alloc_account(bb_alloc_t *bb_alloc)
 	memset(&qos_rec, 0, sizeof(slurmdb_qos_rec_t));
 	assoc_rec.partition = default_part_name;
 	assoc_rec.uid = bb_alloc->user_id;
-	assoc_mgr_lock(&assoc_locks);
+
 	if (assoc_mgr_fill_in_assoc(acct_db_conn, &assoc_rec,
 				    accounting_enforce,
 				    &bb_alloc->assoc_ptr,
@@ -952,7 +956,6 @@ static void _pick_alloc_account(bb_alloc_t *bb_alloc)
 					xstrdup(bb_alloc->qos_ptr->name);
 		}
 	}
-	assoc_mgr_unlock(&assoc_locks);
 }
 
 /* For a given user/partition/account, set it's assoc_ptr */
@@ -1786,6 +1789,14 @@ static void *_start_teardown(void *x)
 			}
 			if ((bb_job = _get_bb_job(job_ptr)))
 				bb_job->state = BB_STATE_COMPLETE;
+			if (!IS_JOB_PENDING(job_ptr) &&	/* No email if requeue */
+			    (job_ptr->mail_type & MAIL_JOB_STAGE_OUT)) {
+				/* NOTE: If a job uses multiple burst buffer
+				 * plugins, the message will be sent after the
+				 * teardown completes in the first plugin */
+				mail_job_info(job_ptr, MAIL_JOB_STAGE_OUT);
+				job_ptr->mail_type &= (~MAIL_JOB_STAGE_OUT);
+			}
 		} else {
 			/* This will happen when slurmctld restarts and needs
 			 * to clear vestigial buffers */
@@ -2636,7 +2647,9 @@ extern int bb_p_job_validate(struct job_descriptor *job_desc,
 		}
 	}
 
-	job_desc->tres_req_cnt[bb_state.tres_pos] = bb_size / (1024 * 1024);
+	if (bb_state.tres_pos > 0)
+		job_desc->tres_req_cnt[bb_state.tres_pos]
+			= bb_size / (1024 * 1024);
 
 fini:	pthread_mutex_unlock(&bb_state.bb_mutex);
 
@@ -2750,7 +2763,7 @@ static bool _have_dw_cmd_opts(bb_job_t *bb_job)
 extern int bb_p_job_validate2(struct job_record *job_ptr, char **err_msg)
 {
 	char *hash_dir = NULL, *job_dir = NULL, *script_file = NULL;
-	char *path_file = NULL, *resp_msg = NULL, **script_argv;
+	char *resp_msg = NULL, **script_argv;
 	char *dw_cli_path;
 	int hash_inx, rc = SLURM_SUCCESS, status = 0;
 	char jobid_buf[32];
@@ -2803,7 +2816,6 @@ extern int bb_p_job_validate2(struct job_record *job_ptr, char **err_msg)
 	xstrfmtcat(job_dir, "%s/job.%u", hash_dir, job_ptr->job_id);
 	(void) mkdir(job_dir, 0700);
 	xstrfmtcat(script_file, "%s/script", job_dir);
-	xstrfmtcat(path_file, "%s/pathfile", job_dir);
 	if (job_ptr->batch_flag == 0)
 		rc = _build_bb_script(job_ptr, script_file);
 
@@ -2834,50 +2846,6 @@ extern int bb_p_job_validate2(struct job_record *job_ptr, char **err_msg)
 	}
 	xfree(resp_msg);
 	_free_script_argv(script_argv);
-
-	/* Run "paths" function, get DataWarp environment variables */
-	script_argv = xmalloc(sizeof(char *) * 10);	/* NULL terminated */
-	script_argv[0] = xstrdup("dw_wlm_cli");
-	script_argv[1] = xstrdup("--function");
-	script_argv[2] = xstrdup("paths");
-	script_argv[3] = xstrdup("--job");
-	xstrfmtcat(script_argv[4], "%s", script_file);
-	script_argv[5] = xstrdup("--token");
-	xstrfmtcat(script_argv[6], "%u", job_ptr->job_id);
-	script_argv[7] = xstrdup("--pathfile");
-	script_argv[8] = xstrdup(path_file);
-	START_TIMER;
-	resp_msg = bb_run_script("paths",
-				 bb_state.bb_config.get_sys_state,
-				 script_argv, timeout, &status);
-	END_TIMER;
-	if ((DELTA_TIMER > 200000) ||	/* 0.2 secs */
-	    bb_state.bb_config.debug_flag)
-		info("%s: paths ran for %s", __func__, TIME_STR);
-	_log_script_argv(script_argv, resp_msg);
-#if 1
-	//FIXME: Cray API returning valid response, but exit 1 in some cases
-	if ((!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) &&
-	    (resp_msg && !strncmp(resp_msg, "job_file_valid True", 19))) {
-		error("%s: paths for job %u status:%u response:%s",
-		      __func__, job_ptr->job_id, status, resp_msg);
-		_update_job_env(job_ptr, path_file);
-	} else
-#endif
-	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
-		error("%s: paths for job %u status:%u response:%s",
-		      __func__, job_ptr->job_id, status, resp_msg);
-		if (err_msg) {
-			xfree(*err_msg);
-			xstrfmtcat(*err_msg, "%s: %s", plugin_type, resp_msg);
-		}
-		rc = ESLURM_INVALID_BURST_BUFFER_REQUEST;
-	} else {
-		_update_job_env(job_ptr, path_file);
-	}
-	xfree(resp_msg);
-	_free_script_argv(script_argv);
-	xfree(path_file);
 
 	/* Clean-up */
 	if (rc != SLURM_SUCCESS) {
@@ -2910,6 +2878,11 @@ extern void bb_p_job_set_tres_cnt(struct job_record *job_ptr,
 	if (!tres_cnt) {
 		error("%s: No tres_cnt given when looking at job %u",
 		      __func__, job_ptr->job_id);
+	}
+
+	if (bb_state.tres_pos < 0) {
+		/* BB not defined in AccountingStorageTRES */
+		return;
 	}
 
 	pthread_mutex_lock(&bb_state.bb_mutex);
@@ -3003,6 +2976,8 @@ extern int bb_p_job_try_stage_in(List job_queue)
 			continue;
 		if (bb_job->state == BB_STATE_COMPLETE)
 			bb_job->state = BB_STATE_PENDING;     /* job requeued */
+		else if (bb_job->state >= BB_STATE_POST_RUN)
+			continue;	/* Requeued job still staging out */
 		job_rec = xmalloc(sizeof(bb_job_queue_rec_t));
 		job_rec->job_ptr = job_ptr;
 		job_rec->bb_job = bb_job;
@@ -3080,12 +3055,10 @@ extern int bb_p_job_test_stage_in(struct job_record *job_ptr, bool test_only)
 		}
 	} else if (bb_job->state == BB_STATE_STAGING_IN) {
 		rc = 0;
-	} else if (bb_job->state >= BB_STATE_STAGED_IN) {
+	} else if (bb_job->state == BB_STATE_STAGED_IN) {
 		rc = 1;
 	} else {
-		error("%s: Unexpected burst buffer state (%d) for job %u",
-		      __func__, bb_job->state, job_ptr->job_id);
-		rc = -1;
+		rc = -1;	/* Requeued job still staging out */
 	}
 
 	pthread_mutex_unlock(&bb_state.bb_mutex);
@@ -3103,13 +3076,15 @@ extern int bb_p_job_begin(struct job_record *job_ptr)
 {
 	char  *client_nodes_file_nid = NULL;
 	pre_run_args_t *pre_run_args;
-	char **pre_run_argv = NULL;
-	char *job_dir = NULL;
-	int hash_inx, rc = SLURM_SUCCESS;
+	char **pre_run_argv = NULL, **script_argv = NULL;
+	char *job_dir = NULL, *path_file, *resp_msg;
+	int hash_inx, rc = SLURM_SUCCESS, status = 0;
 	bb_job_t *bb_job;
 	char jobid_buf[64];
 	pthread_attr_t pre_run_attr;
 	pthread_t pre_run_tid = 0;
+	uint32_t timeout;
+	DEF_TIMERS;
 
 	if ((job_ptr->burst_buffer == NULL) ||
 	    (job_ptr->burst_buffer[0] == '\0'))
@@ -3162,6 +3137,50 @@ extern int bb_p_job_begin(struct job_record *job_ptr)
 			    job_ptr->job_id)) {
 		xfree(client_nodes_file_nid);
 	}
+
+	/* Run "paths" function, get DataWarp environment variables */
+	if (bb_state.bb_config.validate_timeout)
+		timeout = bb_state.bb_config.validate_timeout * 1000;
+	else
+		timeout = DEFAULT_VALIDATE_TIMEOUT * 1000;
+	script_argv = xmalloc(sizeof(char *) * 10);	/* NULL terminated */
+	script_argv[0] = xstrdup("dw_wlm_cli");
+	script_argv[1] = xstrdup("--function");
+	script_argv[2] = xstrdup("paths");
+	script_argv[3] = xstrdup("--job");
+	xstrfmtcat(script_argv[4], "%s/script", job_dir);
+	script_argv[5] = xstrdup("--token");
+	xstrfmtcat(script_argv[6], "%u", job_ptr->job_id);
+	script_argv[7] = xstrdup("--pathfile");
+	xstrfmtcat(script_argv[8], "%s/path", job_dir);
+	path_file = script_argv[8];
+	START_TIMER;
+	resp_msg = bb_run_script("paths",
+				 bb_state.bb_config.get_sys_state,
+				 script_argv, timeout, &status);
+	END_TIMER;
+	if ((DELTA_TIMER > 200000) ||	/* 0.2 secs */
+	    bb_state.bb_config.debug_flag)
+		info("%s: paths ran for %s", __func__, TIME_STR);
+	_log_script_argv(script_argv, resp_msg);
+#if 1
+	//FIXME: Cray API returning valid response, but exit 1 in some cases
+	if ((!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) &&
+	    (resp_msg && !strncmp(resp_msg, "job_file_valid True", 19))) {
+		error("%s: paths for job %u status:%u response:%s",
+		      __func__, job_ptr->job_id, status, resp_msg);
+		_update_job_env(job_ptr, path_file);
+	} else
+#endif
+	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+		error("%s: paths for job %u status:%u response:%s",
+		      __func__, job_ptr->job_id, status, resp_msg);
+		rc = ESLURM_INVALID_BURST_BUFFER_REQUEST;
+	} else {
+		_update_job_env(job_ptr, path_file);
+	}
+	xfree(resp_msg);
+	_free_script_argv(script_argv);
 
 	pre_run_argv = xmalloc(sizeof(char *) * 10);
 	pre_run_argv[0] = xstrdup("dw_wlm_cli");
@@ -3269,7 +3288,8 @@ static void *_start_pre_run(void *x)
 		error("%s: dws_pre_run for %s status:%u response:%s", __func__,
 		      jobid_buf, status, resp_msg);
 		if (job_ptr) {
-			run_kill_job = true;
+			if (IS_JOB_RUNNING(job_ptr))
+				run_kill_job = true;
 			bb_job = _get_bb_job(job_ptr);
 			if (bb_job)
 				bb_job->state = BB_STATE_TEARDOWN;

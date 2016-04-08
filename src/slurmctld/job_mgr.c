@@ -85,6 +85,7 @@
 #include "src/slurmctld/agent.h"
 #include "src/slurmctld/burst_buffer.h"
 #include "src/slurmctld/front_end.h"
+#include "src/slurmctld/gang.h"
 #include "src/slurmctld/job_scheduler.h"
 #include "src/slurmctld/job_submit.h"
 #include "src/slurmctld/licenses.h"
@@ -3261,6 +3262,7 @@ extern int kill_running_job_by_node_name(char *node_name)
 				job_pre_resize_acctg(job_ptr);
 				kill_step_on_node(job_ptr, node_ptr, true);
 				excise_node_from_job(job_ptr, node_ptr);
+				(void) gs_job_start(job_ptr);
 				job_post_resize_acctg(job_ptr);
 			} else if (job_ptr->batch_flag && job_ptr->details &&
 				   job_ptr->details->requeue) {
@@ -4275,6 +4277,9 @@ static int _job_signal(struct job_record *job_ptr, uint16_t signal,
 
 	if (IS_JOB_FINISHED(job_ptr))
 		return ESLURM_ALREADY_DONE;
+
+	if (job_ptr->details && job_ptr->details->prolog_running)
+		return ESLURM_TRANSITION_STATE_NO_UPDATE;
 
 	/* let node select plugin do any state-dependent signalling actions */
 	select_g_job_signal(job_ptr, signal);
@@ -5489,7 +5494,7 @@ extern int job_limits_check(struct job_record **job_pptr, bool check_min_time)
 					shares_norm);
 		}
 		if (job_ptr->prio_factors->priority_fs < qos_ptr->usage_thres){
-			debug2("Job %u exceeds usage threashold",
+			debug2("Job %u exceeds usage threshold",
 			       job_ptr->job_id);
 			fail_reason = WAIT_QOS_THRES;
 		}
@@ -7161,6 +7166,9 @@ void job_time_limit(void)
 		 * running, suspended and pending job */
 		resv_status = job_resv_check(job_ptr);
 
+		if (job_ptr->details && job_ptr->details->prolog_running)
+			continue;
+
 		if (job_ptr->preempt_time &&
 		    (IS_JOB_RUNNING(job_ptr) || IS_JOB_SUSPENDED(job_ptr))) {
 			if ((job_ptr->warn_time) &&
@@ -7710,6 +7718,7 @@ static void _list_delete_job(void *job_entry)
 	}
 	xfree(job_ptr->batch_host);
 	xfree(job_ptr->burst_buffer);
+	checkpoint_free_jobinfo(job_ptr->check_job);
 	xfree(job_ptr->comment);
 	free_job_resources(&job_ptr->job_resrcs);
 	xfree(job_ptr->gres);
@@ -9774,6 +9783,7 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 
 	acct_limit_already_set = false;
 	if (!authorized && (accounting_enforce & ACCOUNTING_ENFORCE_LIMITS)) {
+		uint32_t orig_time_limit = job_specs->time_limit;
 		if (!acct_policy_validate(job_specs, job_ptr->part_ptr,
 					  job_ptr->assoc_ptr, job_ptr->qos_ptr,
 					  NULL, &acct_policy_limit_set, 1)) {
@@ -9782,6 +9792,9 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 			      __func__, job_specs->user_id);
 			acct_limit_already_set = true;
 		}
+		if ((orig_time_limit == NO_VAL) &&
+		    (job_ptr->time_limit < job_specs->time_limit))
+			job_specs->time_limit = NO_VAL;
 	}
 
 	if (!wiki_sched_test) {
@@ -9875,6 +9888,7 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 				kill_step_on_node(job_ptr, node_ptr, false);
 				excise_node_from_job(job_ptr, node_ptr);
 			}
+			(void) gs_job_start(job_ptr);
 			job_post_resize_acctg(job_ptr);
 			/* Since job_post_resize_acctg will restart
 			 * things, don't do it again. */
@@ -9972,7 +9986,7 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 			new_qos_ptr = _determine_and_validate_qos(
 				resv_name, job_ptr->assoc_ptr,
 				authorized, &qos_rec, &error_code, false);
-			if (error_code == SLURM_SUCCESS) {
+			if ((error_code == SLURM_SUCCESS) && new_qos_ptr) {
 				info("%s: setting QOS to %s for job_id %u",
 				     __func__, new_qos_ptr->name,
 				     job_ptr->job_id);
@@ -10163,6 +10177,7 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 		goto fini;
 
 	if (!authorized && (accounting_enforce & ACCOUNTING_ENFORCE_LIMITS)) {
+		uint32_t orig_time_limit = job_specs->time_limit;
 		if (!acct_policy_validate(job_specs, job_ptr->part_ptr,
 					  job_ptr->assoc_ptr, job_ptr->qos_ptr,
 					  NULL, &acct_policy_limit_set, 1)
@@ -10173,6 +10188,9 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 			error_code = ESLURM_ACCOUNTING_POLICY;
 			goto fini;
 		}
+		if ((orig_time_limit == NO_VAL) &&
+		    (job_ptr->time_limit < job_specs->time_limit))
+			job_specs->time_limit = NO_VAL;
 
 		/* Perhaps the limit was removed, so we will remove it
 		 * since it was imposed previously.
@@ -10306,6 +10324,23 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 			     job_ptr->job_id);
 		}
 	}
+
+	if (error_code != SLURM_SUCCESS)
+		goto fini;
+
+	if (job_specs->cpus_per_task != (uint16_t)NO_VAL) {
+		if ((!IS_JOB_PENDING(job_ptr)) || (detail_ptr == NULL)) {
+			error_code = ESLURM_JOB_NOT_PENDING;
+		} else if (detail_ptr->cpus_per_task !=
+			   job_specs->cpus_per_task) {
+			info("%s: setting cpus_per_task from %u to %u for "
+			     "job_id %u", __func__, detail_ptr->cpus_per_task,
+			     job_specs->pn_min_cpus,
+			     job_ptr->job_id);
+			detail_ptr->cpus_per_task = job_specs->cpus_per_task;
+		}
+	}
+
 	if (error_code != SLURM_SUCCESS)
 		goto fini;
 
@@ -10381,45 +10416,6 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 		job_ptr->limit_set.tres[TRES_ARRAY_NODE] =
 			acct_policy_limit_set.tres[TRES_ARRAY_NODE];
 		update_accounting = true;
-	}
-
-	/* This also needs to be updated to make sure we are kosher
-	   after messing with the cpus and nodes. */
-	if (detail_ptr && detail_ptr->pn_min_cpus) {
-		uint16_t pn_min_cpus =
-			(uint16_t)(job_ptr->tres_req_cnt[TRES_ARRAY_CPU] /
-				   job_ptr->tres_req_cnt[TRES_ARRAY_NODE]);
-		if (detail_ptr->pn_min_cpus != pn_min_cpus) {
-			info("update_job: setting pn_min_cpus from "
-			     "%u to %u for job_id %u",
-			     detail_ptr->pn_min_cpus, pn_min_cpus,
-			     job_ptr->job_id);
-			detail_ptr->pn_min_cpus = pn_min_cpus;
-		}
-	}
-
-	/* This has to be figured out before num_tasks is */
-	if (detail_ptr && detail_ptr->cpus_per_task) {
-		uint16_t cpus_per_task;
-		/* Use the new value if given else use the current tasks */
-		uint32_t num_tasks = (job_specs->num_tasks != NO_VAL) ?
-			job_specs->num_tasks : detail_ptr->num_tasks;
-
-		if (num_tasks)
-			cpus_per_task = job_ptr->tres_req_cnt[TRES_ARRAY_CPU] /
-				num_tasks;
-		else if (detail_ptr->cpus_per_task > detail_ptr->pn_min_cpus)
-			cpus_per_task = detail_ptr->pn_min_cpus;
-		else
-			cpus_per_task = detail_ptr->cpus_per_task;
-
-		if (cpus_per_task != detail_ptr->cpus_per_task) {
-			info("update_job: setting cpus_per_task from "
-			     "%u to %u for job_id %u",
-			     detail_ptr->cpus_per_task, cpus_per_task,
-			     job_ptr->job_id);
-			detail_ptr->cpus_per_task = cpus_per_task;
-		}
 	}
 
 	if (job_specs->num_tasks != NO_VAL) {
@@ -11038,6 +11034,8 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 				_merge_job_licenses(job_ptr, expand_job_ptr);
 				rebuild_step_bitmaps(expand_job_ptr,
 						     orig_job_node_bitmap);
+				(void) gs_job_fini(job_ptr);
+				(void) gs_job_start(expand_job_ptr);
 			}
 			bit_free(orig_job_node_bitmap);
 			job_post_resize_acctg(job_ptr);
@@ -11075,6 +11073,7 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 				kill_step_on_node(job_ptr, node_ptr, false);
 				excise_node_from_job(job_ptr, node_ptr);
 			}
+			(void) gs_job_start(job_ptr);
 			job_post_resize_acctg(job_ptr);
 			info("sched: update_job: set nodes to %s for "
 			     "job_id %u",
@@ -11854,6 +11853,13 @@ extern void job_post_resize_acctg(struct job_record *job_ptr)
 
 	job_ptr->details->submit_time = org_submit;
 	job_ptr->job_state &= (~JOB_RESIZING);
+
+	/* Reset the end_time_exp that was probably set to NO_VAL when
+	 * ending the job on the resize.  If using the
+	 * priority/multifactor plugin if the end_time_exp is NO_VAL
+	 * it will not run again for the job.
+	 */
+	job_ptr->end_time_exp = job_ptr->end_time;
 }
 
 /*
@@ -12037,6 +12043,9 @@ static void _purge_missing_jobs(int node_inx, time_t now)
 	while ((job_ptr = (struct job_record *) list_next(job_iterator))) {
 		bool job_active = IS_JOB_RUNNING(job_ptr) ||
 				  IS_JOB_SUSPENDED(job_ptr);
+
+		if (job_ptr->details && job_ptr->details->prolog_running)
+			continue;
 
 		if ((!job_active) ||
 		    (!bit_test(job_ptr->node_bitmap, node_inx)))
@@ -13348,8 +13357,10 @@ static int _job_suspend(struct job_record *job_ptr, uint16_t op, bool indf_susp)
 			return rc;
 		_suspend_job(job_ptr, op, indf_susp);
 		job_ptr->job_state = JOB_SUSPENDED;
-		if (indf_susp)
+		if (indf_susp) {    /* Job being manually suspended, not gang */
 			job_ptr->priority = 0;
+			(void) gs_job_fini(job_ptr);
+		}
 		if (job_ptr->suspend_time) {
 			job_ptr->pre_sus_time +=
 				difftime(now, job_ptr->suspend_time);
@@ -13366,8 +13377,11 @@ static int _job_suspend(struct job_record *job_ptr, uint16_t op, bool indf_susp)
 		if (rc != SLURM_SUCCESS)
 			return rc;
 		_suspend_job(job_ptr, op, indf_susp);
-		if (job_ptr->priority == 0)
+		if (job_ptr->priority == 0) {
+			/* Job was manually suspended, not gang */
 			set_job_prio(job_ptr);
+			(void) gs_job_start(job_ptr);
+		}
 		job_ptr->job_state = JOB_RUNNING;
 		job_ptr->tot_sus_time +=
 			difftime(now, job_ptr->suspend_time);

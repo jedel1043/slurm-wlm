@@ -962,6 +962,7 @@ static int _attempt_backfill(void)
 		}
 
 		job_ptr  = job_queue_rec->job_ptr;
+
 		/* With bf_continue configured, the original job could have
 		 * been cancelled and purged. Validate pointer here. */
 		if ((job_ptr->magic  != JOB_MAGIC) ||
@@ -977,7 +978,12 @@ static int _attempt_backfill(void)
 			if (!job_ptr)	/* All task array elements started */
 				continue;
 		}
+		if (!IS_JOB_PENDING(job_ptr) ||	/* Started in other partition */
+		    (job_ptr->priority == 0))	/* Job has been held */
+			continue;
 
+		part_ptr = job_queue_rec->part_ptr;
+		job_ptr->part_ptr = part_ptr;
 		if (job_ptr->state_reason == FAIL_ACCOUNT) {
 			slurmdb_assoc_rec_t assoc_rec;
 			memset(&assoc_rec, 0, sizeof(slurmdb_assoc_rec_t));
@@ -1032,7 +1038,6 @@ static int _attempt_backfill(void)
 
 		orig_start_time = job_ptr->start_time;
 		orig_time_limit = job_ptr->time_limit;
-		part_ptr = job_queue_rec->part_ptr;
 		xfree(job_queue_rec);
 
 next_task:
@@ -1253,6 +1258,7 @@ next_task:
 				continue;	/* No available frontend */
 
 			job_ptr->time_limit = save_time_limit;
+			job_ptr->part_ptr = part_ptr;
 			/* Reset backfill scheduling timers, resume testing */
 			sched_start = time(NULL);
 			gettimeofday(&start_tv, NULL);
