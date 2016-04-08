@@ -793,6 +793,7 @@ libslurmdb.so.29 libslurmdb29 #MINVER#
  slurm_set_accounting_storage_host@Base 2.2.0
  slurm_set_accounting_storage_loc@Base 2.2.0
  slurm_set_accounting_storage_port@Base 2.2.0
+ slurm_set_accounting_storage_tres@Base 15.08.10
  slurm_set_accounting_storage_user@Base 2.2.0
  slurm_set_addr@Base 2.2.0
 #MISSING: 15.08.0# slurm_set_addr_any@Base 2.2.0
@@ -1043,7 +1044,8 @@ libslurmdb.so.29 libslurmdb29 #MINVER#
  slurmdb_get_first_avail_cluster@Base 15.08.0
  slurmdb_get_hierarchical_sorted_assoc_list@Base 2.2.0
  slurmdb_get_info_cluster@Base 2.2.0
- slurmdb_get_new_tres_pos@Base 15.08.0
+#MISSING: 15.08.10# slurmdb_get_new_tres_pos@Base 15.08.0
+ slurmdb_get_old_tres_pos@Base 15.08.10
  slurmdb_get_qos_complete_str_bitstr@Base 15.08.0
  slurmdb_get_selected_step_id@Base 14.11.0
  slurmdb_init_assoc_rec@Base 15.08.0
