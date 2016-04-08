@@ -837,6 +837,7 @@ _forkexec_slurmstepd(uint16_t type, void *req,
 		char *const argv[3] = {"memcheck",
 				       (char *)conf->stepd_loc, NULL};
 #endif
+		int i;
 		int failed = 0;
 		/* inform slurmstepd about our config */
 		setenv("SLURM_CONF", conf->conffile, 1);
@@ -854,6 +855,18 @@ _forkexec_slurmstepd(uint16_t type, void *req,
 			failed = 2;
 		} else if (pid > 0) { /* child */
 			exit(0);
+		}
+
+		/*
+		 * Just incase we (or someone we are linking to)
+		 * opened a file and didn't do a close on exec.  This
+		 * is needed mostly to protect us against libs we link
+		 * to that don't set the flag as we should already be
+		 * setting it for those that we open.  The number 256
+		 * is an arbitrary number based off test7.9.
+		 */
+		for (i=3; i<256; i++) {
+			(void) fcntl(i, F_SETFD, FD_CLOEXEC);
 		}
 
 		/*
@@ -1672,11 +1685,20 @@ static void _spawn_prolog_stepd(slurm_msg_t *msg)
 	}
 
 	slurm_get_stream_addr(msg->conn_fd, &self);
-
-	debug3("%s: call to _forkexec_slurmstepd", __func__);
-	(void) _forkexec_slurmstepd(LAUNCH_TASKS, (void *)launch_req, cli,
-				     &self, NULL, msg->protocol_version);
-	debug3("%s: return from _forkexec_slurmstepd", __func__);
+	/* Since job could have been killed while the prolog was
+	 * running (especially on BlueGene, which can take minutes
+	 * for partition booting). Test if the credential has since
+	 * been revoked and exit as needed. */
+	if (slurm_cred_revoked(conf->vctx, req->cred)) {
+		info("Job %u already killed, do not launch extern step",
+		     req->job_id);
+	} else {
+		debug3("%s: call to _forkexec_slurmstepd", __func__);
+		(void) _forkexec_slurmstepd(
+			LAUNCH_TASKS, (void *)launch_req, cli,
+			&self, NULL, msg->protocol_version);
+		debug3("%s: return from _forkexec_slurmstepd", __func__);
+	}
 
 	for (i = 0; i < req->nnodes; i++)
 		xfree(launch_req->global_task_ids[i]);
@@ -6096,7 +6118,7 @@ static void _launch_complete_wait(uint32_t job_id)
 		}
 		if (j < JOB_STATE_CNT)	/* Found job, ready to return */
 			break;
-		if (difftime(time(NULL), start) <= 3) {  /* Retry for 3 secs */
+		if (difftime(time(NULL), start) <= 9) {  /* Retry for 9 secs */
 			debug2("wait for launch of job %u before suspending it",
 			       job_id);
 			gettimeofday(&now, NULL);

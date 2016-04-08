@@ -1042,7 +1042,8 @@ static int _apply_new_usage(struct job_record *job_ptr,
 
 	if ((uint64_t)start_period >= job_time_limit_ends)
 		tres_time_delta = 0;
-	else if (IS_JOB_FINISHED(job_ptr) || IS_JOB_COMPLETING(job_ptr)) {
+	else if (IS_JOB_FINISHED(job_ptr) || IS_JOB_COMPLETING(job_ptr) ||
+		 IS_JOB_RESIZING(job_ptr)) {
 		/* If a job is being requeued sometimes the state will
 		   be pending + completing so handle that the same as
 		   finished so we don't leave time in the mix.
@@ -1117,8 +1118,9 @@ static int _apply_new_usage(struct job_record *job_ptr,
 					  job_ptr->job_id, qos);
 	}
 
-	/* sanity check, there should always be a part_ptr here */
-	if (job_ptr->part_ptr)
+	/* sanity check, there should always be a part_ptr here, but only do
+	 * the qos if it isn't the same qos as the job is using */
+	if (job_ptr->part_ptr && (job_ptr->part_ptr->qos_ptr != qos))
 		qos = (slurmdb_qos_rec_t *)job_ptr->part_ptr->qos_ptr;
 	else
 		qos = NULL;
