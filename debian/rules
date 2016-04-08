@@ -98,5 +98,11 @@ override_dh_strip:
 	dh_strip -plibpam-slurm
 	dh_strip -pslurm-wlm-emulator
 	dh_strip -pslurm-client-emulator
+	dh_strip -plibpmi0-dev
+	dh_strip -plibslurmdb-dev
+	dh_strip -plibslurm-dev
+	dh_strip -pslurm-wlm-basic-plugins-dev
+	strip --strip-debug --remove-section=.comment \
+		--remove-section=.note debian/slurm-wlm-basic-plugins-dev/usr/lib/x86_64-linux-gnu/slurm/*.a
 
 override_dh_auto_test:
