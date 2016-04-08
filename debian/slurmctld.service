@@ -2,6 +2,7 @@
 Description=Slurm controller daemon
 After=network.target
 ConditionPathExists=/etc/slurm-llnl/slurm.conf
+Documentation=man:slurmctld(8)
 
 [Service]
 Type=forking

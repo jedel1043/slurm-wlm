@@ -2,6 +2,7 @@
 Description=Slurm node daemon
 After=network.target
 ConditionPathExists=/etc/slurm-llnl/slurm.conf
+Documentation=man:slurmd(8)
 
 [Service]
 Type=forking
