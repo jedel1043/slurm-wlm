@@ -1,8 +1,12 @@
 slurm-llnl (15.08.10-1) UNRELEASED; urgency=medium
 
   * New upstream release 
+  * Update libslurm29 and libslurmdb29 symbol files
+  * Add hardening=+pie to DEB_BUILD_MAINT_OPTIONS
+  * Add Documentation section in systemd service files
+  * Remove fix-spelling-errors patch included in upstream
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 08 Apr 2016 09:47:03 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sat, 09 Apr 2016 00:17:38 +0200
 
 slurm-llnl (15.08.8-1) unstable; urgency=medium
 

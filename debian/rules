@@ -5,7 +5,7 @@
 #export DH_VERBOSE=1
 
 export PERL_ARCHLIB := $(shell perl -MConfig -e 'print substr($$Config{vendorarch}, 1)')
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export DEB_BUILD_MAINT_OPTIONS = hardening=+pie
 # include defs of all DEB_HOST_*/DEB_BUILD_* vars
 include /usr/share/dpkg/architecture.mk
 
