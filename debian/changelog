@@ -6,6 +6,7 @@ slurm-llnl (15.08.10-1) UNRELEASED; urgency=medium
   * Add Documentation section in systemd service files
   * Remove fix-spelling-errors patch included in upstream
   * Add lintian overrides for missing bindnow option
+  * Upgrade to standard version 3.9.8
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sat, 09 Apr 2016 00:17:38 +0200
 

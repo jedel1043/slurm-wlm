@@ -25,7 +25,7 @@ Build-Depends:
  librrd-dev,
  libipmimonitoring-dev,
  dh-systemd (>= 1.5)
-Standards-Version: 3.9.7
+Standards-Version: 3.9.8
 Homepage: http://slurm.schedmd.com
 Vcs-Browser: https://anonscm.debian.org/git/collab-maint/slurm-llnl.git
 Vcs-Git: https://anonscm.debian.org/git/collab-maint/slurm-llnl.git
