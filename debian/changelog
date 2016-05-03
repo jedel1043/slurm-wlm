@@ -7,6 +7,8 @@ slurm-llnl (15.08.10-1) UNRELEASED; urgency=medium
   * Remove fix-spelling-errors patch included in upstream
   * Add lintian overrides for missing bindnow option
   * Upgrade to standard version 3.9.8
+  * Remove postinst/rm in library packages since ldconfig is now handled
+    by dh_makeshlibs
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sat, 09 Apr 2016 00:17:38 +0200
 
