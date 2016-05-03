@@ -5,6 +5,7 @@ slurm-llnl (15.08.10-1) UNRELEASED; urgency=medium
   * Add hardening=+pie to DEB_BUILD_MAINT_OPTIONS
   * Add Documentation section in systemd service files
   * Remove fix-spelling-errors patch included in upstream
+  * Add lintian overrides for missing bindnow option
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sat, 09 Apr 2016 00:17:38 +0200
 
