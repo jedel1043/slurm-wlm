@@ -1,6 +1,49 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 15.08.11
+===========================
+ -- Fix for job "--contiguous" option that could cause job allocation/launch
+    failure or slurmctld crash.
+ -- Fix to setup logs for single-character program names correctly.
+ -- Backfill scheduling performance enhancement with large number of running
+    jobs.
+ -- Reset job's prolog_running counter on slurmctld restart or reconfigure.
+ -- burst_buffer/cray - Update job's prolog_running counter if pre_run fails.
+ -- MYSQL - Make the error message more specific when removing a reservation
+    and it doesn't meet basic requirements.
+ -- burst_buffer/cray - Fix for script creating or deleting persistent buffer
+    would fail "paths" operation and hold the job.
+ -- power/cray - Prevent possible divide by zero.
+ -- power/cray - Fix bug introduced in 15.08.10 preventing operation in many
+    cases.
+ -- Prevent deadlock for flow of data to the slurmdbd when sending reservation
+    that wasn't set up correctly.
+ -- burst_buffer/cray - Don't call Datawarp "paths" function if script includes
+    only create or destroy of persistent burst buffer. Some versions of Datawarp
+    software return an error for such scripts, causing the job to be held.
+ -- Fix potential issue when adding and removing TRES which could result
+    in the slurmdbd segfaulting.
+ -- Add cast to memory limit calculation to prevent integer overflow for
+    very large memory values.
+ -- Bluegene - Fix issue with reservations resizing under the covers on a
+    restart of the slurmctld.
+ -- Avoid error message of "Requested cpu_bind option requires entire node to
+    be allocated; disabling affinity" being generated in some cases where
+    task/affinity and task/cgroup plugins used together.
+ -- Fix version issue when packing GRES information between 2 different versions
+    of Slurm.
+ -- Fix for srun hanging with OpenMPI and PMIx
+ -- Better initialization of node_ptr when dealing with protocol_version.
+ -- Fix incorrect type when initializing header of a message.
+ -- MYSQL - Fix incorrect usage of limit and union.
+ -- MYSQL - Remove 'ignore' from alter ignore when updating a table.
+ -- Documentation - update prolog_epilog page to reflect current behavior
+    if the Prolog fails.
+ -- Documentation - clarify behavior of 'srun --export=NONE' in man page.
+ -- Fix potential gres underflow on restart of slurmctld.
+ -- Fix sacctmgr to remove a user who has no associations.
+
 * Changes in Slurm 15.08.10
 ===========================
  -- Fix issue where if a slurmdbd rollup lasted longer than 1 hour the
@@ -949,6 +992,9 @@ documents those changes that are of interest to users and administrators.
     step functions rather than [0,2,4,6,8,...] .
  -- Associations - prevent hash table corruption if uid initially unset for
     a user, which can cause slurmctld to crash if that user is deleted.
+ -- Add cast to memory limit calculation to prevent integer overflow for
+    very large memory values.
+ -- Fix test cases to have proper int return signature.
 
 * Changes in Slurm 14.11.11
 ===========================
