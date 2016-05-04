@@ -1,9 +1,9 @@
-slurm-llnl (15.08.11-1) UNRELEASED; urgency=medium
+slurm-llnl (15.08.11-1) unstable; urgency=medium
 
   * New upstream release 
   * Fix d/rules using wildcard instead of the triplet
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 04 May 2016 09:36:52 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 04 May 2016 12:01:47 +0200
 
 slurm-llnl (15.08.10-1) unstable; urgency=medium
 
