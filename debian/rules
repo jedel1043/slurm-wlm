@@ -103,6 +103,6 @@ override_dh_strip:
 	dh_strip -plibslurm-dev
 	dh_strip -pslurm-wlm-basic-plugins-dev
 	strip --strip-debug --remove-section=.comment \
-		--remove-section=.note debian/slurm-wlm-basic-plugins-dev/usr/lib/x86_64-linux-gnu/slurm/*.a
+		--remove-section=.note debian/slurm-wlm-basic-plugins-dev/usr/lib/*/slurm/*.a
 
 override_dh_auto_test:
