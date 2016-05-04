@@ -856,6 +856,7 @@ bitstr_t *_make_core_bitmap(bitstr_t *node_map, uint16_t core_spec)
 {
 	uint32_t n, c, nodes, size;
 	int spec_cores, res_core, res_sock, res_off;
+	int n_first, n_last;
 	uint32_t coff;
 	uint16_t i;
 	struct node_record *node_ptr;
@@ -868,8 +869,12 @@ bitstr_t *_make_core_bitmap(bitstr_t *node_map, uint16_t core_spec)
 	    (core_spec & CORE_SPEC_THREAD))	/* Reserving threads */
 		core_spec = (uint16_t) NO_VAL;	/* Don't remove cores */
 
-	nodes = bit_size(node_map);
-	for (n = 0; n < nodes; n++) {
+	n_first = bit_ffs(node_map);
+	if (n_first == -1)
+		n_last = -2;
+	else
+		n_last = bit_fls(node_map);
+	for (n = n_first; n <= n_last; n++) {
 		if (!bit_test(node_map, n))
 			continue;
 		c    = cr_get_coremap_offset(n);
@@ -1396,8 +1401,7 @@ static int _eval_nodes(struct job_record *job_ptr, bitstr_t *node_map,
 			xfree(cpus_array);
 		}
 
-		if (details_ptr->contiguous ||
-		    ((rem_nodes <= 0) && (rem_cpus <= 0))) {
+		if ((rem_nodes <= 0) && (rem_cpus <= 0)) {
 			error_code = SLURM_SUCCESS;
 			break;
 		}
@@ -2833,13 +2837,13 @@ extern int cr_job_test(struct job_record *job_ptr, bitstr_t *node_bitmap,
 	bitstr_t *orig_map, *avail_cores, *free_cores, *part_core_map = NULL;
 	bitstr_t *tmpcore = NULL, *reqmap = NULL;
 	bool test_only;
-	uint32_t c, i, j, k, n, csize, total_cpus, save_mem = 0;
+	uint32_t c, j, k, n, csize, total_cpus, save_mem = 0;
 	int32_t build_cnt;
 	job_resources_t *job_res;
 	struct job_details *details_ptr;
 	struct part_res_record *p_ptr, *jp_ptr;
 	uint16_t *cpu_count;
-	int first, last;
+	int i, first, last;
 
 	if (gang_mode == -1) {
 		if (slurm_get_preempt_mode() & PREEMPT_MODE_GANG)

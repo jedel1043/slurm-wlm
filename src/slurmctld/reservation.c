@@ -2990,9 +2990,9 @@ static void _rebuild_core_bitmap(slurmctld_resv_t *resv_ptr)
 	     resv_ptr->name);
 
 	core_cnt = bit_set_count(resv_ptr->core_bitmap);      /* Cores needed */
-	bit_free(resv_ptr->core_bitmap);
-	resv_ptr->core_bitmap =
-		bit_alloc(cr_get_coremap_offset(node_record_count));
+	FREE_NULL_BITMAP(resv_ptr->core_bitmap);
+
+	_create_cluster_core_bitmap(&resv_ptr->core_bitmap);
 
 	/* Try to use any cores in use by jobs running in this reservation */
 	job_iterator = list_iterator_create(job_list);

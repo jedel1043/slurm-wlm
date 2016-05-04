@@ -240,8 +240,6 @@ static int	_parse_bb_opts(struct job_descriptor *job_desc,
 static void	_parse_config_links(json_object *instance, bb_configs_t *ent);
 static void	_parse_instance_capacity(json_object *instance,
 					 bb_instances_t *ent);
-static int	_xlate_batch(struct job_descriptor *job_desc);
-static int	_xlate_interactive(struct job_descriptor *job_desc);
 static void	_pick_alloc_account(bb_alloc_t *bb_alloc);
 static void	_purge_bb_files(uint32_t job_id, struct job_record *job_ptr);
 static void	_purge_vestigial_bufs(void);
@@ -266,6 +264,8 @@ static void	_timeout_bb_rec(void);
 static int	_write_file(char *file_name, char *buf);
 static int	_write_nid_file(char *file_name, char *node_list,
 				uint32_t job_id);
+static int	_xlate_batch(struct job_descriptor *job_desc);
+static int	_xlate_interactive(struct job_descriptor *job_desc);
 
 /* Convert a Python string to real JSON format. Specifically replace single
  * quotes with double quotes and strip leading "u" before the single quotes.
@@ -3139,48 +3139,47 @@ extern int bb_p_job_begin(struct job_record *job_ptr)
 	}
 
 	/* Run "paths" function, get DataWarp environment variables */
-	if (bb_state.bb_config.validate_timeout)
-		timeout = bb_state.bb_config.validate_timeout * 1000;
-	else
-		timeout = DEFAULT_VALIDATE_TIMEOUT * 1000;
-	script_argv = xmalloc(sizeof(char *) * 10);	/* NULL terminated */
-	script_argv[0] = xstrdup("dw_wlm_cli");
-	script_argv[1] = xstrdup("--function");
-	script_argv[2] = xstrdup("paths");
-	script_argv[3] = xstrdup("--job");
-	xstrfmtcat(script_argv[4], "%s/script", job_dir);
-	script_argv[5] = xstrdup("--token");
-	xstrfmtcat(script_argv[6], "%u", job_ptr->job_id);
-	script_argv[7] = xstrdup("--pathfile");
-	xstrfmtcat(script_argv[8], "%s/path", job_dir);
-	path_file = script_argv[8];
-	START_TIMER;
-	resp_msg = bb_run_script("paths",
-				 bb_state.bb_config.get_sys_state,
-				 script_argv, timeout, &status);
-	END_TIMER;
-	if ((DELTA_TIMER > 200000) ||	/* 0.2 secs */
-	    bb_state.bb_config.debug_flag)
-		info("%s: paths ran for %s", __func__, TIME_STR);
-	_log_script_argv(script_argv, resp_msg);
+	if (_have_dw_cmd_opts(bb_job)) {
+		if (bb_state.bb_config.validate_timeout)
+			timeout = bb_state.bb_config.validate_timeout * 1000;
+		else
+			timeout = DEFAULT_VALIDATE_TIMEOUT * 1000;
+		script_argv = xmalloc(sizeof(char *) * 10); /* NULL terminate */
+		script_argv[0] = xstrdup("dw_wlm_cli");
+		script_argv[1] = xstrdup("--function");
+		script_argv[2] = xstrdup("paths");
+		script_argv[3] = xstrdup("--job");
+		xstrfmtcat(script_argv[4], "%s/script", job_dir);
+		script_argv[5] = xstrdup("--token");
+		xstrfmtcat(script_argv[6], "%u", job_ptr->job_id);
+		script_argv[7] = xstrdup("--pathfile");
+		xstrfmtcat(script_argv[8], "%s/path", job_dir);
+		path_file = script_argv[8];
+		START_TIMER;
+		resp_msg = bb_run_script("paths",
+					 bb_state.bb_config.get_sys_state,
+					 script_argv, timeout, &status);
+		END_TIMER;
+		if ((DELTA_TIMER > 200000) ||	/* 0.2 secs */
+		    bb_state.bb_config.debug_flag)
+			info("%s: paths ran for %s", __func__, TIME_STR);
+		_log_script_argv(script_argv, resp_msg);
 #if 1
-	//FIXME: Cray API returning valid response, but exit 1 in some cases
-	if ((!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) &&
-	    (resp_msg && !strncmp(resp_msg, "job_file_valid True", 19))) {
-		error("%s: paths for job %u status:%u response:%s",
-		      __func__, job_ptr->job_id, status, resp_msg);
-		_update_job_env(job_ptr, path_file);
-	} else
+		//FIXME: Cray API returning "job_file_valid True" but exit 1 in some cases
+		if ((!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) &&
+		    (!resp_msg || strncmp(resp_msg, "job_file_valid True", 19))) {
+#else
+		if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
 #endif
-	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
-		error("%s: paths for job %u status:%u response:%s",
-		      __func__, job_ptr->job_id, status, resp_msg);
-		rc = ESLURM_INVALID_BURST_BUFFER_REQUEST;
-	} else {
-		_update_job_env(job_ptr, path_file);
+			error("%s: paths for job %u status:%u response:%s",
+			      __func__, job_ptr->job_id, status, resp_msg);
+			rc = ESLURM_INVALID_BURST_BUFFER_REQUEST;
+		} else {
+			_update_job_env(job_ptr, path_file);
+		}
+		xfree(resp_msg);
+		_free_script_argv(script_argv);
 	}
-	xfree(resp_msg);
-	_free_script_argv(script_argv);
 
 	pre_run_argv = xmalloc(sizeof(char *) * 10);
 	pre_run_argv[0] = xstrdup("dw_wlm_cli");
@@ -3234,7 +3233,7 @@ static void _kill_job(struct job_record *job_ptr)
 	job_ptr->priority = 0;	/* Hold job */
 	build_cg_bitmap(job_ptr);
 	job_ptr->exit_code = 1;
-	job_ptr->state_reason = WAIT_HELD;
+	job_ptr->state_reason = FAIL_BURST_BUFFER_OP;
 	xfree(job_ptr->state_desc);
 	job_ptr->state_desc = xstrdup("Burst buffer pre_run error");
 	job_completion_logger(job_ptr, false);
@@ -3296,9 +3295,9 @@ static void *_start_pre_run(void *x)
 		}
 		_queue_teardown(pre_run_args->job_id, pre_run_args->user_id,
 				true);
-	} else {
-		prolog_running_decr(job_ptr);
 	}
+	if (job_ptr)
+		prolog_running_decr(job_ptr);
 	pthread_mutex_unlock(&bb_state.bb_mutex);
 	if (run_kill_job)
 		_kill_job(job_ptr);
