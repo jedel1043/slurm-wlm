@@ -356,7 +356,6 @@ spawn_resp_send_to_stepd(spawn_resp_t *resp, char *node)
 	Buf buf;
 	int rc;
 	uint16_t cmd;
-	hostlist_t hl;
 
 	buf = init_buf(1024);
 
@@ -364,11 +363,9 @@ spawn_resp_send_to_stepd(spawn_resp_t *resp, char *node)
 	pack16(cmd, buf);
 	spawn_resp_pack(resp, buf);
 
-	hl = hostlist_create(node);
-	rc = tree_msg_to_stepds(hl, 
+	rc = slurm_forward_data(&node, tree_sock_addr,
 				get_buf_offset(buf),
 				get_buf_data(buf));
-	hostlist_destroy(hl);
 	free_buf(buf);
 	return rc;
 }
@@ -483,25 +480,25 @@ _exec_srun_single(spawn_req_t *req, char **env)
 	for (i = 0; i < subcmd->info_cnt; i ++) {
 		if (0) {
 
-		} else if (! strcmp(subcmd->info_keys[i], "host")) {
+		} else if (! xstrcmp(subcmd->info_keys[i], "host")) {
 			xstrfmtcat(argv[j ++], "--nodelist=%s",
 				   subcmd->info_vals[i]);
 
-		} else if (! strcmp(subcmd->info_keys[i], "arch")) {
+		} else if (! xstrcmp(subcmd->info_keys[i], "arch")) {
 			error("mpi/pmi2: spawn info key 'arch' not supported");
 
-		} else if (! strcmp(subcmd->info_keys[i], "wdir")) {
+		} else if (! xstrcmp(subcmd->info_keys[i], "wdir")) {
 			xstrfmtcat(argv[j ++], "--chdir=%s",
 				   subcmd->info_vals[i]);
 
-		} else if (! strcmp(subcmd->info_keys[i], "path")) {
+		} else if (! xstrcmp(subcmd->info_keys[i], "path")) {
 			env_array_overwrite_fmt(&env, "PATH", "%s",
 						subcmd->info_vals[i]);
 
-		} else if (! strcmp(subcmd->info_keys[i], "file")) {
+		} else if (! xstrcmp(subcmd->info_keys[i], "file")) {
 			error("mpi/pmi2: spawn info key 'file' not supported");
 
-		} else if (! strcmp(subcmd->info_keys[i], "soft")) {
+		} else if (! xstrcmp(subcmd->info_keys[i], "soft")) {
 			error("mpi/pmi2: spawn info key 'soft' not supported");
 
 		} else {

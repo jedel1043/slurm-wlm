@@ -1,6 +1,5 @@
 /*****************************************************************************\
  *  src/plugins/task/affinity/affinity.c - task affinity plugin
- *  $Id: affinity.c,v 1.2 2005/11/04 02:46:51 palermo Exp $
  *****************************************************************************
  *  Copyright (C) 2005-2006 Hewlett-Packard Development Company, L.P.
  *
@@ -235,7 +234,7 @@ int get_cpuset(cpu_set_t *mask, stepd_step_rec_t *job)
 
 	if (job->cpu_bind_type & CPU_BIND_MAP) {
 		unsigned int mycpu = 0;
-		if (strncmp(mstr, "0x", 2) == 0) {
+		if (xstrncmp(mstr, "0x", 2) == 0) {
 			mycpu = strtoul (&(mstr[2]), NULL, 16);
 		} else {
 			mycpu = strtoul (mstr, NULL, 10);
@@ -280,7 +279,7 @@ int get_cpuset(cpu_set_t *mask, stepd_step_rec_t *job)
 		 * domain. Otherwise bind this task to the given
 		 * socket */
 		uint32_t myldom = 0;
-		if (strncmp(mstr, "0x", 2) == 0) {
+		if (xstrncmp(mstr, "0x", 2) == 0) {
 			myldom = strtoul (&(mstr[2]), NULL, 16);
 		} else {
 			myldom = strtoul (mstr, NULL, 10);

@@ -211,12 +211,12 @@ extern int slurm_select_init(bool only_default)
 		/* just ignore warnings here */
 	} else {
 #ifdef HAVE_BG
-		if (strcasecmp(type, "select/bluegene")) {
+		if (xstrcasecmp(type, "select/bluegene")) {
 			error("%s is incompatible with BlueGene", type);
 			fatal("Use SelectType=select/bluegene");
 		}
 #else
-		if (!strcasecmp(type, "select/bluegene")) {
+		if (!xstrcasecmp(type, "select/bluegene")) {
 			fatal("Requested SelectType=select/bluegene "
 			      "in slurm.conf, but not running on a BG[L|P|Q] "
 			      "system.  If looking to emulate a BG[L|P|Q] "
@@ -226,13 +226,13 @@ extern int slurm_select_init(bool only_default)
 #endif
 
 #ifdef HAVE_ALPS_CRAY
-		if (strcasecmp(type, "select/alps")) {
+		if (xstrcasecmp(type, "select/alps")) {
 			error("%s is incompatible with Cray system "
 			      "running alps", type);
 			fatal("Use SelectType=select/alps");
 		}
 #else
-		if (!strcasecmp(type, "select/alps")) {
+		if (!xstrcasecmp(type, "select/alps")) {
 			fatal("Requested SelectType=select/alps "
 			      "in slurm.conf, but not running on a ALPS Cray "
 			      "system.  If looking to emulate a Alps Cray "
@@ -241,13 +241,13 @@ extern int slurm_select_init(bool only_default)
 #endif
 
 #ifdef HAVE_NATIVE_CRAY
-		if (strcasecmp(type, "select/cray")) {
+		if (xstrcasecmp(type, "select/cray")) {
 			error("%s is incompatible with a native Cray system.",
 			      type);
 			fatal("Use SelectType=select/cray");
 		}
 #else
-		/* if (!strcasecmp(type, "select/cray")) { */
+		/* if (!xstrcasecmp(type, "select/cray")) { */
 		/* 	fatal("Requested SelectType=select/cray " */
 		/* 	      "in slurm.conf, but not running on a native Cray " */
 		/* 	      "system.  If looking to run on a Cray " */
@@ -295,7 +295,7 @@ extern int slurm_select_init(bool only_default)
 			if (!(e = readdir( dirp )))
 				break;
 			/* Check only files with select_ in them. */
-			if (strncmp(e->d_name, "select_", 7))
+			if (xstrncmp(e->d_name, "select_", 7))
 				continue;
 
 			len = strlen(e->d_name);
@@ -305,7 +305,7 @@ extern int slurm_select_init(bool only_default)
 			len -= 3;
 #endif
 			/* Check only shared object files */
-			if (strcmp(e->d_name+len,
+			if (xstrcmp(e->d_name+len,
 #if defined(__CYGWIN__)
 				   ".dll"
 #else
@@ -318,8 +318,8 @@ extern int slurm_select_init(bool only_default)
 			xassert(len<sizeof(full_name));
 			snprintf(full_name, len, "select/%s", e->d_name+7);
 			for (j=0; j<select_context_cnt; j++) {
-				if (!strcmp(full_name,
-					    select_context[j]->type))
+				if (!xstrcmp(full_name,
+					     select_context[j]->type))
 					break;
 			}
 			if (j >= select_context_cnt) {
@@ -339,7 +339,7 @@ extern int slurm_select_init(bool only_default)
 						sizeof(node_select_syms));
 				if (select_context[select_context_cnt]) {
 					/* set the default */
-					if (!strcmp(full_name, type))
+					if (!xstrcmp(full_name, type))
 						select_context_default =
 							select_context_cnt;
 					select_context_cnt++;
@@ -768,14 +768,16 @@ extern int select_g_step_start(struct step_record *step_ptr)
 /*
  * clear what happened in select_g_step_pick_nodes
  * IN/OUT step_ptr - Flush the resources from the job and step.
+ * IN killing_step - if true then we are just starting to kill the step
+ *                   if false, the step is completely terminated
  */
-extern int select_g_step_finish(struct step_record *step_ptr)
+extern int select_g_step_finish(struct step_record *step_ptr, bool killing_step)
 {
 	if (slurm_select_init(0) < 0)
 		return SLURM_ERROR;
 
 	return (*(ops[select_context_default].step_finish))
-		(step_ptr);
+		(step_ptr, killing_step);
 }
 
 extern int select_g_pack_select_info(time_t last_query_time,

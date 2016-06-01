@@ -174,6 +174,19 @@ static void hwloc_children(hwloc_topology_t topology, hwloc_obj_t obj,
 }
 #endif
 
+/* Return the number of cores which are decentdents of the given objecdt */
+static int _core_child_count(hwloc_topology_t topology, hwloc_obj_t obj)
+{
+	int count = 0, i;
+
+	if (obj->type == HWLOC_OBJ_CORE)
+		return 1;
+
+	for (i = 0; i < obj->arity; i++)
+		count += _core_child_count(topology, obj->children[i]);
+	return count;
+}
+
 extern int
 get_cpuinfo(uint16_t *p_cpus, uint16_t *p_boards,
 	    uint16_t *p_sockets, uint16_t *p_cores, uint16_t *p_threads,
@@ -247,7 +260,17 @@ get_cpuinfo(uint16_t *p_cpus, uint16_t *p_boards,
 		actual_boards = MAX(hwloc_get_nbobjs_by_depth(topology, depth),
 				    1);
 	}
-	nobj[SOCKET] = hwloc_get_nbobjs_by_type(topology, objtype[SOCKET]);
+
+	/* Count sockets/NUMA containing any cores.
+	 * KNL NUMA with no cores are NOT counted. */
+	nobj[SOCKET] = 0;
+	depth = hwloc_get_type_depth(topology, objtype[SOCKET]);
+	for (i = 0; i < hwloc_get_nbobjs_by_depth(topology, depth); i++) {
+		obj = hwloc_get_obj_by_depth(topology, depth, i);
+		if ((obj->type == objtype[SOCKET]) &&
+		    (_core_child_count(topology, obj) > 0))
+			nobj[SOCKET]++;
+	}
 	nobj[CORE]   = hwloc_get_nbobjs_by_type(topology, objtype[CORE]);
 	/*
 	 * Workaround for hwloc
@@ -271,10 +294,19 @@ get_cpuinfo(uint16_t *p_cpus, uint16_t *p_boards,
 	info("CORE = %d SOCKET = %d actual_cpus = %d nobj[CORE] = %d",
 	     CORE, SOCKET, actual_cpus, nobj[CORE]);
 #endif
-	nobj[PU]     = actual_cpus/nobj[CORE];  /* threads per core */
-	nobj[CORE]  /= nobj[SOCKET];            /* cores per socket */
+	if ((actual_cpus % nobj[CORE]) != 0) {
+		error("Thread count (%d) not multiple of core count (%d)",
+		      actual_cpus, nobj[CORE]);
+	}
+	nobj[PU] = actual_cpus / nobj[CORE];	/* threads per core */
 
-	debug("CPUs:%d Boards:%u Sockets:%d CoresPerSocket:%d ThreadsPerCore:%d",
+	if ((nobj[CORE] % nobj[SOCKET]) != 0) {
+		error("Core count (%d) not multiple of socket count (%d)",
+		      nobj[CORE], nobj[SOCKET]);
+	}
+	nobj[CORE] /= nobj[SOCKET];		/* cores per socket */
+
+	debug("CPUs:%d Boards:%d Sockets:%d CoresPerSocket:%d ThreadsPerCore:%d",
 	      actual_cpus, actual_boards, nobj[SOCKET], nobj[CORE], nobj[PU]);
 
 	/* allocate block_map */
@@ -436,7 +468,7 @@ get_cpuinfo(uint16_t *p_cpus, uint16_t *p_boards,
 #if defined (__sun)
 	ksp = kstat_lookup(kc, "cpu_info", -1, NULL);
 	for (; ksp != NULL; ksp = ksp->ks_next) {
-		if (strcmp(ksp->ks_module, "cpu_info"))
+		if (xstrcmp(ksp->ks_module, "cpu_info"))
 			continue;
 
 		numcpu++;
@@ -678,7 +710,7 @@ get_cpuinfo(uint16_t *p_cpus, uint16_t *p_boards,
 static int _chk_cpuinfo_str(char *buffer, char *keyword, char **valptr)
 {
 	char *ptr;
-	if (strncmp(buffer, keyword, strlen(keyword)))
+	if (xstrncmp(buffer, keyword, strlen(keyword)))
 		return false;
 
 	ptr = strstr(buffer, ":");

@@ -71,6 +71,12 @@
 
 #include <sys/resource.h>
 
+/* FIXME: Come up with a real solution for EUID instead of substituting RUID */
+#if defined(__NetBSD__)
+#define eaccess(p,m) (access((p),(m)))
+#define HAVE_EACCESS 1
+#endif
+
 #include "slurm/slurm_errno.h"
 
 #include "src/common/checkpoint.h"
@@ -121,13 +127,13 @@ static void _proc_stdout(char *buf, stepd_step_rec_t *job)
 			end_line = buf_ptr + strlen(buf_ptr);
 			end_buf = true;
 		}
-		if (!strncmp(buf_ptr, "print ", 6)) {
+		if (!xstrncmp(buf_ptr, "print ", 6)) {
 			buf_ptr += 6;
 			while (isspace(buf_ptr[0]))
 				buf_ptr++;
 			len = end_line - buf_ptr + 1;
 			safe_write(1, buf_ptr, len);
-		} else if (!strncmp(buf_ptr, "export ",7)) {
+		} else if (!xstrncmp(buf_ptr, "export ",7)) {
 			name_ptr = buf_ptr + 7;
 			while (isspace(name_ptr[0]))
 				name_ptr++;
@@ -139,7 +145,7 @@ static void _proc_stdout(char *buf, stepd_step_rec_t *job)
 				equal_ptr--;
 			equal_ptr[0] = '\0';
 			end_line[0] = '\0';
-			if (!strcmp(name_ptr, "SLURM_PROLOG_CPU_MASK")) {
+			if (!xstrcmp(name_ptr, "SLURM_PROLOG_CPU_MASK")) {
 				job->cpu_bind_type = CPU_BIND_MASK;
 				xfree(job->cpu_bind);
 				job->cpu_bind = xstrdup(val_ptr);
@@ -159,7 +165,7 @@ static void _proc_stdout(char *buf, stepd_step_rec_t *job)
 				end_line[0] = '\0';
 			else
 				end_line[0] = '\n';
-		} else if (!strncmp(buf_ptr, "unset ", 6)) {
+		} else if (!xstrncmp(buf_ptr, "unset ", 6)) {
 			name_ptr = buf_ptr + 6;
 			while (isspace(name_ptr[0]))
 				name_ptr++;
@@ -247,7 +253,7 @@ _run_script_and_set_env(const char *name, const char *path,
 	close(pfd[1]);
 	f = fdopen(pfd[0], "r");
 	if (f == NULL) {
-		error("Cannot open pipe device");
+		error("Cannot open pipe device: %m");
 		log_fini();
 		exit(1);
 	}
@@ -274,10 +280,9 @@ _run_script_and_set_env(const char *name, const char *path,
 	/* NOTREACHED */
 }
 
-/* Given a program name, translate it to a fully qualified pathname
- * as needed based upon the PATH environment variable */
-static char *
-_build_path(char* fname, char **prog_env)
+/* Given a program name, translate it to a fully qualified pathname as needed
+ * based upon the PATH environment variable and current working directory */
+extern char *build_path(char* fname, char **prog_env, char *cwd)
 {
 	int i;
 	char *path_env = NULL, *dir;
@@ -288,7 +293,7 @@ _build_path(char* fname, char **prog_env)
 	file_name = (char *)xmalloc(len);
 	/* make copy of file name (end at white space) */
 	snprintf(file_name, len, "%s", fname);
-	for (i=0; i < len; i++) {
+	for (i = 0; i < len; i++) {
 		if (file_name[i] == '\0')
 			break;
 		if (!isspace(file_name[i]))
@@ -302,20 +307,24 @@ _build_path(char* fname, char **prog_env)
 		return file_name;
 	if (file_name[0] == '.') {
 		file_path = (char *)xmalloc(len);
-		dir = (char *)xmalloc(len);
-		if (!getcwd(dir, len))
-			error("getcwd failed: %m");
-		snprintf(file_path, len, "%s/%s", dir, file_name);
+		if (cwd) {
+			snprintf(file_path, len, "%s/%s", cwd, file_name);
+		} else {
+			dir = (char *)xmalloc(len);
+			if (!getcwd(dir, len))
+				error("getcwd failed: %m");
+			snprintf(file_path, len, "%s/%s", dir, file_name);
+			xfree(dir);
+		}
 		xfree(file_name);
-		xfree(dir);
 		return file_path;
 	}
 
 	/* search for the file using PATH environment variable */
-	for (i=0; ; i++) {
+	for (i = 0; ; i++) {
 		if (prog_env[i] == NULL)
 			return file_name;
-		if (strncmp(prog_env[i], "PATH=", 5))
+		if (xstrncmp(prog_env[i], "PATH=", 5))
 			continue;
 		path_env = xstrdup(&prog_env[i][5]);
 		break;
@@ -420,7 +429,7 @@ exec_task(stepd_step_rec_t *job, int i)
 		 * is left up to the server to search the PATH for the
 		 * executable.
 		 */
-		task->argv[0] = _build_path(task->argv[0], job->env);
+		task->argv[0] = build_path(task->argv[0], job->env, NULL);
 	}
 
 	if (!job->batch) {
@@ -443,7 +452,7 @@ exec_task(stepd_step_rec_t *job, int i)
 
 	/* task plugin hook */
 	if (task_g_pre_launch(job)) {
-		error("Failed to invoke task plugins: one of task_p_pre_launch functions returned error");
+		error("Failed to invoke task plugins: task_p_pre_launch error");
 		exit(1);
 	}
 	if (!job->batch && job->accel_bind_type) {
@@ -458,9 +467,9 @@ exec_task(stepd_step_rec_t *job, int i)
 		env_array_free(tmp_env);
 	}
 
-	if (spank_user_task (job, i) < 0) {
-		error ("Failed to invoke spank plugin stack");
-		exit (1);
+	if (spank_user_task(job, i) < 0) {
+		error("Failed to invoke spank plugin stack");
+		exit(1);
 	}
 
 	if (conf->task_prolog) {
@@ -518,7 +527,7 @@ exec_task(stepd_step_rec_t *job, int i)
 		char buf[256], *eol;
 		int sz;
 		sz = read(fd, buf, sizeof(buf));
-		if ((sz >= 3) && (strncmp(buf, "#!", 2) == 0)) {
+		if ((sz >= 3) && (xstrncmp(buf, "#!", 2) == 0)) {
 			eol = strchr(buf, '\n');
 			if (eol)
 				eol[0] = '\0';

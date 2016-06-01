@@ -583,7 +583,7 @@ static int _parse_line(char *f[], void **data, int len)
 			if (isspace((*job)->nodes[i]))
 				(*job)->nodes[i] = '\0';
 		}
-		if (!strcmp((*job)->nodes, "(null)")) {
+		if (!xstrcmp((*job)->nodes, "(null)")) {
 			xfree((*job)->nodes);
 			(*job)->nodes = xstrdup("(unknown)");
 		}
@@ -799,7 +799,7 @@ static void _process_step(List job_list, char *f[], int lc,
 		if (list_count(job->steps) > 1)
 			job->track_steps = 1;
 		else if (step && step->stepname && job->jobname) {
-			if (strcmp(step->stepname, job->jobname))
+			if (xstrcmp(step->stepname, job->jobname))
 				job->track_steps = 1;
 		}
 	}
@@ -808,7 +808,7 @@ static void _process_step(List job_list, char *f[], int lc,
 		job->header.timestamp = step->header.timestamp;
 	job->job_step_seen = 1;
 	job->ntasks += step->ntasks;
-	if (!job->nodes || !strcmp(job->nodes, "(unknown)")) {
+	if (!job->nodes || !xstrcmp(job->nodes, "(unknown)")) {
 		xfree(job->nodes);
 		job->nodes = xstrdup(step->nodes);
 	}
@@ -1004,7 +1004,7 @@ extern List filetxt_jobacct_process_get_jobs(slurmdb_job_cond_t *job_cond)
 		    && list_count(job_cond->jobname_list)) {
 			itr = list_iterator_create(job_cond->jobname_list);
 			while((object = list_next(itr))) {
-				if (!strcasecmp(f[F_JOBNAME], object)) {
+				if (!xstrcasecmp(f[F_JOBNAME], object)) {
 					list_iterator_destroy(itr);
 					goto foundjobname;
 				}
@@ -1043,7 +1043,7 @@ extern List filetxt_jobacct_process_get_jobs(slurmdb_job_cond_t *job_cond)
 		    && list_count(job_cond->partition_list)) {
 			itr = list_iterator_create(job_cond->partition_list);
 			while((object = list_next(itr)))
-				if (!strcasecmp(f[F_PARTITION], object)) {
+				if (!xstrcasecmp(f[F_PARTITION], object)) {
 					list_iterator_destroy(itr);
 					goto foundp;
 				}
@@ -1253,7 +1253,8 @@ extern int filetxt_jobacct_process_archive(slurmdb_archive_cond_t *arch_cond)
 				itr = list_iterator_create(
 					job_cond->partition_list);
 				while((object = list_next(itr)))
-					if (!strcasecmp(f[F_PARTITION], object))
+					if (!xstrcasecmp(f[F_PARTITION],
+							 object))
 						break;
 
 				list_iterator_destroy(itr);

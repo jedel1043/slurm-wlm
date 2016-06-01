@@ -1,7 +1,5 @@
 /*****************************************************************************\
- *  $Id$
- *****************************************************************************
- *  $LSDId: hostlist.c,v 1.14 2003/10/14 20:11:54 grondo Exp $
+ *  hostlist.c
  *****************************************************************************
  *  Copyright (C) 2002 The Regents of the University of California.
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
@@ -78,6 +76,7 @@
 #include "src/common/working_cluster.h"
 #include "src/common/xassert.h"
 #include "src/common/xmalloc.h"
+#include "src/common/xstring.h"
 
 /*
  * Define slurm-specific aliases for use by plugins, see slurm_xlator.h
@@ -863,7 +862,7 @@ static hostrange_t hostrange_delete_host(hostrange_t hr, unsigned long n)
 
 /* hostrange_cmp() is used to sort hostrange objects. It will
  * sort based on the following (in order):
- *  o result of strcmp on prefixes
+ *  o result of xstrcmp on prefixes
  *  o if widths are compatible, then:
  *       sort based on lowest suffix in range
  *    else
@@ -1118,7 +1117,7 @@ static int hostrange_hn_within(hostrange_t hr, hostname_t hn)
 		 *   which case we return true. Otherwise, there is no
 		 *   possibility that [hn] matches [hr].
 		 */
-		if (strcmp (hn->hostname, hr->prefix) == 0)
+		if (xstrcmp (hn->hostname, hr->prefix) == 0)
 			return 1;
 		else
 			return 0;
@@ -1136,7 +1135,7 @@ static int hostrange_hn_within(hostrange_t hr, hostname_t hn)
 	 *  If hostrange and hostname prefixes don't match, then
 	 *   there is way the hostname falls within the range [hr].
 	 */
-	if (strcmp(hr->prefix, hn->prefix) != 0) {
+	if (xstrcmp(hr->prefix, hn->prefix) != 0) {
 		int len1, len2, ldiff;
 		int dims = slurmdb_setup_cluster_name_dims();
 
@@ -1180,7 +1179,7 @@ static int hostrange_hn_within(hostrange_t hr, hostname_t hn)
 			hn->num = strtoul(hn->suffix, NULL, 10);
 
 			/* Now compare them and see if they match */
-			if (strcmp(hr->prefix, hn->prefix) != 0)
+			if (xstrcmp(hr->prefix, hn->prefix) != 0)
 				return 0;
 		} else
 			return 0;
@@ -1606,7 +1605,7 @@ hostlist_t _hostlist_create(const char *hostlist, char *sep, char *r_op,
 			 */
 			if (pos > 0) {
 				if (pos != strlen(prefix) ||
-				    strncmp(prefix, tok, pos) != 0)
+				    xstrncmp(prefix, tok, pos) != 0)
 					error = 1;
 			}
 
