@@ -1,0 +1,17 @@
+Description: Fix typo in the scontrol man page
+ Fix a typo in the scontrol man page
+Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+Bug: https://bugs.schedmd.com/show_bug.cgi?id=2785
+Last-Update: <2016-06-01>
+
+--- slurm-llnl-16.05.0.orig/doc/man/man1/scontrol.1
++++ slurm-llnl-16.05.0/doc/man/man1/scontrol.1
+@@ -986,7 +986,7 @@ value.
+ Also see \fIAvailableFeatures\fP.
+ Typically \fIActiveFeatures\fP will be identical to \fIAvailableFeatures\fP;
+ however \fIActiveFeatures\fP may be configured as a subset of the
+-\fIAvailableFeatures\fP. For example, a node may be booted in mulitple
++\fIAvailableFeatures\fP. For example, a node may be booted in multiple
+ configurations. In that case, all possible configurations may be identified as
+ \fIAvailableFeatures\fP, while \fIActiveFeatures\fP would identify the current
+ node configuration.
