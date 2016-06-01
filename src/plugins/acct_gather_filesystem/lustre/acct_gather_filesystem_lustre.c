@@ -184,8 +184,8 @@ static int _read_lustre_counters(void)
 		bool bread;
 		bool bwrote;
 
-		if (strcmp(entry->d_name, ".") == 0
-		    || strcmp(entry->d_name, "..") == 0)
+		if (xstrcmp(entry->d_name, ".") == 0
+		    || xstrcmp(entry->d_name, "..") == 0)
 			continue;
 
 		snprintf(path_stats, PATH_MAX - 1, "%s/%s/stats", lustre_dir,
@@ -310,6 +310,7 @@ static int _update_node_filesystem(void)
 		if (dataset_id == SLURM_ERROR) {
 			error("FileSystem: Failed to create the dataset "
 			      "for Lustre");
+			slurm_mutex_unlock(&lustre_lock);
 			return SLURM_ERROR;
 		}
 

@@ -310,8 +310,10 @@ static void _add_tres_2_list(List tres_list, char *tres_str, int seconds)
 /* This will destroy the *loc_tres given after it is transfered */
 static void _transfer_loc_tres(List *loc_tres, local_id_usage_t *usage)
 {
-	if (!usage)
+	if (!usage) {
+		FREE_NULL_LIST(*loc_tres);
 		return;
+	}
 
 	if (!usage->loc_tres) {
 		usage->loc_tres = *loc_tres;
@@ -1600,9 +1602,18 @@ end_it:
 
 	/* go check to see if we archive and purge */
 
-	if (rc == SLURM_SUCCESS)
-		rc = _process_purge(mysql_conn, cluster_name, archive_data,
-				    SLURMDB_PURGE_HOURS);
+	if (rc == SLURM_SUCCESS) {
+		if (mysql_db_commit(mysql_conn)) {
+			char start[25], end[25];
+			error("Couldn't commit cluster (%s) "
+			      "hour rollup for %s - %s",
+			      cluster_name, slurm_ctime2_r(&curr_start, start),
+			      slurm_ctime2_r(&curr_end, end));
+			rc = SLURM_ERROR;
+		} else
+			rc = _process_purge(mysql_conn, cluster_name,
+					    archive_data, SLURMDB_PURGE_HOURS);
+	}
 
 	return rc;
 }

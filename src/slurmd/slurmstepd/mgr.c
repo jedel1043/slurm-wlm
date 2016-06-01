@@ -1,6 +1,5 @@
 /*****************************************************************************\
  *  src/slurmd/slurmstepd/mgr.c - job manager functions for slurmstepd
- *  $Id$
  *****************************************************************************
  *  Copyright (C) 2002-2007 The Regents of the University of California.
  *  Copyright (C) 2008-2009 Lawrence Livermore National Security.
@@ -660,7 +659,7 @@ _random_sleep(stepd_step_rec_t *job)
 {
 #if !defined HAVE_FRONT_END
 	long int delay = 0;
-	long int max   = (3 * job->nnodes);
+	long int max   = (slurm_get_tcp_timeout() * job->nnodes);
 
 	srand48((long int) (job->jobid + job->nodeid));
 
@@ -697,7 +696,7 @@ _send_exit_msg(stepd_step_rec_t *job, uint32_t *tid, int n, int status)
 	 *  Hack for TCP timeouts on exit of large, synchronized job
 	 *  termination. Delay a random amount if job->nnodes > 100
 	 */
-	if (job->nnodes > 100)
+	if (job->nnodes > 500)
 		_random_sleep(job);
 
 	/*
@@ -731,7 +730,7 @@ _wait_for_children_slurmstepd(stepd_step_rec_t *job)
 	int rc;
 	struct timespec ts = {0, 0};
 
-	pthread_mutex_lock(&step_complete.lock);
+	slurm_mutex_lock(&step_complete.lock);
 
 	/* wait an extra 3 seconds for every level of tree below this level */
 	if (step_complete.children > 0) {
@@ -763,7 +762,7 @@ _wait_for_children_slurmstepd(stepd_step_rec_t *job)
 	step_complete.step_rc = _get_exit_code(job);
 	step_complete.wait_children = false;
 
-	pthread_mutex_unlock(&step_complete.lock);
+	slurm_mutex_unlock(&step_complete.lock);
 }
 
 /*
@@ -843,7 +842,7 @@ _one_step_complete_msg(stepd_step_rec_t *job, int first, int last)
 		/* this is the base of the tree, but we are doing
 		 * message aggr so send it to the slurmd to handle */
 		req.msg_type = REQUEST_STEP_COMPLETE_AGGR;
-		slurm_set_addr_char(&req.address, conf->port, "localhost");
+		slurm_set_addr_char(&req.address, conf->port, conf->hostname);
 		for (i = 0; i <= REVERSE_TREE_PARENT_RETRY; i++) {
 			if (i)
 				sleep(1);
@@ -934,7 +933,7 @@ _send_step_complete_msgs(stepd_step_rec_t *job)
 	int first = -1, last = -1;
 	bool sent_own_comp_msg = false;
 
-	pthread_mutex_lock(&step_complete.lock);
+	slurm_mutex_lock(&step_complete.lock);
 	start = 0;
 	size = bit_size(step_complete.bits);
 
@@ -942,7 +941,7 @@ _send_step_complete_msgs(stepd_step_rec_t *job)
 	if (size == 0) {
 		_one_step_complete_msg(job, step_complete.rank,
 				       step_complete.rank);
-		pthread_mutex_unlock(&step_complete.lock);
+		slurm_mutex_unlock(&step_complete.lock);
 		return;
 	}
 
@@ -964,7 +963,7 @@ _send_step_complete_msgs(stepd_step_rec_t *job)
 				       step_complete.rank);
 	}
 
-	pthread_mutex_unlock(&step_complete.lock);
+	slurm_mutex_unlock(&step_complete.lock);
 }
 
 /* This dummy function is provided so that the checkpoint functions can
@@ -991,6 +990,13 @@ static int _spawn_job_container(stepd_step_rec_t *job)
 	jobacct_id_t jobacct_id;
 	int status = 0;
 	pid_t pid;
+
+	debug2("%s: Before call to spank_init()", __func__);
+	if (spank_init(job) < 0) {
+		error("%s: Plugin stack initialization failed.", __func__);
+		return SLURM_PLUGIN_NAME_INVALID;
+	}
+	debug2("%s: After call to spank_init()", __func__);
 
 	set_oom_adj(0);	/* the tasks may be killed by OOM */
 	if (task_g_pre_setuid(job)) {
@@ -1030,6 +1036,9 @@ static int _spawn_job_container(stepd_step_rec_t *job)
 	if (!conf->job_acct_gather_freq)
 		jobacct_gather_stat_task(0);
 
+	if (spank_task_post_fork(job, 0) < 0)
+		error("spank extern task post-fork failed");
+
 	while ((wait4(pid, &status, 0, &rusage) < 0) && (errno == EINTR)) {
 		;	       /* Wait until above processs exits from signal */
 	}
@@ -1062,6 +1071,11 @@ static int _spawn_job_container(stepd_step_rec_t *job)
 	/* Notify srun of completion AFTER frequency reset to avoid race
 	 * condition starting another job on these CPUs. */
 	while (_send_pending_exit_msgs(job)) {;}
+
+	debug2("%s: Before call to spank_fini()", __func__);
+	if (spank_fini(job) < 0)
+		error("spank_fini failed");
+	debug2("%s: After call to spank_fini()", __func__);
 
 	return SLURM_SUCCESS;
 }
@@ -1246,6 +1260,12 @@ job_manager(stepd_step_rec_t *job)
 
 	/* Send job launch response with list of pids */
 	_send_launch_resp(job, 0);
+
+#ifdef PR_SET_DUMPABLE
+	/* RHEL6 requires setting "dumpable" flag AGAIN; after euid changes */
+	if (prctl(PR_SET_DUMPABLE, 1) < 0)
+		debug ("Unable to set dumpable to 1");
+#endif /* PR_SET_DUMPABLE */
 
 	_wait_for_all_tasks(job);
 	acct_gather_profile_endpoll();
@@ -1643,6 +1663,7 @@ _fork_all_tasks(stepd_step_rec_t *job, bool *io_initialized)
 	/*
 	 * Fork all of the task processes.
 	 */
+	verbose("starting %u tasks", job->node_tasks);
 	for (i = 0; i < job->node_tasks; i++) {
 		char time_stamp[256];
 		pid_t pid;
@@ -1721,9 +1742,9 @@ _fork_all_tasks(stepd_step_rec_t *job, bool *io_initialized)
 		list_append (exec_wait_list, ei);
 
 		log_timestamp(time_stamp, sizeof(time_stamp));
-		verbose ("task %lu (%lu) started %s",
-			 (unsigned long) job->task[i]->gtid,
-			 (unsigned long) pid, time_stamp);
+		verbose("task %lu (%lu) started %s",
+			(unsigned long) job->task[i]->gtid,
+			(unsigned long) pid, time_stamp);
 
 		job->task[i]->pid = pid;
 		if (i == 0)
@@ -1847,12 +1868,13 @@ _send_pending_exit_msgs(stepd_step_rec_t *job)
 	int  nsent  = 0;
 	int  status = 0;
 	bool set    = false;
-	uint32_t  tid[job->node_tasks];
+	uint32_t *tid;
 
 	/*
 	 * Collect all exit codes with the same status into a
 	 * single message.
 	 */
+	tid = xmalloc(sizeof(uint32_t) * job->node_tasks);
 	for (i = 0; i < job->node_tasks; i++) {
 		stepd_step_task_info_t *t = job->task[i];
 
@@ -1873,6 +1895,7 @@ _send_pending_exit_msgs(stepd_step_rec_t *job)
 		debug2("Aggregated %d task exit messages", nsent);
 		_send_exit_msg(job, tid, nsent, status);
 	}
+	xfree(tid);
 
 	return nsent;
 }
@@ -2316,7 +2339,7 @@ _send_complete_batch_script_msg(stepd_step_rec_t *job, int err, int status)
 		msg_to_ctld = 0;
 	else {
 		select_type = slurm_get_select_type();
-		msg_to_ctld = strcmp(select_type, "select/serial");
+		msg_to_ctld = xstrcmp(select_type, "select/serial");
 		xfree(select_type);
 	}
 
@@ -2343,7 +2366,7 @@ _send_complete_batch_script_msg(stepd_step_rec_t *job, int err, int status)
 			 * may get a new job to launch */
 			if (i == 0) {
 				slurm_set_addr_char(&req_msg.address,
-						    conf->port, "localhost");
+						    conf->port, conf->hostname);
 			}
 			msg_rc = slurm_send_recv_rc_msg_only_one(&req_msg,
 								 &rc, 0);
@@ -2604,7 +2627,7 @@ _get_primary_group(const char *user, gid_t *gid)
 	int cc;
 
 	cc = getpwnam_r(user, &pwd, buf, sizeof(buf), &pwd0);
-	if (cc != 0) {
+	if ((cc != 0) || (pwd0 == NULL)) {
 		error("%s: getpwnam_r() failed: %m", __func__);
 		return -1;
 	}
@@ -2795,7 +2818,7 @@ _run_script_as_user(const char *name, const char *path, stepd_step_rec_t *job,
 		while (1) {
 			execve(path, argv, env);
 			error("execve(%s): %m", path);
-			if ((errno == ENFILE) || (errno = ENOMEM)) {
+			if ((errno == ENFILE) || (errno == ENOMEM)) {
 				/* System limit on open files or memory reached,
 				 * retry after short delay */
 				sleep(1);

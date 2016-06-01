@@ -163,61 +163,6 @@ static inline int _char_to_val(int c)
 		return -1;
 }
 
-static char *_cpuset_to_str(const cpu_set_t *mask, char *str)
-{
-	int base;
-	char *ptr = str;
-	char *ret = NULL;
-
-	for (base = CPU_SETSIZE - 4; base >= 0; base -= 4) {
-		char val = 0;
-		if (CPU_ISSET(base, mask))
-			val |= 1;
-		if (CPU_ISSET(base + 1, mask))
-			val |= 2;
-		if (CPU_ISSET(base + 2, mask))
-			val |= 4;
-		if (CPU_ISSET(base + 3, mask))
-			val |= 8;
-		if (!ret && val)
-			ret = ptr;
-		*ptr++ = _val_to_char(val);
-	}
-	*ptr = '\0';
-	return ret ? ret : ptr - 1;
-}
-
-static int _str_to_cpuset(cpu_set_t *mask, const char* str)
-{
-	int len = strlen(str);
-	const char *ptr = str + len - 1;
-	int base = 0;
-
-	/* skip 0x, it's all hex anyway */
-	if (len > 1 && !memcmp(str, "0x", 2L))
-		str += 2;
-
-	CPU_ZERO(mask);
-	while (ptr >= str) {
-		char val = _char_to_val(*ptr);
-		if (val == (char) -1)
-			return -1;
-		if (val & 1)
-			CPU_SET(base, mask);
-		if (val & 2)
-			CPU_SET(base + 1, mask);
-		if (val & 4)
-			CPU_SET(base + 2, mask);
-		if (val & 8)
-			CPU_SET(base + 3, mask);
-		len--;
-		ptr--;
-		base += 4;
-	}
-
-	return 0;
-}
-
 /* when cgroups are configured with cpuset, at least
  * cpuset.cpus and cpuset.mems must be set or the cgroup
  * will not be available at all.
@@ -293,6 +238,61 @@ static int _xcgroup_cpuset_init(xcgroup_t* cg)
 }
 
 #ifdef HAVE_HWLOC
+
+static char *_cpuset_to_str(const cpu_set_t *mask, char *str)
+{
+	int base;
+	char *ptr = str;
+	char *ret = NULL;
+
+	for (base = CPU_SETSIZE - 4; base >= 0; base -= 4) {
+		char val = 0;
+		if (CPU_ISSET(base, mask))
+			val |= 1;
+		if (CPU_ISSET(base + 1, mask))
+			val |= 2;
+		if (CPU_ISSET(base + 2, mask))
+			val |= 4;
+		if (CPU_ISSET(base + 3, mask))
+			val |= 8;
+		if (!ret && val)
+			ret = ptr;
+		*ptr++ = _val_to_char(val);
+	}
+	*ptr = '\0';
+	return ret ? ret : ptr - 1;
+}
+
+static int _str_to_cpuset(cpu_set_t *mask, const char* str)
+{
+	int len = strlen(str);
+	const char *ptr = str + len - 1;
+	int base = 0;
+
+	/* skip 0x, it's all hex anyway */
+	if (len > 1 && !memcmp(str, "0x", 2L))
+		str += 2;
+
+	CPU_ZERO(mask);
+	while (ptr >= str) {
+		char val = _char_to_val(*ptr);
+		if (val == (char) -1)
+			return -1;
+		if (val & 1)
+			CPU_SET(base, mask);
+		if (val & 2)
+			CPU_SET(base + 1, mask);
+		if (val & 4)
+			CPU_SET(base + 2, mask);
+		if (val & 8)
+			CPU_SET(base + 3, mask);
+		len--;
+		ptr--;
+		base += 4;
+	}
+
+	return 0;
+}
 
 static void
 _slurm_chkaffinity(cpu_set_t *mask, stepd_step_rec_t *job, int statval)
@@ -537,7 +537,7 @@ static int _get_sched_cpuset(hwloc_topology_t topology,
 
 	if (job->cpu_bind_type & CPU_BIND_MAP) {
 		unsigned int mycpu = 0;
-		if (strncmp(mstr, "0x", 2) == 0) {
+		if (xstrncmp(mstr, "0x", 2) == 0) {
 			mycpu = strtoul (&(mstr[2]), NULL, 16);
 		} else {
 			mycpu = strtoul (mstr, NULL, 10);
@@ -580,7 +580,7 @@ static int _get_sched_cpuset(hwloc_topology_t topology,
 
 	if (job->cpu_bind_type & CPU_BIND_LDMAP) {
 		uint32_t myldom = 0;
-		if (strncmp(mstr, "0x", 2) == 0) {
+		if (xstrncmp(mstr, "0x", 2) == 0) {
 			myldom = strtoul (&(mstr[2]), NULL, 16);
 		} else {
 			myldom = strtoul (mstr, NULL, 10);
@@ -1229,7 +1229,7 @@ again:
 			   getuid(),getgid()) != XCGROUP_SUCCESS) {
 		goto error;
 	}
-	if (xcgroup_instanciate(&user_cpuset_cg) != XCGROUP_SUCCESS) {
+	if (xcgroup_instantiate(&user_cpuset_cg) != XCGROUP_SUCCESS) {
 		xcgroup_destroy(&user_cpuset_cg);
 		goto error;
 	}
@@ -1265,7 +1265,7 @@ again:
 		xcgroup_destroy(&user_cpuset_cg);
 		goto error;
 	}
-	if (xcgroup_instanciate(&job_cpuset_cg) != XCGROUP_SUCCESS) {
+	if (xcgroup_instantiate(&job_cpuset_cg) != XCGROUP_SUCCESS) {
 		xcgroup_destroy(&user_cpuset_cg);
 		xcgroup_destroy(&job_cpuset_cg);
 		goto error;
@@ -1291,7 +1291,7 @@ again:
 		xcgroup_destroy(&job_cpuset_cg);
 		goto error;
 	}
-	if (xcgroup_instanciate(&step_cpuset_cg) != XCGROUP_SUCCESS) {
+	if (xcgroup_instantiate(&step_cpuset_cg) != XCGROUP_SUCCESS) {
 		xcgroup_destroy(&user_cpuset_cg);
 		xcgroup_destroy(&job_cpuset_cg);
 		xcgroup_destroy(&step_cpuset_cg);

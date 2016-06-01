@@ -140,7 +140,7 @@ int sattach(int argc, char *argv[])
 		log_alter(logopt, 0, NULL);
 	}
 	launch_type = slurm_get_launch_type();
-	if (launch_type && strcmp(launch_type, "launch/slurm")) {
+	if (launch_type && xstrcmp(launch_type, "launch/slurm")) {
 		error("sattach does not support LaunchType=%s", launch_type);
 		exit(error_exit);
 	}
@@ -408,6 +408,7 @@ static int _attach_to_tasks(uint32_t jobid,
 
 	msg.msg_type = REQUEST_REATTACH_TASKS;
 	msg.data = &reattach_msg;
+	msg.protocol_version = layout->start_protocol_ver;
 
 	if (layout->front_end)
 		hosts = layout->front_end;
@@ -456,7 +457,7 @@ static message_thread_state_t *_msg_thr_create(int num_nodes, int num_tasks)
 
 	debug("Entering _msg_thr_create()");
 	mts = (message_thread_state_t *)xmalloc(sizeof(message_thread_state_t));
-	pthread_mutex_init(&mts->lock, NULL);
+	slurm_mutex_init(&mts->lock);
 	pthread_cond_init(&mts->cond, NULL);
 	mts->tasks_started = bit_alloc(num_tasks);
 	mts->tasks_exited = bit_alloc(num_tasks);
@@ -494,12 +495,12 @@ fail:
 static void _msg_thr_wait(message_thread_state_t *mts)
 {
 	/* Wait for all known running tasks to complete */
-	pthread_mutex_lock(&mts->lock);
+	slurm_mutex_lock(&mts->lock);
 	while (bit_set_count(mts->tasks_exited)
 	       < bit_set_count(mts->tasks_started)) {
 		pthread_cond_wait(&mts->cond, &mts->lock);
 	}
-	pthread_mutex_unlock(&mts->lock);
+	slurm_mutex_unlock(&mts->lock);
 }
 
 static void _msg_thr_destroy(message_thread_state_t *mts)
@@ -519,14 +520,14 @@ _launch_handler(message_thread_state_t *mts, slurm_msg_t *resp)
 	launch_tasks_response_msg_t *msg = resp->data;
 	int i;
 
-	pthread_mutex_lock(&mts->lock);
+	slurm_mutex_lock(&mts->lock);
 
 	for (i = 0; i < msg->count_of_pids; i++) {
 		bit_set(mts->tasks_started, msg->task_ids[i]);
 	}
 
 	pthread_cond_signal(&mts->cond);
-	pthread_mutex_unlock(&mts->lock);
+	slurm_mutex_unlock(&mts->lock);
 
 }
 
@@ -543,7 +544,7 @@ _exit_handler(message_thread_state_t *mts, slurm_msg_t *exit_msg)
 		return;
 	}
 
-	pthread_mutex_lock(&mts->lock);
+	slurm_mutex_lock(&mts->lock);
 
 	for (i = 0; i < msg->num_tasks; i++) {
 		debug("task %d done", msg->task_id_list[i]);
@@ -570,7 +571,7 @@ _exit_handler(message_thread_state_t *mts, slurm_msg_t *exit_msg)
 	}
 
 	pthread_cond_signal(&mts->cond);
-	pthread_mutex_unlock(&mts->lock);
+	slurm_mutex_unlock(&mts->lock);
 }
 
 static void
@@ -598,17 +599,14 @@ _handle_msg(void *arg, slurm_msg_t *msg)
 	case RESPONSE_LAUNCH_TASKS:
 		debug2("received task launch");
 		_launch_handler(mts, msg);
-		slurm_free_launch_tasks_response_msg(msg->data);
 		break;
 	case MESSAGE_TASK_EXIT:
 		debug2("received task exit");
 		_exit_handler(mts, msg);
-		slurm_free_task_exit_msg(msg->data);
 		break;
 	case SRUN_JOB_COMPLETE:
 		debug2("received job step complete message");
 		/* FIXME - does nothing yet */
-		slurm_free_srun_job_complete_msg(msg->data);
 		break;
 	default:
 		error("received spurious message type: %d",
