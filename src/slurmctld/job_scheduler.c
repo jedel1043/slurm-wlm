@@ -137,6 +137,7 @@ static pthread_mutex_t sched_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int sched_pend_thread = 0;
 static bool sched_running = false;
 static struct timeval sched_last = {0, 0};
+static uint32_t max_array_size = NO_VAL;
 #ifdef HAVE_ALPS_CRAY
 static int sched_min_interval = 1000000;
 #else
@@ -835,7 +836,8 @@ next_part:		part_ptr = (struct part_record *)
 			info("sched: Allocate JobId=%u Partition=%s NodeList=%s #CPUs=%u",
 			     job_ptr->job_id, job_ptr->part_ptr->name,
 			     job_ptr->nodes, job_ptr->total_cpus);
-			if (job_ptr->details->prolog_running == 0) {
+			if ((job_ptr->details->prolog_running == 0) &&
+			    ((job_ptr->bit_flags & NODE_REBOOT) == 0)) {
 				launch_msg = build_launch_job_msg(job_ptr,
 							msg->protocol_version);
 			}
@@ -1093,7 +1095,7 @@ static int _schedule(uint32_t job_limit)
 	ListIterator job_iterator = NULL, part_iterator = NULL;
 	List job_queue = NULL;
 	int failed_part_cnt = 0, failed_resv_cnt = 0, job_cnt = 0;
-	int error_code, bb, i, j, part_cnt, time_limit, pend_time;
+	int error_code, i, j, part_cnt, time_limit, pend_time;
 	uint32_t job_depth = 0, array_task_id;
 	job_queue_rec_t *job_queue_rec;
 	struct job_record *job_ptr = NULL;
@@ -1714,30 +1716,6 @@ next_task:
 
 		last_job_sched_start = MAX(last_job_sched_start,
 					   job_ptr->start_time);
-		bb = bb_g_job_test_stage_in(job_ptr, false);
-		if (bb != 1) {
-			if (bb == 0) {
-				job_ptr->state_reason =
-					WAIT_BURST_BUFFER_STAGING;
-			} else {
-				job_ptr->state_reason =
-					WAIT_BURST_BUFFER_RESOURCE;
-			}
-			if (job_ptr->start_time == 0) {
-				job_ptr->start_time = last_job_sched_start;
-				bb_wait_cnt++;
-			}
-			xfree(job_ptr->state_desc);
-			last_job_update = now;
-			debug3("sched: JobId=%u. State=%s. Reason=%s. "
-			       "Priority=%u.",
-			       job_ptr->job_id,
-			       job_state_string(job_ptr->job_state),
-			       job_reason_string(job_ptr->state_reason),
-			       job_ptr->priority);
-			continue;
-		}
-
 		if (deadline_time_limit) {
 			save_time_limit = job_ptr->time_limit;
 			job_ptr->time_limit = deadline_time_limit;
@@ -1757,6 +1735,18 @@ next_task:
 			       job_reason_string(job_ptr->state_reason),
 			       job_ptr->priority, job_ptr->partition);
 			fail_by_part = true;
+		} else if (error_code == ESLURM_BURST_BUFFER_WAIT) {
+			if (job_ptr->start_time == 0) {
+				job_ptr->start_time = last_job_sched_start;
+				bb_wait_cnt++;
+			}
+			debug3("sched: JobId=%u. State=%s. Reason=%s. "
+			       "Priority=%u.",
+			       job_ptr->job_id,
+			       job_state_string(job_ptr->job_state),
+			       job_reason_string(job_ptr->state_reason),
+			       job_ptr->priority);
+			continue;
 		} else if ((error_code == ESLURM_RESERVATION_BUSY) ||
 			   (error_code == ESLURM_RESERVATION_NOT_USABLE)) {
 			if (job_ptr->resv_ptr &&
@@ -1821,8 +1811,10 @@ next_task:
 #endif
 			if (job_ptr->batch_flag == 0)
 				srun_allocate(job_ptr->job_id);
-			else if (job_ptr->details->prolog_running == 0)
+			else if ((job_ptr->details->prolog_running == 0) &&
+			         ((job_ptr->bit_flags & NODE_REBOOT) == 0)) {
 				launch_job(job_ptr);
+			}
 			rebuild_job_part_list(job_ptr);
 			job_cnt++;
 			if (is_job_array_head &&
@@ -2645,6 +2637,75 @@ extern int test_job_dependency(struct job_record *job_ptr)
 	return results;
 }
 
+/* Given a new job dependency specification, expand job array specifications
+ * into a collection of task IDs that update_job_dependency can parse.
+ * (e.g. "after:123_[4-5]" to "after:123_4:123_5")
+ * Returns NULL if not valid job array specification.
+ * Returned value must be xfreed. */
+static char *_xlate_array_dep(char *new_depend)
+{
+	char *new_array_dep = NULL, *array_tmp, *jobid_ptr = NULL, *sep;
+	bitstr_t *array_bitmap;
+	int i;
+	uint32_t job_id;
+	int32_t t, t_first, t_last;
+
+	if (strstr(new_depend, "_[") == NULL)
+		return NULL;	/* No job array expressions */
+
+	if (max_array_size == NO_VAL) {
+		slurm_ctl_conf_t *conf;
+		conf = slurm_conf_lock();
+		max_array_size = conf->max_array_sz;
+		slurm_conf_unlock();
+	}
+
+	for (i = 0; new_depend[i]; i++) {
+		xstrfmtcat(new_array_dep, "%c", new_depend[i]);
+		if ((new_depend[i] >= '0') && (new_depend[i] <= '9')) {
+			if (jobid_ptr == NULL)
+				jobid_ptr = new_depend + i;
+		} else if ((new_depend[i] == '_') && (new_depend[i+1] == '[') &&
+			   (jobid_ptr != NULL)) {
+			job_id = (uint32_t) atol(jobid_ptr);
+			i += 2;	/* Skip over "_[" */
+			array_tmp = xstrdup(new_depend + i);
+			sep = strchr(array_tmp, ']');
+			if (sep)
+				sep[0] = '\0';
+			array_bitmap = bit_alloc(max_array_size);
+			if ((sep == NULL) ||
+			    (bit_unfmt(array_bitmap, array_tmp) != 0) ||
+			    ((t_first = bit_ffs(array_bitmap)) == -1)) {
+				/* Invalid format */
+				xfree(array_tmp);
+				bit_free(array_bitmap);
+				xfree(new_array_dep);
+				return NULL;
+			}
+			i += (sep - array_tmp);	/* Move to location of ']' */
+			xfree(array_tmp);
+			t_last = bit_fls(array_bitmap);
+			for (t = t_first; t <= t_last; t++) {
+				if (!bit_test(array_bitmap, t))
+					continue;
+				if (t == t_first) {
+					xstrfmtcat(new_array_dep, "%d", t);
+				} else {
+					xstrfmtcat(new_array_dep, ":%u_%d",
+						   job_id, t);
+				}
+			}
+			bit_free(array_bitmap);
+			jobid_ptr = NULL;
+		} else {
+			jobid_ptr = NULL;
+		}
+	}
+
+	return new_array_dep;
+}
+
 /*
  * Parse a job dependency string and use it to establish a "depend_spec"
  * list of dependencies. We accept both old format (a single job ID) and
@@ -2659,7 +2720,7 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 	uint16_t depend_type = 0;
 	uint32_t job_id = 0;
 	uint32_t array_task_id;
-	char *tok = new_depend, *sep_ptr, *sep_ptr2 = NULL;
+	char *tok, *new_array_dep, *sep_ptr, *sep_ptr2 = NULL;
 	List new_depend_list = NULL;
 	struct depend_spec *dep_ptr;
 	struct job_record *dep_job_ptr;
@@ -2680,10 +2741,12 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 	}
 
 	new_depend_list = list_create(_depend_list_del);
-
+	if ((new_array_dep = _xlate_array_dep(new_depend)))
+		tok = new_array_dep;
+	else
+		tok = new_depend;
 	/* validate new dependency string */
 	while (rc == SLURM_SUCCESS) {
-
  		/* test singleton dependency flag */
  		if ( strncasecmp(tok, "singleton", 9) == 0 ) {
 			depend_type = SLURM_DEPEND_SINGLETON;
@@ -2902,6 +2965,7 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 	} else {
 		FREE_NULL_LIST(new_depend_list);
 	}
+	xfree(new_array_dep);
 	return rc;
 }
 
@@ -3618,6 +3682,7 @@ static void *_wait_boot(void *arg)
 
 	lock_slurmctld(job_write_lock);
 	prolog_running_decr(job_ptr);
+	job_validate_mem(job_ptr);
 	unlock_slurmctld(job_write_lock);
 
 	return NULL;
@@ -3800,6 +3865,7 @@ extern void prolog_running_decr(struct job_record *job_ptr)
 
 	job_ptr->job_state &= ~JOB_CONFIGURING;
 	if (job_ptr->batch_flag &&
+	    ((job_ptr->bit_flags & NODE_REBOOT) == 0) &&
 	    (IS_JOB_RUNNING(job_ptr) || IS_JOB_SUSPENDED(job_ptr))) {
 		launch_job(job_ptr);
 	}

@@ -2057,6 +2057,13 @@ extern int select_p_job_signal(struct job_record *job_ptr, int signal)
 	return other_job_signal(job_ptr, signal);
 }
 
+extern int select_p_job_mem_confirm(struct job_record *job_ptr)
+{
+	xassert(job_ptr);
+
+	return other_job_mem_confirm(job_ptr);
+}
+
 extern int select_p_job_fini(struct job_record *job_ptr)
 {
 	select_jobinfo_t *jobinfo = job_ptr->select_jobinfo->data;
@@ -2190,7 +2197,7 @@ extern int select_p_step_start(struct step_record *step_ptr)
 #endif
 
 	jobinfo = step_ptr->job_ptr->select_jobinfo->data;
-	if (jobinfo->npc) {
+	if (jobinfo->npc && (step_ptr->step_id != SLURM_EXTERN_CONT)) {
 		int i;
 		select_jobinfo_t *step_jobinfo = step_ptr->select_jobinfo->data;
 		select_nodeinfo_t *nodeinfo;

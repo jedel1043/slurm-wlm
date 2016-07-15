@@ -868,8 +868,13 @@ static int _add_job_to_res(struct job_record *job_ptr, int action)
 				break;
 		}
 		if (!p_ptr) {
+			char *part_name;
+			if (job_ptr->part_ptr)
+				part_name = job_ptr->part_ptr->name;
+			else
+				part_name = job_ptr->partition;
 			error("cons_res: could not find cr partition %s",
-			      job_ptr->part_ptr->name);
+			      part_name);
 			return SLURM_ERROR;
 		}
 		if (!p_ptr->row) {
@@ -2329,6 +2334,42 @@ extern int select_p_job_signal(struct job_record *job_ptr, int signal)
 	return SLURM_SUCCESS;
 }
 
+extern int select_p_job_mem_confirm(struct job_record *job_ptr)
+{
+	int i_first, i_last, i, offset;
+	uint32_t avail_mem, lowest_mem = 0;
+
+	xassert(job_ptr);
+
+	if (((job_ptr->bit_flags & NODE_MEM_CALC) == 0) ||
+	    (select_fast_schedule != 0))
+		return SLURM_SUCCESS;
+	if ((job_ptr->details == NULL) ||
+	    (job_ptr->job_resrcs == NULL) ||
+	    (job_ptr->job_resrcs->node_bitmap == NULL) ||
+	    (job_ptr->job_resrcs->memory_allocated == NULL))
+		return SLURM_ERROR;
+	i_first = bit_ffs(job_ptr->job_resrcs->node_bitmap);
+	if (i_first >= 0)
+		i_last = bit_fls(job_ptr->job_resrcs->node_bitmap);
+	else
+		i_last = i_first - 1;
+	for (i = i_first, offset = 0; i <= i_last; i++) {
+		if (!bit_test(job_ptr->job_resrcs->node_bitmap, i))
+			continue;
+		avail_mem = select_node_record[i].real_memory -
+			    select_node_record[i].mem_spec_limit;
+		job_ptr->job_resrcs->memory_allocated[offset] = avail_mem;
+		select_node_usage[i].alloc_memory = avail_mem;
+		if ((offset == 0) || (lowest_mem > avail_mem))
+			lowest_mem = avail_mem;
+		offset++;
+	}
+	job_ptr->details->pn_min_memory = lowest_mem;
+
+	return SLURM_SUCCESS;
+}
+
 extern int select_p_job_fini(struct job_record *job_ptr)
 {
 	xassert(job_ptr);
@@ -2787,14 +2828,17 @@ extern int select_p_reconfigure(void)
 		} else if (_job_cleaning(job_ptr)) {
 			cleaning_job_cnt++;
 			run_time = (int) difftime(now, job_ptr->end_time);
-			info("Job %u is cleaning (Node Health Check running for %d secs)",
-			     job_ptr->job_id, run_time);
-			/* Ideally we want to avoid using this job's resources
-			 * until Node Health Check completes, but current logic
-			 * (line below commented out) will let release resources
-			 * from hung NHC for use by other jobs with
-			 * "scontrol reconfig" command. */
-			//_add_job_to_res(job_ptr, 0);
+			if (run_time >= 300) {
+				info("Job %u NHC hung for %d secs, releasing "
+				     "resources now, may underflow later)",
+				     job_ptr->job_id, run_time);
+				/* If/when NHC completes, it will release
+				 * resources that are not marked as allocated
+				 * to this job without line below. */
+				//_add_job_to_res(job_ptr, 0);
+			} else {
+				_add_job_to_res(job_ptr, 0);
+			}
 		}
 	}
 	list_iterator_destroy(job_iterator);

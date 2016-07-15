@@ -1,6 +1,90 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 16.05.2
+==========================
+ -- CRAY - Fix issue where the proctrack plugin could hang if the container
+    id wasn't able to be made.
+ -- Move test for job wait reason value of BurstBufferResources and
+    BurstBufferStageIn later in the scheduling logic.
+ -- Document which srun options apply to only job, only step, or job and step
+    allocations.
+ -- Use more compatible function to get thread name (>= 2.6.11).
+ -- Fix order of job then step id when noting cleaning flag being set.
+ -- Make it so the extern step sends a message with accounting information
+    back to the slurmctld.
+ -- Make it so the extern step calls the select_g_step_start|finish functions.
+ -- Don't print error when extern step is canceled because job is ending.
+ -- Handle a few error codes when dealing with the extern step to make sure
+    we have the pids added to the system correctly.
+ -- Add support for job dependencies with job array expressions. Previous logic
+    required listing each task of job array individually.
+ -- Make sure tres_cnt is set before creating a slurmdb_assoc_usage_t.
+ -- Prevent backfill scheduler from starting a second "singleton" job if another
+    one started during a backfill sleep.
+ -- Fix for invalid array pointer when creating advanced reservation when job
+    allocations span heterogeneous nodes (differing core or socket counts).
+ -- Fix hostlist_ranged_string_xmalloc_dims to correctly not put brackets on
+    hostlists when brackets == 0.
+ -- Make sure we don't get brackets when making a range of reserved ports
+    for a step.
+ -- Change fatal to an error if port ranges aren't correct when reading state
+    for steps.
+
+* Changes in Slurm 16.05.1
+==========================
+ -- Fix __cplusplus macro in spank.h to allow compilation with C++.
+ -- Fix compile issue with older glibc < 2.12
+ -- Fix for starting batch step with mpi/pmix plugin.
+ -- Fix for "scontrol -dd show job" with respect to displaying the specific
+    CPUs allocated to a job on each node. Prior logic would only display
+    the CPU information for the first node in the job allocation.
+ -- Print correct return code on failure to update active node features
+    through sview.
+ -- Allow QOS timelimit to override partition timelimit when EnforcePartLimits
+    is set to all/any.
+ -- Make it so qsub will do a "basename" on a wrapped command for the output
+    and error files.
+ -- Fix issue where slurmd could core when running the ipmi energy plugin.
+ -- Documentation - clean up typos.
+ -- Add logic so that slurmstepd can be launched under valgrind.
+ -- Increase buffer size to read /proc/*/stat files.
+ -- Fix for tracking job resource allocation when slurmctld is reconfigured
+    while Cray Node Health Check (NHC) is running. Previous logic would fail to
+    record the job's allocation then perform release operation upon NHC
+    completion, resulting in underflow error messages.
+ -- Make "scontrol show daemons" work with long node names.
+ -- CRAY - Collect energy using a uint64_t instead of uint32_t.
+ -- Fix incorrect if statements when determining if the user has a default
+    account or wckey.
+ -- Prevent job stuck in configuring state if slurmctld daemon restarted while
+    PrologSlurmctld is running. Also re-issue burst_buffer/pre-load operation
+    as needed.
+ -- Correct task affinity support for FreeBSD.
+ -- Fix for task affinity on KNL in SNC2/Flat mode.
+ -- Recalculate a job's memory allocation after node reboot if job requests all
+    of a node's memory and FastSchedule=0 is configured. Intel KNL memory size
+    can change on reboot with various MCDRAM modes.
+ -- Fix small memory leak when printing HealthCheckNodeState.
+ -- Eliminate memory leaks when AuthInfo is configured.
+ -- Improve sdiag output description in man page.
+ -- Cray/capmc_resume script modify a node's features (as needed) when the
+    reinit (reboot) command is issued rather than wait for the nodes to change
+    to the "on" state.
+ -- Correctly print ranges when using step values in job arrays.
+ -- Allow from file names / paths over 256 characters when launching steps,
+    as well as spaces in the executable name.
+ -- job_submit.license.lua example modified to send message back to user.
+ -- Document job --mem=0 option means all memory on a node.
+ -- Set SLURM_JOB_QOS environment variable to QOS name instead of description.
+ -- knl_cray.conf file option of CnselectPath added.
+ -- node_features/knl_cray plugin modified to get current node NUMA and MCDRAM
+    modes using cnselect command rather than capmc command.
+ -- liblua - add SLES12 paths to runtime search list.
+ -- Fix qsub default output and error files for task arrays.
+ -- Fix qsub to set job_name correctly when wrapping a script (-b y)
+ -- Cray - set EnforcePartLimits=any in slurm.conf template.
+
 * Changes in Slurm 16.05.0
 ==========================
  -- Update seff to fix warnings with ncpus, and list slurm-perlapi dependency
@@ -245,6 +329,26 @@ documents those changes that are of interest to users and administrators.
 
 * Changes in Slurm 15.08.13
 ===========================
+ -- Fix issue where slurmd could core when running the ipmi energy plugin.
+ -- Print correct return code on failure to update node features through sview.
+ -- Documentation - cleanup typos.
+ -- Add logic so that slurmstepd can be launched under valgrind.
+ -- Increase buffer size to read /proc/*/stat files.
+ -- MYSQL - Handle ER_HOST_IS_BLOCKED better by failing when it occurs instead
+    of continuously printing the message over and over as the problem will
+    most likely not resolve itself.
+ -- Add --disable-bluegene to configure.  This will make it so Slurm
+    can work on a BGAS node.
+ -- Prevent job stuck in configuring state if slurmctld daemon restarted while
+    PrologSlurmctld is running.
+ -- Handle association correctly if using FAIR_TREE as well as shares=Parent
+ -- Fix race condition when setting priority of a job and the association
+    doesn't have a parent.
+ -- MYSQL - Fix issue with adding a reservation if the name has single quotes in
+    it.
+ -- Correctly print ranges when using step values in job arrays.
+ -- Fix for invalid array pointer when creating advanced reservation when job
+    allocations span heterogeneous nodes (differing core or socket counts).
 
 * Changes in Slurm 15.08.12
 ===========================

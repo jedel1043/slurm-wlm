@@ -4246,6 +4246,7 @@ extern int job_allocate(job_desc_msg_t * job_specs, int immediate,
 	    (error_code == ESLURM_RESERVATION_NOT_USABLE) ||
 	    (error_code == ESLURM_REQUESTED_PART_CONFIG_UNAVAILABLE) ||
 	    (error_code == ESLURM_POWER_NOT_AVAIL) ||
+	    (error_code == ESLURM_BURST_BUFFER_WAIT) ||
 	    (error_code == ESLURM_POWER_RESERVED)) {
 		/* Not fatal error, but job can't be scheduled right now */
 		if (immediate) {
@@ -5225,7 +5226,8 @@ static int _part_access_check(struct part_record *part_ptr,
 
 	if ((part_ptr->state_up & PARTITION_SCHED) &&
 	    (job_desc->time_limit != NO_VAL) &&
-	    (job_desc->time_limit > part_ptr->max_time)) {
+	    (job_desc->time_limit > part_ptr->max_time) &&
+	    (!qos_ptr || !(qos_ptr->flags & QOS_FLAG_PART_TIME_LIMIT))) {
 		info("_part_access_check: Job time limit (%u) exceeds limit of "
 		     "partition %s(%u)",
 		     job_desc->time_limit, part_ptr->name, part_ptr->max_time);
@@ -7355,6 +7357,36 @@ static bool _test_nodes_ready(struct job_record *job_ptr)
 #endif
 
 /*
+ * Modify a job's memory limit if allocated all memory on a node and the node
+ * reboots, possibly with a different memory size (e.g. KNL MCDRAM mode changed)
+ */
+extern void job_validate_mem(struct job_record *job_ptr)
+{
+	uint64_t tres_count;
+
+	if ((job_ptr->bit_flags & NODE_MEM_CALC) &&
+	    (slurmctld_conf.fast_schedule == 0)) {
+		select_g_job_mem_confirm(job_ptr);
+		tres_count = (uint64_t)job_ptr->details->pn_min_memory;
+		if (tres_count & MEM_PER_CPU) {
+			tres_count &= (~MEM_PER_CPU);
+			tres_count *= job_ptr->tres_alloc_cnt[TRES_ARRAY_CPU];
+		} else {
+			tres_count *= job_ptr->tres_alloc_cnt[TRES_ARRAY_NODE];
+		}
+		job_ptr->tres_alloc_cnt[TRES_ARRAY_MEM] = tres_count;
+		job_ptr->tres_alloc_str =
+			assoc_mgr_make_tres_str_from_array(
+			job_ptr->tres_alloc_cnt, TRES_STR_FLAG_SIMPLE, true);
+
+		job_ptr->tres_fmt_alloc_str =
+			assoc_mgr_make_tres_str_from_array(
+			job_ptr->tres_alloc_cnt, TRES_STR_CONVERT_UNITS, true);
+		jobacct_storage_job_start_direct(acct_db_conn, job_ptr);
+	}
+}
+
+/*
  * job_time_limit - terminate jobs which have exceeded their time limit
  * global: job_list - pointer global job list
  *	last_job_update - time of last job table update
@@ -7398,6 +7430,12 @@ void job_time_limit(void)
 			info("%s: Configuration for job %u is complete",
 			      __func__, job_ptr->job_id);
 			job_config_fini(job_ptr);
+			if (job_ptr->bit_flags & NODE_REBOOT) {
+				job_ptr->bit_flags &= (~NODE_REBOOT);
+				job_validate_mem(job_ptr);
+				if (job_ptr->batch_flag)
+					launch_job(job_ptr);
+			}
 		}
 #endif
 		/* This needs to be near the top of the loop, checks every
