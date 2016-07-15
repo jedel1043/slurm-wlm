@@ -966,6 +966,12 @@ static int _connect_srun_cr(char *addr)
 	unsigned int sa_len;
 	int fd, rc;
 
+#ifdef UNIX_PATH_MAX
+	if (addr && (strlen(addr) > UNIX_PATH_MAX)) {
+		error("%s: socket path name too long (%s)", __func__, addr);
+		return -1;
+	}
+#endif
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
 		error("failed creating cr socket: %m");
@@ -1493,12 +1499,15 @@ _task_user_managed_io_handler(struct step_launch_state *sls,
 static void
 _handle_msg(void *arg, slurm_msg_t *msg)
 {
+	char *auth_info = slurm_get_auth_info();
 	struct step_launch_state *sls = (struct step_launch_state *)arg;
-	uid_t req_uid = g_slurm_auth_get_uid(msg->auth_cred,
-					     slurm_get_auth_info());
+	uid_t req_uid;
 	uid_t uid = getuid();
 	srun_user_msg_t *um;
 	int rc;
+
+	req_uid = g_slurm_auth_get_uid(msg->auth_cred, auth_info);
+	xfree(auth_info);
 
 	if ((req_uid != slurm_uid) && (req_uid != 0) && (req_uid != uid)) {
 		error ("Security violation, slurm message from uid %u",

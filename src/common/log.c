@@ -54,6 +54,10 @@
 #  include "config.h"
 #endif
 
+#if HAVE_SYS_PRCTL_H
+#  include <sys/prctl.h>
+#endif
+
 #include <stdio.h>
 
 #if HAVE_STRING_H
@@ -686,10 +690,17 @@ set_idbuf(char *idbuf)
 	int max_len = 12; /* handles current longest thread name */
 
 	gettimeofday(&now, NULL);
-	if (pthread_getname_np(pthread_self(), thread_name, NAMELEN)) {
+#if HAVE_SYS_PRCTL_H
+	if (prctl(PR_GET_NAME, thread_name, NULL, NULL, NULL) < 0) {
 		error("failed to get thread name: %m");
-		return;
+		max_len = 0;
+		thread_name[0] = '\0';
 	}
+#else
+	/* skip printing thread name if not available */
+	max_len = 0;
+	thread_name[0] = '\0';
+#endif
 
 	sprintf(idbuf, "%.15s.%-6d %5d %-*s %p", slurm_ctime(&now.tv_sec) + 4,
 		(int)now.tv_usec, (int)getpid(), max_len, thread_name,

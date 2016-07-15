@@ -404,6 +404,7 @@ _handle_accept(void *arg)
 	int rc;
 	uid_t uid;
 	gid_t gid;
+	char *auth_info;
 
 	debug3("Entering _handle_accept (new thread)");
 	xfree(arg);
@@ -426,18 +427,21 @@ _handle_accept(void *arg)
 		free_buf(buffer);
 		goto fail;
 	}
-	rc = g_slurm_auth_verify(auth_cred, NULL, 2, slurm_get_auth_info());
+	auth_info = slurm_get_auth_info();
+	rc = g_slurm_auth_verify(auth_cred, NULL, 2, auth_info);
 	if (rc != SLURM_SUCCESS) {
 		error("Verifying authentication credential: %s",
 		      g_slurm_auth_errstr(g_slurm_auth_errno(auth_cred)));
+		xfree(auth_info);
 		(void) g_slurm_auth_destroy(auth_cred);
 		free_buf(buffer);
 		goto fail;
 	}
 
 	/* Get the uid & gid from the credential, then destroy it. */
-	uid = g_slurm_auth_get_uid(auth_cred, slurm_get_auth_info());
-	gid = g_slurm_auth_get_gid(auth_cred, slurm_get_auth_info());
+	uid = g_slurm_auth_get_uid(auth_cred, auth_info);
+	gid = g_slurm_auth_get_gid(auth_cred, auth_info);
+	xfree(auth_info);
 	debug3("  Identity: uid=%d, gid=%d", uid, gid);
 	g_slurm_auth_destroy(auth_cred);
 	free_buf(buffer);
@@ -791,7 +795,8 @@ _handle_signal_container(int fd, stepd_step_rec_t *job, uid_t uid)
 	ptr = getenvp(job->env, "SLURM_STEP_KILLED_MSG_NODE_ID");
 	if (ptr)
 		target_node_id = atoi(ptr);
-	if ((job->nodeid == target_node_id) && (msg_sent == 0) &&
+	if ((job->stepid != SLURM_EXTERN_CONT) &&
+	    (job->nodeid == target_node_id) && (msg_sent == 0) &&
 	    (job->state < SLURMSTEPD_STEP_ENDING)) {
 		time_t now = time(NULL);
 		char entity[24], time_str[24];
@@ -1088,8 +1093,10 @@ _handle_terminate(int fd, stepd_step_rec_t *job, uid_t uid)
 	}
 
 	if (proctrack_g_signal(job->cont_id, SIGKILL) < 0) {
-		rc = -1;
-		errnum = errno;
+		if (errno != ESRCH) {	/* No error if process already gone */
+			rc = -1;
+			errnum = errno;
+		}
 		verbose("Error sending SIGKILL signal to %u.%u: %m",
 			job->jobid, job->stepid);
 	} else {
@@ -1321,9 +1328,20 @@ static int _handle_add_extern_pid_internal(stepd_step_rec_t *job, pid_t pid)
 	jobacct_id.nodeid = job->nodeid;
 	jobacct_id.job = job;
 
-	proctrack_g_add(job, pid);
-	task_g_add_pid(pid);
-	jobacct_gather_add_task(pid, &jobacct_id, 1);
+	if (proctrack_g_add(job, pid) != SLURM_SUCCESS) {
+		error("%s: Job %u can't add pid %d to proctrack plugin in the extern_step.", __func__, job->jobid, pid);
+		return SLURM_FAILURE;
+	}
+
+	if (task_g_add_pid(pid) != SLURM_SUCCESS) {
+		error("%s: Job %u can't add pid %d to task plugin in the extern_step.", __func__, job->jobid, pid);
+		return SLURM_FAILURE;
+	}
+
+	if (jobacct_gather_add_task(pid, &jobacct_id, 1) != SLURM_SUCCESS) {
+		error("%s: Job %u can't add pid %d to jobacct_gather plugin in the extern_step.", __func__, job->jobid, pid);
+		return SLURM_FAILURE;
+	}
 
 	/* spawn a thread that will wait on the pid given */
 	slurm_attr_init(&attr);

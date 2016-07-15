@@ -146,12 +146,13 @@
 \*****************************************************************************/
 
 typedef struct slurmctld_config {
+	char *	auth_info;
+	time_t	boot_time;
 	int	daemonize;
 	bool	resume_backup;
-	time_t	boot_time;
-	time_t	shutdown_time;
+	bool    scheduling_disabled;
 	int	server_thread_count;
-	bool scheduling_disabled;
+	time_t	shutdown_time;
 
 	slurm_cred_ctx_t cred_ctx;
 #ifdef WITH_PTHREADS
@@ -1554,6 +1555,12 @@ extern void job_set_alloc_tres(
  * RET SLURM_SUCCES on success SLURM_ERROR on cpu_cnt underflow
  */
 extern int job_update_tres_cnt(struct job_record *job_ptr, int node_inx);
+
+/*
+ * Modify a job's memory limit if allocated all memory on a node and that node
+ * reboots, possibly with a different memory size (e.g. KNL MCDRAM mode changed)
+ */
+extern void job_validate_mem(struct job_record *job_ptr);
 
 /*
  * check_job_step_time_limit - terminate jobsteps which have exceeded

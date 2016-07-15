@@ -2148,7 +2148,7 @@ extern int select_nodes(struct job_record *job_ptr, bool test_only,
 			bitstr_t **select_node_bitmap, char *unavail_node_str,
 			char **err_msg)
 {
-	int error_code = SLURM_SUCCESS, i, node_set_size = 0;
+	int bb, error_code = SLURM_SUCCESS, i, node_set_size = 0;
 	bitstr_t *select_bitmap = NULL;
 	struct node_set *node_set_ptr = NULL;
 	struct part_record *part_ptr = NULL;
@@ -2213,6 +2213,17 @@ extern int select_nodes(struct job_record *job_ptr, bool test_only,
 			job_ptr->state_reason = WAIT_HELD;
 		}
 		return ESLURM_JOB_HELD;
+	}
+
+	bb = bb_g_job_test_stage_in(job_ptr, test_only);
+	if (bb != 1) {
+		xfree(job_ptr->state_desc);
+		last_job_update = now;
+		if (bb == 0)
+			job_ptr->state_reason = WAIT_BURST_BUFFER_STAGING;
+		else
+			job_ptr->state_reason = WAIT_BURST_BUFFER_RESOURCE;
+		return ESLURM_BURST_BUFFER_WAIT;
 	}
 
 	/* build sets of usable nodes based upon their configuration */
@@ -2576,7 +2587,7 @@ extern int select_nodes(struct job_record *job_ptr, bool test_only,
 	    bit_overlap(job_ptr->node_bitmap, power_node_bitmap) ||
 	    !bit_super_set(job_ptr->node_bitmap, avail_node_bitmap)) {
 		job_ptr->job_state |= JOB_CONFIGURING;
-}
+	}
 
 	/* Request asynchronous launch of a prolog for a
 	 * non batch job. */
@@ -2712,6 +2723,31 @@ static void _launch_prolog(struct job_record *job_ptr)
 #endif
 	agent_arg_ptr->msg_type = REQUEST_LAUNCH_PROLOG;
 	agent_arg_ptr->msg_args = (void *) prolog_msg_ptr;
+
+	/* At least on a Cray we have to treat this as a real step, so
+	 * this is where to do it.
+	 */
+	if (slurmctld_conf.prolog_flags & PROLOG_FLAG_CONTAIN) {
+		struct step_record step_rec;
+		slurm_step_layout_t layout;
+
+		memset(&step_rec, 0, sizeof(step_rec));
+		memset(&layout, 0, sizeof(layout));
+
+#ifdef HAVE_FRONT_END
+		layout.node_list = job_ptr->front_end_ptr->name;
+#else
+		layout.node_list = job_ptr->nodes;
+#endif
+		layout.node_cnt = agent_arg_ptr->node_count;
+
+		step_rec.step_layout = &layout;
+		step_rec.step_id = SLURM_EXTERN_CONT;
+		step_rec.job_ptr = job_ptr;
+		step_rec.name = "external";
+
+		select_g_step_start(&step_rec);
+	}
 
 	/* Launch the RPC via agent */
 	agent_queue_request(agent_arg_ptr);
