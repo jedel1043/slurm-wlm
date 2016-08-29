@@ -925,6 +925,7 @@ static bool _all_partition_priorities_same(void)
  *	or removed from the queue, but have their priority or partition
  *	changed with the update_job RPC. In general nodes will be in priority
  *	order (by submit time), so the sorting should be pretty fast.
+ * Note: job_write_lock must be unlocked before calling this.
  */
 extern int schedule(uint32_t job_limit)
 {
@@ -3072,7 +3073,7 @@ static void _delayed_job_start_time(struct job_record *job_ptr)
 		if (job_q_ptr->details->min_cpus == NO_VAL)
 			job_size_cpus = 1;
 		else
-			job_size_cpus = job_q_ptr->details->min_nodes;
+			job_size_cpus = job_q_ptr->details->min_cpus;
 		job_size_cpus = MAX(job_size_cpus,
 				    (job_size_nodes * part_cpus_per_node));
 		if (job_q_ptr->time_limit == NO_VAL)
@@ -3157,8 +3158,10 @@ extern int job_start_data(job_desc_msg_t *job_desc_msg,
 
 	i = job_test_resv(job_ptr, &start_res, false, &resv_bitmap,
 			  &exc_core_bitmap, &resv_overlap);
-	if (i != SLURM_SUCCESS)
+	if (i != SLURM_SUCCESS) {
+		FREE_NULL_BITMAP(avail_bitmap);
 		return i;
+	}
 	bit_and(avail_bitmap, resv_bitmap);
 	FREE_NULL_BITMAP(resv_bitmap);
 
@@ -3271,6 +3274,7 @@ extern int job_start_data(job_desc_msg_t *job_desc_msg,
 	FREE_NULL_LIST(preemptee_candidates);
 	FREE_NULL_LIST(preemptee_job_list);
 	FREE_NULL_BITMAP(avail_bitmap);
+	FREE_NULL_BITMAP(exc_core_bitmap);
 	return rc;
 }
 
