@@ -1,6 +1,7 @@
 slurm-llnl (16.05.4-1) UNRELEASED; urgency=medium
 
   * New upstream release 
+  * Add sh5util binary to slurm-client (thanks to Jordi Blasco) 
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 29 Aug 2016 15:51:59 +0200
 
