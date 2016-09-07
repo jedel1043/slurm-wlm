@@ -1,0 +1,17 @@
+Description: Allow to specify more than 9 procs per executable in the config file
+ mpiexec only select the first digit when parsing config file for number of processes.
+Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+Forwarded: https://bugs.schedmd.com/show_bug.cgi?id=3054
+Last-Update: 2016-09-06
+
+--- slurm-llnl-16.05.4/contribs/torque/mpiexec.pl	2016-09-06 16:03:11.712039981 +0200
++++ slurm-llnl-16.05.4/contribs/torque/mpiexec.pl.nprocs	2016-09-06 16:03:58.901808476 +0200
+@@ -73,7 +73,7 @@
+ 		   || ($parts[1] eq "")
+ 		   || ($parts[0] =~ '#')) {
+ 			next;
+-		} elsif ($parts[0] =~ '\-n *(\d)') {
++		} elsif ($parts[0] =~ '\-n *(\d+)') {
+ 			$end_cnt = $task_cnt+$1-1;
+ 			print FILE "$task_cnt-$end_cnt\t$parts[1]";
+ 			$task_cnt = $end_cnt+1;

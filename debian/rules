@@ -48,9 +48,15 @@ override_dh_auto_install:
 	
 	# run make install for slurm-wlm-torque pkg
 	$(MAKE) -C obj-$(DEB_BUILD_GNU_TYPE)/contribs/torque install DESTDIR=$(CURDIR)/debian/tmp
+
+	# Rename mpiexec to mpiexec.slurm
+	mv debian/tmp/usr/bin/mpiexec	debian/tmp/usr/bin/mpiexec.slurm
+
 	# build manpages for pbs wrappers
-	for i in debian/tmp/usr/bin/pbsnodes debian/tmp/usr/bin/q*; do \
-		pod2man $$i > debian/tmp/usr/share/man/man1/$$(basename $$i).1; \
+	for i in debian/tmp/usr/bin/pbsnodes \
+		debian/tmp/usr/bin/mpiexec.slurm \
+		debian/tmp/usr/bin/q*; do \
+			pod2man $$i > debian/tmp/usr/share/man/man1/$$(basename $$i).1; \
 	done
 
 	# Rename binaries that are also in the slurm-wlm-emulator
