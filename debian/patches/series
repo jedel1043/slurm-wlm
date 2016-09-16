@@ -3,3 +3,4 @@ header
 sacctmgr-increase-buffer
 mpiexec-doc
 mpiexec-nprocs-config_file
+cppflags_hdf5_macro

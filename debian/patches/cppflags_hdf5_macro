@@ -1,0 +1,117 @@
+Description: Update ax_lib_hdf5.m4 and add HDF5_CPPFLAGS to compile libsh5util_old.la
+ When compiled with hdf5 support the CPPFLAGS is overwritten due to a bug in
+ auxdir/ax_lib_hdf5.m4. After updating auxdir/ax_lib_hdf5.m4 with a newer
+ version downloaded from the autoconf git, slurm fails to compile due to a
+ missing flag in libsh5util_old/Makefile.am
+Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+Forwarded: https://bugs.schedmd.com/show_bug.cgi?id=3093
+Last-Update: 2016-09-16
+
+--- a/auxdir/ax_lib_hdf5.m4	2016-08-12 14:30:15.000000000 +0200
++++ b/auxdir/ax_lib_hdf5.m4	2016-09-15 10:35:40.665590049 +0200
+@@ -33,6 +33,7 @@
+ #     AC_SUBST(HDF5_FC)
+ #     AC_SUBST(HDF5_FFLAGS)
+ #     AC_SUBST(HDF5_FLIBS)
++#     AC_SUBST(HDF5_TYPE)
+ #     AC_DEFINE(HAVE_HDF5)
+ #
+ #   and sets with_hdf5="yes".  Additionally, the macro sets
+@@ -74,6 +75,9 @@
+ #             AC_MSG_ERROR([Unable to find HDF5, we need parallel HDF5.])
+ #     fi
+ #
++#   The HDF5_TYPE environment variable returns "parallel" or "serial",
++#   depending on which type of library is found.
++#
+ # LICENSE
+ #
+ #   Copyright (c) 2009 Timothy Brown <tbrown@freeshell.org>
+@@ -84,7 +88,7 @@
+ #   and this notice are preserved. This file is offered as-is, without any
+ #   warranty.
+ 
+-#serial 8
++#serial 15
+ 
+ AC_DEFUN([AX_LIB_HDF5], [
+ 
+@@ -137,6 +141,7 @@
+ HDF5_FC=""
+ HDF5_FFLAGS=""
+ HDF5_FLIBS=""
++HDF5_TYPE=""
+ 
+ dnl Try and find hdf5 compiler tools and options.
+ if test "$with_hdf5" = "yes"; then
+@@ -153,6 +158,12 @@
+         AC_MSG_CHECKING([Using provided HDF5 C wrapper])
+         AC_MSG_RESULT([$H5CC])
+     fi
++    AC_MSG_CHECKING([for HDF5 type])
++    AS_CASE([$H5CC],
++        [*h5pcc], [HDF5_TYPE=parallel],
++        [*h5cc], [HDF5_TYPE=serial],
++        [HDF5_TYPE=neither])
++    AC_MSG_RESULT([$HDF5_TYPE])
+     AC_MSG_CHECKING([for HDF5 libraries])
+     if test ! -f "$H5CC" || test ! -x "$H5CC"; then
+         AC_MSG_RESULT([no])
+@@ -178,6 +189,9 @@
+ 
+         dnl Get the actual compiler used
+         HDF5_CC=$(eval $H5CC -show | $AWK '{print $[]1}')
++        if test "$HDF5_CC" = "ccache"; then
++            HDF5_CC=$(eval $H5CC -show | $AWK '{print $[]2}')
++        fi
+ 
+         dnl h5cc provides both AM_ and non-AM_ options
+         dnl depending on how it was compiled either one of
+@@ -203,7 +217,7 @@
+         dnl Find the installation directory and append include/
+         HDF5_tmp_inst=$(eval $H5CC -showconfig \
+             | $GREP 'Installation point:' \
+-            | $AWK -F: '{print $[]2}' )
++            | $AWK '{print $[]NF}' )
+ 
+         dnl Add this to the CPPFLAGS
+         HDF5_CPPFLAGS="-I${HDF5_tmp_inst}/include"
+@@ -227,6 +241,7 @@
+         AC_MSG_RESULT([yes (version $[HDF5_VERSION])])
+ 
+         dnl See if we can compile
++        AC_LANG_PUSH([C])
+         ax_lib_hdf5_save_CC=$CC
+         ax_lib_hdf5_save_CPPFLAGS=$CPPFLAGS
+         ax_lib_hdf5_save_LIBS=$LIBS
+@@ -245,8 +260,10 @@
+         AC_HAVE_LIBRARY([hdf5_hl], [HDF5_LIBS="$HDF5_LIBS -lhdf5_hl"], [], [])
+ 
+         CC=$ax_lib_hdf5_save_CC
++        CPPFLAGS=$ax_lib_hdf5_save_CPPFLAGS
+         LIBS=$ax_lib_hdf5_save_LIBS
+         LDFLAGS=$ax_lib_hdf5_save_LDFLAGS
++        AC_LANG_POP([C])
+ 
+         AC_MSG_CHECKING([for matching HDF5 Fortran wrapper])
+         dnl Presume HDF5 Fortran wrapper is just a name variant from H5CC
+@@ -299,6 +316,7 @@
+ 	AC_SUBST([HDF5_FC])
+ 	AC_SUBST([HDF5_FFLAGS])
+ 	AC_SUBST([HDF5_FLIBS])
++	AC_SUBST([HDF5_TYPE])
+ 	AC_DEFINE([HAVE_HDF5], [1], [Defined if you have HDF5 support])
+     fi
+ fi
+--- a/src/plugins/acct_gather_profile/hdf5/sh5util/libsh5util_old/Makefile.am   2015-06-16 14:05:09.000000000 +0000
++++ b/src/plugins/acct_gather_profile/hdf5/sh5util/libsh5util_old/Makefile.am   2016-09-15 22:37:57.520723299 +0000
+@@ -4,7 +4,7 @@
+ 
+ AUTOMAKE_OPTIONS = foreign
+ 
+-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/src/common -I.
++AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/src/common -I. $(HDF5_CPPFLAGS)
+ 
+ noinst_LTLIBRARIES = libsh5util_old.la
+ 
+
