@@ -1,4 +1,4 @@
-slurm-llnl (16.05.4-1) UNRELEASED; urgency=medium
+slurm-llnl (16.05.4-1) unstable; urgency=medium
 
   * New upstream release 
   * Add missing sh5util binary to slurm-client and qalter qrerun and
@@ -7,7 +7,7 @@ slurm-llnl (16.05.4-1) UNRELEASED; urgency=medium
   * Add HDF5_CPPFLAGS to successfully compile libsh5util_old.la
   * Restore default fortify flags
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 29 Aug 2016 15:51:59 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 26 Sep 2016 11:44:23 +0200
 
 slurm-llnl (16.05.2-1) unstable; urgency=medium
 
