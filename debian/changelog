@@ -1,7 +1,11 @@
 slurm-llnl (16.05.4-1) UNRELEASED; urgency=medium
 
   * New upstream release 
-  * Add sh5util binary to slurm-client (thanks to Jordi Blasco) 
+  * Add missing sh5util binary to slurm-client and qalter qrerun and
+    mpiexec.slurm to slurm-wlm-torque (as requested by Jordi Blasco)
+  * Update ax_lib_hdf5.m4 to avoid CPPFLAGS to be overwritten
+  * Add HDF5_CPPFLAGS to successfully compile libsh5util_old.la
+  * Restore default fortify flags
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 29 Aug 2016 15:51:59 +0200
 
