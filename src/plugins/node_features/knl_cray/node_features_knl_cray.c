@@ -53,6 +53,10 @@
 #  include <json/json.h>
 #endif
 
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+#define POLLRDHUP POLLHUP
+#endif
+
 #include "slurm/slurm.h"
 
 #include "src/common/assoc_mgr.h"
@@ -71,12 +75,17 @@
 #include "src/slurmctld/job_scheduler.h"
 #include "src/slurmctld/locks.h"
 #include "src/slurmctld/node_scheduler.h"
+#include "src/slurmctld/read_config.h"
 #include "src/slurmctld/reservation.h"
 #include "src/slurmctld/slurmctld.h"
 #include "src/slurmctld/state_save.h"
 
 /* Maximum poll wait time for child processes, in milliseconds */
 #define MAX_POLL_WAIT 500
+
+/* Default and minimum timeout parameters for the capmc command */
+#define DEFAULT_CAPMC_TIMEOUT 60000	/* 60 seconds */
+#define MIN_CAPMC_TIMEOUT 1000		/* 1 second */
 
 /* Intel Knights Landing Configuration Modes */
 #define KNL_NUMA_CNT	5
@@ -132,6 +141,16 @@ const char plugin_name[]        = "node_features knl_cray plugin";
 const char plugin_type[]        = "node_features/knl_cray";
 const uint32_t plugin_version   = SLURM_VERSION_NUMBER;
 
+/* These are defined here so when we link with something other than
+ * the slurmctld we will have these symbols defined.  They will get
+ * overwritten when linking with the slurmctld.
+ */
+#if defined (__APPLE__)
+List active_feature_list __attribute__((weak_import));
+#else
+List active_feature_list;
+#endif
+
 /* Configuration Paramters */
 static char *capmc_path = NULL;
 static uint32_t capmc_poll_freq = 45;	/* capmc state polling frequency */
@@ -150,6 +169,7 @@ static bool reconfig = false;
 
 /* Percentage of MCDRAM used for cache by type, updated from capmc */
 static int mcdram_pct[KNL_MCDRAM_CNT];
+static int mcdram_set = 0;
 static uint64_t *mcdram_per_node = NULL;
 
 /* NOTE: New knl_cray.conf parameters added below must also be added to the
@@ -260,6 +280,10 @@ static void _update_node_features(struct node_record *node_ptr,
 				  mcdram_cfg_t *mcdram_cfg, int mcdram_cfg_cnt,
 				  numa_cap_t *numa_cap, int numa_cap_cnt,
 				  numa_cfg_t *numa_cfg, int numa_cfg_cnt);
+
+/* Function used both internally and externally */
+extern int node_features_p_node_update(char *active_features,
+				       bitstr_t *node_bitmap);
 
 static s_p_hashtbl_t *_config_make_tbl(char *filename)
 {
@@ -521,7 +545,6 @@ static void _free_script_argv(char **script_argv)
  */
 static void _update_mcdram_pct(char *tok, int mcdram_num)
 {
-	static int mcdram_set = 0;
 	int inx;
 
 	if (mcdram_set == KNL_MCDRAM_CNT)
@@ -1326,6 +1349,7 @@ static void _update_node_features(struct node_record *node_ptr,
 	int i, nid;
 	char *end_ptr = "";
 	uint64_t mcdram_size;
+	bitstr_t *node_bitmap = NULL;
 
 	xassert(node_ptr);
 	nid = strtol(node_ptr->name + 3, &end_ptr, 10);
@@ -1390,6 +1414,15 @@ static void _update_node_features(struct node_record *node_ptr,
 			}
 		}
 	}
+
+	/* Update bitmaps and lists used by slurmctld for scheduling */
+	node_bitmap = bit_alloc(node_record_count);
+	bit_set(node_bitmap, (node_ptr - node_record_table_ptr));
+	update_feature_list(active_feature_list, node_ptr->features_act,
+			    node_bitmap);
+	(void) node_features_p_node_update(node_ptr->features_act, node_bitmap);
+	FREE_NULL_BITMAP(node_bitmap);
+
 }
 
 static void _make_uid_array(char *uid_str)
@@ -1456,12 +1489,13 @@ extern int init(void)
 	allowed_uid_cnt = 0;
 	xfree(capmc_path);
 	capmc_poll_freq = 45;
-	capmc_timeout = 1000;
+	capmc_timeout = DEFAULT_CAPMC_TIMEOUT;
 	debug_flag = false;
 	default_mcdram = KNL_CACHE;
 	default_numa = KNL_ALL2ALL;
 	for (i = 0; i < KNL_MCDRAM_CNT; i++)
 		mcdram_pct[i] = -1;
+	mcdram_set = 0;
 
 	knl_conf_file = get_extra_conf_path("knl_cray.conf");
 	if ((stat(knl_conf_file, &stat_buf) == 0) &&
@@ -1514,7 +1548,7 @@ extern int init(void)
 	xfree(knl_conf_file);
 	if (!capmc_path)
 		capmc_path = xstrdup("/opt/cray/capmc/default/bin/capmc");
-	capmc_timeout = MAX(capmc_timeout, 500);
+	capmc_timeout = MAX(capmc_timeout, MIN_CAPMC_TIMEOUT);
 	if (!cnselect_path)
 		cnselect_path = xstrdup("/opt/cray/sdb/default/bin/cnselect");
 	if (!syscfg_path)
@@ -1836,7 +1870,7 @@ extern int node_features_p_get_node(char *node_list)
 						      numa_cap, numa_cap_cnt,
 						      numa_cfg, numa_cfg_cnt);
 			}
-			xfree(node_name);
+			free(node_name);
 		}
 		hostlist_destroy (host_list);
 	} else {
@@ -2039,18 +2073,6 @@ extern int node_features_p_job_valid(char *job_features)
 	numa_cnt = _knl_numa_bits_cnt(job_numa);
 	if (numa_cnt > 1)			/* Multiple NUMA options */
 		return ESLURM_INVALID_KNL;
-
-	/* snc4 only allowed with cache today due to invalid config information
-	 * reported by kernel to hwloc, then to Slurm */
-	if (!job_numa) {
-	    job_numa = default_numa;
-	}
-	if (!job_mcdram) {
-	    job_mcdram = default_mcdram;
-	}
-	if (job_numa == KNL_SNC4 && job_mcdram != KNL_CACHE) {
-		return ESLURM_INVALID_KNL;
-	}
 
 	return SLURM_SUCCESS;
 }

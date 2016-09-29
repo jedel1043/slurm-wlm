@@ -1535,10 +1535,12 @@ int update_node ( update_node_msg_t * update_node_msg )
 					bit_set (avail_node_bitmap, node_inx);
 				bit_set (idle_node_bitmap, node_inx);
 				bit_set (up_node_bitmap, node_inx);
-				if (IS_NODE_POWER_SAVE(node_ptr))
-					node_ptr->last_idle = 0;
-				else
+				if (IS_NODE_POWER_SAVE(node_ptr)) {
+					if (node_ptr->last_idle > 0)
+						node_ptr->last_idle = 1;
+				} else {
 					node_ptr->last_idle = now;
+				}
 			} else if (state_val == NODE_STATE_ALLOCATED) {
 				if (!IS_NODE_DRAIN(node_ptr) &&
 				    !IS_NODE_FAIL(node_ptr)  &&
@@ -1564,7 +1566,6 @@ int update_node ( update_node_msg_t * update_node_msg )
 					(nonstop_ops.node_fail)(NULL, node_ptr);
 			} else if (state_val == NODE_STATE_POWER_SAVE) {
 				if (IS_NODE_POWER_SAVE(node_ptr)) {
-					node_ptr->last_idle = 0;
 					node_ptr->node_state &=
 						(~NODE_STATE_POWER_SAVE);
 					info("power down request repeating "
@@ -1586,10 +1587,12 @@ int update_node ( update_node_msg_t * update_node_msg )
 					node_ptr->node_state |=
 						NODE_STATE_NO_RESPOND;
 #endif
-					node_ptr->last_idle = 0;
+
 					info("powering down node %s",
 					     this_node_name);
 				}
+				if (node_ptr->last_idle > 0)
+					node_ptr->last_idle = 1;
 				free(this_node_name);
 				continue;
 			} else if (state_val == NODE_STATE_POWER_UP) {
@@ -1613,13 +1616,20 @@ int update_node ( update_node_msg_t * update_node_msg )
 				}
 				free(this_node_name);
 				continue;
+			} else if ((state_val & NODE_STATE_POWER_SAVE) &&
+				   (state_val & NODE_STATE_POWER_UP) &&
+				   (IS_NODE_POWER_UP(node_ptr))) {
+				/* Clear any reboot operation in progress */
+				node_ptr->node_state &= (~NODE_STATE_POWER_UP);
+				node_ptr->last_response = now;
+				state_val = base_state;
 			} else if (state_val == NODE_STATE_NO_RESPOND) {
 				node_ptr->node_state |= NODE_STATE_NO_RESPOND;
 				state_val = base_state;
 				bit_clear(avail_node_bitmap, node_inx);
 			} else {
-				info ("Invalid node state specified %u",
-					state_val);
+				info("Invalid node state specified %u",
+				     state_val);
 				err_code = 1;
 				error_code = ESLURM_INVALID_NODE_STATE;
 			}
@@ -2117,6 +2127,7 @@ static bool _valid_node_state_change(uint32_t old, uint32_t new)
 		case NODE_STATE_NO_RESPOND:
 		case NODE_STATE_POWER_SAVE:
 		case NODE_STATE_POWER_UP:
+		case (NODE_STATE_POWER_SAVE | NODE_STATE_POWER_UP):
 		case NODE_STATE_UNDRAIN:
 			return true;
 
@@ -2494,6 +2505,12 @@ extern int validate_node_specs(slurm_node_registration_status_msg_t *reg_msg,
 	}
 
 	node_flags = node_ptr->node_state & NODE_STATE_FLAGS;
+
+	if (node_ptr->last_response &&
+	    (node_ptr->boot_time > node_ptr->last_response) &&
+	    !IS_NODE_UNKNOWN(node_ptr)) {
+		(void) node_features_g_get_node(node_ptr->name);
+	}
 
 	if (error_code) {
 		if (!IS_NODE_DOWN(node_ptr)
@@ -3107,11 +3124,16 @@ static void _node_did_resp(struct node_record *node_ptr)
 	time_t boot_req_time, now = time(NULL);
 
 	node_inx = node_ptr - node_record_table_ptr;
-	/* Do not change last_response value (in the future) for nodes being
-	 *  booted so unexpected reboots are recognized */
-	if (IS_NODE_POWER_UP(node_ptr) ||
-	    (IS_NODE_DOWN(node_ptr) &&
-	     !xstrcmp(node_ptr->reason, "Scheduled reboot"))) {
+	if (IS_NODE_POWER_UP(node_ptr) && (node_ptr->last_response == 0)) {
+		/* slurmctld restart while reboot in progress, assume compute
+		 * node actually rebooted, add boot time to node state in
+		 * slurm version 17.02 to be more robust */
+		node_ptr->last_response = now + slurm_get_resume_timeout();
+	} else if (IS_NODE_POWER_UP(node_ptr) ||
+		   (IS_NODE_DOWN(node_ptr) &&
+		    !xstrcmp(node_ptr->reason, "Scheduled reboot"))) {
+		/* Do not change last_response value (in the future) for nodes
+		 * being booted so unexpected reboots are recognized */
 		boot_req_time = node_ptr->last_response -
 				slurm_get_resume_timeout();
 		if (node_ptr->boot_time < boot_req_time) {
