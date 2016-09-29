@@ -119,6 +119,8 @@ libslurmdb.so.30 libslurmdb30 #MINVER#
  slurm_conf_unlock@Base 2.2.0
  slurm_conn_type_string@Base 2.2.0
  slurm_conn_type_string_full@Base 2.3.1
+ slurm_convert_num_unit2@Base 16.05.5
+ slurm_convert_num_unit@Base 16.05.5
  slurm_copy_char_list@Base 15.08.0
  slurm_copy_priority_factors_object@Base 15.08.0
  slurm_cray_nodelist2nids@Base 14.03.0
@@ -152,6 +154,7 @@ libslurmdb.so.30 libslurmdb30 #MINVER#
  slurm_cred_verifier_ctx_create@Base 2.2.0
  slurm_cred_verify@Base 2.2.0
  slurm_crypto_fini@Base 2.2.0
+ slurm_crypto_init@Base 16.05.5
  slurm_ctime2@Base 15.08.0
  slurm_ctime2_r@Base 15.08.0
  slurm_ctime@Base 14.03.0
@@ -366,6 +369,7 @@ libslurmdb.so.30 libslurmdb30 #MINVER#
  slurm_get_cluster_name@Base 2.2.0
  slurm_get_complete_wait@Base 2.2.0
 #MISSING: 14.11.0# slurm_get_controller_addr_spec@Base 2.2.0
+ slurm_get_convert_unit_val@Base 16.05.5
  slurm_get_core_spec_plugin@Base 14.03.0
  slurm_get_cpu_freq_def@Base 14.11.0
  slurm_get_cpu_freq_govs@Base 15.08.0
@@ -484,6 +488,7 @@ libslurmdb.so.30 libslurmdb30 #MINVER#
  slurm_get_tree_width@Base 2.2.0
  slurm_get_tres_weight_array@Base 15.08.0
  slurm_get_triggers@Base 2.2.0
+ slurm_get_unit_type@Base 16.05.5
  slurm_get_use_spec_resources@Base 14.11.0
  slurm_get_vsize_factor@Base 2.2.0
  slurm_get_wait_time@Base 2.2.0
@@ -665,7 +670,9 @@ libslurmdb.so.30 libslurmdb30 #MINVER#
  slurm_mcs_init@Base 16.05.0
  slurm_mcs_reconfig@Base 16.05.0
  slurm_mcs_reset_params@Base 16.05.0
+ slurm_mins2time_str@Base 16.05.5
  slurm_mktime@Base 15.08.0
+ slurm_mon_abbr@Base 16.05.5
  slurm_mpi_plugin_init@Base 2.4.5
  slurm_msg_recvfrom_timeout@Base 15.08.0
  slurm_msg_sendto@Base 15.08.0
@@ -702,6 +709,7 @@ libslurmdb.so.30 libslurmdb30 #MINVER#
  slurm_packmem@Base 2.2.0
  slurm_packmem_array@Base 2.2.0
  slurm_packstr_array@Base 2.2.0
+ slurm_parse_time@Base 16.05.5
  slurm_parser@Base 2.2.0
  slurm_perror@Base 2.2.0
  slurm_pid2jobid@Base 2.2.0
@@ -766,6 +774,7 @@ libslurmdb.so.30 libslurmdb30 #MINVER#
  slurm_reset_statistics@Base 2.4.5
  slurm_resume2@Base 14.11.0
  slurm_resume@Base 2.2.0
+ slurm_revert_num_unit@Base 16.05.5
  slurm_route_split_hostlist_treewidth@Base 14.11.0
  slurm_run_in_daemon@Base 14.03.0
  slurm_s_p_dump_values@Base 14.03.0
@@ -787,6 +796,7 @@ libslurmdb.so.30 libslurmdb30 #MINVER#
  slurm_s_p_parse_line@Base 14.03.0
  slurm_s_p_parse_pair@Base 14.03.0
  slurm_sbcast_lookup@Base 2.2.0
+ slurm_secs2time_str@Base 16.05.5
  slurm_select_fini@Base 2.2.0
  slurm_select_init@Base 2.2.0
  slurm_send_addr_recv_msgs@Base 2.2.0
@@ -880,6 +890,8 @@ libslurmdb.so.30 libslurmdb30 #MINVER#
  slurm_takeover@Base 2.2.0
 #MISSING: 2.6.7# slurm_terminate_job@Base 2.2.0
  slurm_terminate_job_step@Base 2.2.0
+ slurm_time_str2mins@Base 16.05.5
+ slurm_time_str2secs@Base 16.05.5
  slurm_top_job@Base 16.05.0
  slurm_topo_build_config@Base 2.2.0
  slurm_topo_fini@Base 2.2.0
