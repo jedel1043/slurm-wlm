@@ -1,19 +1,17 @@
 #!/usr/bin/env expect
 ############################################################################
 # Purpose: Test of SLURM functionality
-#          Test scancel of individual job steps (job.step specification).
+#          Test scancel of multiple job steps (job.step specification).
 #
 # Output:  "TEST: #.#" followed by "SUCCESS" if test was successful, OR
 #          "FAILURE: ..." otherwise with an explanation of the failure, OR
 #          anything else indicates a failure mode that must be investigated.
 #
 # Note:    This script generates and then deletes files in the working directory
-#          named test6.9.input
+#          named test6.16.input
 ############################################################################
-# Copyright (C) 2002-2006 The Regents of the University of California.
-# Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
-# Written by Morris Jette <jette1@llnl.gov>
-# CODE-OCEC-09-009. All rights reserved.
+# Copyright (C) 2016 SchedMD LLC
+# Written by Alejandro Sanchez <alex@schedmd.com>
 #
 # This file is part of SLURM, a resource management program.
 # For details, see <http://slurm.schedmd.com/>.
@@ -35,7 +33,7 @@
 ############################################################################
 source ./globals
 
-set test_id     "6.9"
+set test_id     "6.16"
 set exit_code   0
 set file_in     "test$test_id.input"
 set job_id      0
@@ -44,18 +42,17 @@ print_header $test_id
 
 #
 # Build input script file
-# The "sleep 1" insures the background tasks is step 0 and foreground tasks is step 1
 #
 make_bash_script $file_in "
-  $srun --mem=10 $bin_sleep $max_job_delay &
-  $bin_sleep 1
-  $srun --mem=10 $bin_sleep $max_job_delay
+  $srun -N1 -n1 --mem=10 $bin_sleep $max_job_delay &
+  $srun -N1 -n1 --mem=10 $bin_sleep $max_job_delay &
+  $srun -N1 -n1 --mem=10 $bin_sleep $max_job_delay
 "
 
 #
 # Spawn sbatch job
 #
-set sbatch_pid [spawn $sbatch --output=/dev/null --error=/dev/null --mem=20 --job-name=job.$test_id -t5 $file_in]
+set sbatch_pid [spawn $sbatch -N1 -n3 --mem=30 --output=/dev/null --error=/dev/null --job-name=job.$test_id -t5 $file_in]
 expect {
 	-re "Submitted batch job ($number)" {
 		set job_id $expect_out(1,string)
@@ -81,36 +78,25 @@ if {[wait_for_job $job_id RUNNING] != 0} {
 	exit 1
 }
 # Wait for job steps to begin
-exec $bin_sleep 2
+exec $bin_sleep 3
 
 #
 # Kill single job steps individually
 #
-set matches  0
-spawn $scancel --interactive $job_id.0
+set matches 0
+spawn $scancel --interactive $job_id.0 $job_id.1 $job_id.2
 expect {
 	-re "Cancel step_id=$job_id.0*\? " {
 		send "y\r"
 		incr matches
 		exp_continue
 	}
-	timeout {
-		send_user "\nFAILURE: scancel not responding\n"
-		set exit_code 1
-	}
-	eof {
-		wait
-	}
-}
-if {$matches != 1} {
-	send_user "\nFAILURE: scancel with step_id failed\n"
-	set exit_code 1
-}
-
-set matches  0
-spawn $scancel --interactive $job_id.1
-expect {
 	-re "Cancel step_id=$job_id.1*\? " {
+		send "y\r"
+		incr matches
+		exp_continue
+	}
+	-re "Cancel step_id=$job_id.2*\? " {
 		send "y\r"
 		incr matches
 		exp_continue
@@ -123,8 +109,8 @@ expect {
 		wait
 	}
 }
-if {$matches != 1} {
-	send_user "\nFAILURE: scancel with step_id failed\n"
+if {$matches != 3} {
+	send_user "\nFAILURE: scancel with multiple step_id failed\n"
 	set exit_code 1
 }
 

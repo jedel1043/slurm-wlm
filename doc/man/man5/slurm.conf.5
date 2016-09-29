@@ -662,7 +662,7 @@ Sched/wiki and wiki2 communications
 
 .TP
 \fBDefMemPerCPU\fR
-Default real memory size available per allocated CPU in MegaBytes.
+Default real memory size available per allocated CPU in megabytes.
 Used to avoid over\-subscribing memory and causing paging.
 \fBDefMemPerCPU\fR would generally be used if individual processors
 are allocated to jobs (\fBSelectType=select/cons_res\fR).
@@ -676,7 +676,7 @@ not be stored, just collected).
 
 .TP
 \fBDefMemPerNode\fR
-Default real memory size available per allocated node in MegaBytes.
+Default real memory size available per allocated node in megabytes.
 Used to avoid over\-subscribing memory and causing paging.
 \fBDefMemPerNode\fR would generally be used if whole nodes
 are allocated to jobs (\fBSelectType=select/linear\fR) and
@@ -756,14 +756,14 @@ May not exceed 65533.
 If set to "ALL" then jobs which exceed a partition's size and/or
 time limits will be rejected at submission time. If job is submitted to
 multiple partitions, the job must satisfy the limits on all the requested
-paritions. If set to "NO" then the job will be accepted and remain queued
+partitions. If set to "NO" then the job will be accepted and remain queued
 until the partition limits are altered(Time and Node Limits).
 If set to "ANY" or "YES" a job must satisfy any of the requested partitions
 to be submitted. The default value is "NO".
 NOTE: If set, then a job's QOS can not be used to exceed partition limits.
 NOTE: The partition limits being considered are it's configured MaxMemPerCPU,
-MaxMemPerNode, MinNodes, MaxNodes, MaxTime, State (e.g. DOWN or INACTIVE),
-AllocNodes, AllowAccounts, AllowGroups, AllowQOS, and QOS usage threshold.
+MaxMemPerNode, MinNodes, MaxNodes, MaxTime, AllocNodes, AllowAccounts,
+AllowGroups, AllowQOS, and QOS usage threshold.
 
 .TP
 \fBEpilog\fR
@@ -1256,7 +1256,7 @@ Acceptable values include:
 .RS
 .TP 12
 \fBtest_exec\fR
-Validate the executable command's existence prior to attemping launch on
+Validate the executable command's existence prior to attempting launch on
 the compute nodes
 .RE
 
@@ -1352,7 +1352,7 @@ Also see \fBFirstJobId\fR.
 
 .TP
 \fBMaxMemPerCPU\fR
-Maximum real memory size available per allocated CPU in MegaBytes.
+Maximum real memory size available per allocated CPU in megabytes.
 Used to avoid over\-subscribing memory and causing paging.
 \fBMaxMemPerCPU\fR would generally be used if individual processors
 are allocated to jobs (\fBSelectType=select/cons_res\fR).
@@ -1370,7 +1370,7 @@ result in the job failing due to CPU count limits.
 
 .TP
 \fBMaxMemPerNode\fR
-Maximum real memory size available per allocated node in MegaBytes.
+Maximum real memory size available per allocated node in megabytes.
 Used to avoid over\-subscribing memory and causing paging.
 \fBMaxMemPerNode\fR would generally be used if whole nodes
 are allocated to jobs (\fBSelectType=select/linear\fR) and
@@ -1735,7 +1735,7 @@ This is not compatible with \fBPreemptMode=OFF\fR.
 \fBpreempt/qos\fR
 Job preemption rules are specified by Quality Of Service (QOS) specifications
 in the Slurm database.
-This optioin is not compatible with \fBPreemptMode=OFF\fR.
+This option is not compatible with \fBPreemptMode=OFF\fR.
 A configuration of \fBPreemptMode=SUSPEND\fR is only supported by the
 \fBselect/cons_res\fR plugin.
 .RE
@@ -1792,6 +1792,11 @@ higher fairshare factors than all children of B.
 If set, priority will be calculated based similar to the normal multifactor
 calculation, but depth of the associations in the tree do not adversely effect
 their priority.
+.TP
+\fBMAX_TRES\fR
+If set, the weighted TRES value (e.g. TRESBillingWeights) is calculated as the
+MAX of individual TRES' on a node (e.g. cpus, mem, gres) plus the sum of all
+global TRES' (e.g. licenses).
 .TP
 \fBSMALL_RELATIVE_TO_TIME\fR
 If set, the job's size component will be based upon not the job size alone, but
@@ -2033,7 +2038,7 @@ The interval in seconds Slurms waits for Prolog and Epilog before terminating
 them. The default behavior is to wait indefinitely. This interval applies to
 the Prolog and Epilog run by slurmd daemon before and after the job, the
 PrologSlurmctld and EpilogSlurmctld run by slurmctld daemon, and the SPANK
-plugins run by the slurmstep daemon.
+plugins run by the slurmstepd daemon.
 
 .TP
 \fBPrologFlags\fR
@@ -2282,7 +2287,7 @@ Related configuration options include \fBResumeTimeout\fR, \fBResumeProgram\fR,
 
 .TP
 \fBResumeTimeout\fR
-Maximum time permitted (in second) between when a node is resume request
+Maximum time permitted (in second) between when a node resume request
 is issued and when the node is actually available for use.
 Nodes which fail to respond in this time frame may be marked DOWN and
 the jobs scheduled on the node requeued.
@@ -2411,7 +2416,7 @@ Multiple options may be comma separated.
 \fBassoc_limit_stop\fR
 If set and a job cannot start due to association limits, then do not attempt
 to initiate any lower priority jobs in that partition. Setting this can
-decrease system throughput and utlization, but avoid potentially starving larger
+decrease system throughput and utilization, but avoid potentially starving larger
 jobs by preventing them from launching indefinitely.
 .TP
 \fBbatch_sched_delay=#\fR
@@ -2693,6 +2698,18 @@ By default if a job environment setup fails the job keeps running with
 a limited environment. By specifying this parameter the job will be
 requeued in held state and the execution node drained.
 .TP
+\fBsalloc_wait_nodes\fR
+If defined, the salloc command will wait until all allocated nodes are ready for
+use (i.e. booted) before the command returns. By default, salloc will return as
+soon as the resource allocation has been made.
+.TP
+\fBsbatch_wait_nodes\fR
+If defined, the sbatch script will wait until all allocated nodes are ready for
+use (i.e. booted) before the initiation. By default, the sbatch script will be
+initiated as soon as the first node in the job allocation is ready. The sbatch
+command can use the \-\-wait\-all\-nodes option to override this configuration
+parameter.
+.TP
 \fBsched_interval=#\fR
 How frequently, in seconds, the main scheduling loop will execute and test all
 pending jobs.
@@ -2842,13 +2859,17 @@ Layer the select/cons_res plugin under the select/cray plugin, the default is
 to layer on select/linear.  This also allows all the options for
 \fBSelectType=select/cons_res\fR.
 .TP
+\fBNHC_ABSOLUTELY_NO\fR
+Never run the node health check. Implies NHC_NO and NHC_NO_STEPS as well.
+.TP
 \fBNHC_NO_STEPS\fR
 Do not run the node health check after each step.  Default is to run
 after each step.
 .TP
 \fBNHC_NO\fR
 Do not run the node health check after each allocation.  Default is to run
-after each allocation.  This also sets NHC_NO_STEPS, so the NHC will never run.
+after each allocation.  This also sets NHC_NO_STEPS, so the NHC will never run
+except when nodes have been left with unkillable steps.
 .RE
 .TP
 The following options are supported for \fBSelectType=select/cons_res\fR:
@@ -3473,7 +3494,7 @@ The default value is "/tmp".
 
 .TP
 \fBTopologyParam\fR
-Comma separated options identifing network topology options.
+Comma separated options identifying network topology options.
 .RS
 .TP 15
 \fBDragonfly\fR
@@ -3856,7 +3877,7 @@ See \fBCPUs\fR.
 
 .TP
 \fBRealMemory\fR
-Size of real memory on the node in MegaBytes (e.g. "2048").
+Size of real memory on the node in megabytes (e.g. "2048").
 The default value is 1.
 
 .TP
@@ -3953,7 +3974,7 @@ The default value is 1.
 
 .TP
 \fBTmpDisk\fR
-Total size of temporary disk storage in \fBTmpFS\fR in MegaBytes
+Total size of temporary disk storage in \fBTmpFS\fR in megabytes
 (e.g. "16384"). \fBTmpFS\fR (for "Temporary File System")
 identifies the location which jobs should use for temporary storage.
 Note this does not indicate the amount of free
@@ -4238,7 +4259,7 @@ The default value is "NO".
 
 .TP
 \fBDefMemPerCPU\fR
-Default real memory size available per allocated CPU in MegaBytes.
+Default real memory size available per allocated CPU in megabytes.
 Used to avoid over\-subscribing memory and causing paging.
 \fBDefMemPerCPU\fR would generally be used if individual processors
 are allocated to jobs (\fBSelectType=select/cons_res\fR).
@@ -4251,7 +4272,7 @@ not be stored, just collected).
 
 .TP
 \fBDefMemPerNode\fR
-Default real memory size available per allocated node in MegaBytes.
+Default real memory size available per allocated node in megabytes.
 Used to avoid over\-subscribing memory and causing paging.
 \fBDefMemPerNode\fR would generally be used if whole nodes
 are allocated to jobs (\fBSelectType=select/linear\fR) and
@@ -4342,7 +4363,7 @@ partition/queue.
 
 .TP
 \fBMaxMemPerCPU\fR
-Maximum real memory size available per allocated CPU in MegaBytes.
+Maximum real memory size available per allocated CPU in megabytes.
 Used to avoid over\-subscribing memory and causing paging.
 \fBMaxMemPerCPU\fR would generally be used if individual processors
 are allocated to jobs (\fBSelectType=select/cons_res\fR).
@@ -4355,7 +4376,7 @@ not be stored, just collected).
 
 .TP
 \fBMaxMemPerNode\fR
-Maximum real memory size available per allocated node in MegaBytes.
+Maximum real memory size available per allocated node in megabytes.
 Used to avoid over\-subscribing memory and causing paging.
 \fBMaxMemPerNode\fR would generally be used if whole nodes
 are allocated to jobs (\fBSelectType=select/linear\fR) and
@@ -4588,12 +4609,12 @@ See also the "Alternate" partition specification.
 .TP
 \fBTRESBillingWeights\fR
 TRESBillingWeights is used to define the billing weights of each TRES type that
-will be used in calcuating the usage of a job.
+will be used in calculating the usage of a job.
 
-Billing weights are specified as a comma-separated list of
+Billing weights are specified as a comma\-separated list of
 \fI<TRES Type>\fR=\fI<TRES Billing Weight>\fR pairs.
 
-Any TRES Type is available for billing. Note that base the unit for memory and
+Any TRES Type is available for billing. Note that the base unit for memory and
 burst buffers is megabytes.
 
 By default the billing of TRES is calculated as the sum of all TRES types
@@ -4616,7 +4637,7 @@ will be MAX(1*1.0, 8*0.25) + (0*2.0) = 2.0.
 If TRESBillingWeights is not defined then the job is billed against the total
 number of allocated CPUs.
 
-\fBNOTE:\fR TRESBillingWeights is only used when calcuating fairshare and
+\fBNOTE:\fR TRESBillingWeights is only used when calculating fairshare and
 doesn't affect job priority directly as it is currently not used for the size of
 the job. If you want TRES' to play a role in the job's priority then refer to
 the PriorityWeightTRES option.
@@ -4729,7 +4750,7 @@ Available in \fBEpilogSlurmctld\fR only.
 The exit code of the job script (or salloc). The value has the format
 <exit>:<sig>. The first number is the exit code, typically as set by the
 exit() function. The second number of the signal that caused the process to
-terminante if it was terminated by a signal.
+terminate if it was terminated by a signal.
 Available in \fBEpilogSlurmctld\fR only.
 .TP
 \fBSLURM_JOB_GID\fR
