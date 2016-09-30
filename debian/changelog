@@ -1,8 +1,11 @@
-slurm-llnl (16.05.5-1) UNRELEASED; urgency=medium
+slurm-llnl (16.05.5-1) unstable; urgency=medium
 
   * New upstream release
+  * Update debian configurators
+  * Update header patch to remove google script in html
+  * Update symbol files
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 29 Sep 2016 22:59:50 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 30 Sep 2016 16:08:43 +0200
 
 slurm-llnl (16.05.4-1) unstable; urgency=medium
 
