@@ -1,3 +1,9 @@
+slurm-llnl (16.05.6-1) UNRELEASED; urgency=medium
+
+  * New upstream release 
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 28 Oct 2016 08:07:23 +0200
+
 slurm-llnl (16.05.5-1) unstable; urgency=medium
 
   * New upstream release
