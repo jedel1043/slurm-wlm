@@ -1,3 +1,2 @@
 slurm-client: manpage-has-errors-from-man
 slurm-client: conflicts-with-version
-hardening-no-bindnow
