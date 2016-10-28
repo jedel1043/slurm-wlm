@@ -96,6 +96,7 @@ override_dh_strip:
 	dh_strip -plibslurm30 --dbg-package=libslurm30-dbg
 	dh_strip -plibslurmdb30 --dbg-package=libslurmdb30-dbg
 	dh_strip -plibpmi0 --dbg-package=libpmi0-dbg
+	dh_strip -plibpmi2-0 --dbg-package=libpmi2-0-dbg
 	dh_strip -pslurm-wlm-basic-plugins --dbg-package=slurm-wlm-basic-plugins-dbg
 	dh_strip -pslurm-client --dbg-package=slurm-client-dbg
 	dh_strip -pslurmd --dbg-package=slurmd-dbg
@@ -109,6 +110,7 @@ override_dh_strip:
 	dh_strip -pslurm-wlm-emulator
 	dh_strip -pslurm-client-emulator
 	dh_strip -plibpmi0-dev
+	dh_strip -plibpmi2-0-dev
 	dh_strip -plibslurmdb-dev
 	dh_strip -plibslurm-dev
 	dh_strip -pslurm-wlm-basic-plugins-dev
