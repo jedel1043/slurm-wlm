@@ -3081,9 +3081,7 @@ extern int kill_job_by_front_end_name(char *node_name)
 				}
 				job_update_tres_cnt(job_ptr, i);
 				if (job_ptr->node_cnt == 0) {
-					delete_step_records(job_ptr);
-					job_ptr->job_state &= (~JOB_COMPLETING);
-					slurm_sched_g_schedule();
+					cleanup_completing(job_ptr);
 				}
 				node_ptr = &node_record_table_ptr[i];
 				if (node_ptr->comp_job_cnt)
@@ -3314,11 +3312,9 @@ extern int kill_running_job_by_node_name(char *node_name)
 				error("node_cnt underflow on JobId=%u",
 				      job_ptr->job_id);
 			}
-			if (job_ptr->node_cnt == 0) {
-				delete_step_records(job_ptr);
-				job_ptr->job_state &= (~JOB_COMPLETING);
-				slurm_sched_g_schedule();
-			}
+			if (job_ptr->node_cnt == 0)
+				cleanup_completing(job_ptr);
+
 			if (node_ptr->comp_job_cnt)
 				(node_ptr->comp_job_cnt)--;
 			else {
@@ -4027,7 +4023,7 @@ static int _select_nodes_parts(struct job_record *job_ptr, bool test_only,
 	struct part_record *part_ptr;
 	ListIterator iter;
 	int rc = ESLURM_REQUESTED_PART_CONFIG_UNAVAILABLE;
-	int best_rc = -1, part_limits_rc;
+	int best_rc = -1, part_limits_rc = WAIT_NO_REASON;
 
 	if (job_ptr->part_ptr_list) {
 		iter = list_iterator_create(job_ptr->part_ptr_list);
@@ -4127,13 +4123,14 @@ static int _select_nodes_parts(struct job_record *job_ptr, bool test_only,
 		 (rc == ESLURM_RESERVATION_NOT_USABLE))
 		job_ptr->state_reason = WAIT_RESERVATION;
 	else if (rc == ESLURM_JOB_HELD)
-		job_ptr->state_reason = WAIT_HELD;
+		/* Do not reset the state_reason field here. select_nodes()
+		 * already set the state_reason field, and this error code
+		 * does not distinguish between user and admin holds. */
+		;
 	else if (rc == ESLURM_NODE_NOT_AVAIL)
 		job_ptr->state_reason = WAIT_NODE_NOT_AVAIL;
 	else if (rc == ESLURM_QOS_THRES)
 		job_ptr->state_reason = WAIT_QOS_THRES;
-	else if (rc == ESLURM_ACCOUNTING_POLICY)
-		job_ptr->state_reason = WAIT_ACCOUNT_POLICY;
 	else if (rc == ESLURM_REQUESTED_PART_CONFIG_UNAVAILABLE)
 		job_ptr->state_reason = WAIT_PART_CONFIG;
 	else if (rc == ESLURM_POWER_NOT_AVAIL)
@@ -5199,13 +5196,6 @@ static int _part_access_check(struct part_record *part_ptr,
 	size_t resv_name_leng = 0;
 	int rc = SLURM_SUCCESS;
 
-#ifdef HAVE_BG
-	static uint16_t cpus_per_node = 0;
-	if (!cpus_per_node)
-		select_g_alter_node_cnt(SELECT_GET_NODE_CPU_CNT,
-					&cpus_per_node);
-#endif
-
 	if (job_desc->reservation != NULL) {
 		resv_name_leng = strlen(job_desc->reservation);
 	}
@@ -5296,16 +5286,16 @@ static int _part_access_check(struct part_record *part_ptr,
 		return ESLURM_REQUESTED_NODES_NOT_IN_PARTITION;
 	}
 
+	/* The node counts have not been altered yet, so do not figure them out
+	 * by using the cpu counts.  The partitions have already been altered
+	 * so we have to use the original values.
+	 */
+	job_min_nodes = job_desc->min_nodes;
+	job_max_nodes = job_desc->max_nodes;
 #ifdef HAVE_BG
-	job_min_nodes = (job_desc->min_cpus == NO_VAL ?
-			 NO_VAL : job_desc->min_cpus / cpus_per_node);
-	job_max_nodes = (job_desc->max_cpus == NO_VAL ?
-			 NO_VAL : job_desc->max_cpus / cpus_per_node);
 	min_nodes_tmp = part_ptr->min_nodes_orig;
 	max_nodes_tmp = part_ptr->max_nodes_orig;
 #else
-	job_min_nodes = job_desc->min_nodes;
-	job_max_nodes = job_desc->max_nodes;
 	min_nodes_tmp = part_ptr->min_nodes;
 	max_nodes_tmp = part_ptr->max_nodes;
 #endif
@@ -5723,6 +5713,11 @@ extern int job_limits_check(struct job_record **job_pptr, bool check_min_time)
 	}
 
 #ifdef HAVE_BG
+	/* The node counts have been altered to reflect slurm nodes instead of
+	 * cnodes, so we need to figure out the cnode count
+	 * by using the cpu counts.  The partitions have been altered as well
+	 * so we have to use the original values.
+	 */
 	job_min_nodes = detail_ptr->min_cpus / cpus_per_node;
 	job_max_nodes = detail_ptr->max_cpus / cpus_per_node;
 	part_min_nodes = part_ptr->min_nodes_orig;
@@ -8483,7 +8478,8 @@ void pack_job(struct job_record *dump_job_ptr, uint16_t show_flags, Buf buffer,
 	      uint16_t protocol_version, uid_t uid)
 {
 	struct job_details *detail_ptr;
-	time_t begin_time = 0, start_time;
+	time_t begin_time = 0, start_time = 0, end_time = 0;
+	uint32_t time_limit;
 	uint8_t uint8_tmp = 0;
 	char *nodelist = NULL;
 	assoc_mgr_lock_t locks = { NO_LOCK, NO_LOCK, READ_LOCK, NO_LOCK,
@@ -8525,9 +8521,11 @@ void pack_job(struct job_record *dump_job_ptr, uint16_t show_flags, Buf buffer,
 		pack32(dump_job_ptr->alloc_sid, buffer);
 		if ((dump_job_ptr->time_limit == NO_VAL)
 		    && dump_job_ptr->part_ptr)
-			pack32(dump_job_ptr->part_ptr->max_time, buffer);
+			time_limit = dump_job_ptr->part_ptr->max_time;
 		else
-			pack32(dump_job_ptr->time_limit, buffer);
+			time_limit = dump_job_ptr->time_limit;
+
+		pack32(time_limit, buffer);
 		pack32(dump_job_ptr->time_min, buffer);
 
 		if (dump_job_ptr->details) {
@@ -8545,15 +8543,26 @@ void pack_job(struct job_record *dump_job_ptr, uint16_t show_flags, Buf buffer,
 		if (IS_JOB_STARTED(dump_job_ptr)) {
 			/* Report actual start time, in past */
 			start_time = dump_job_ptr->start_time;
+			end_time = dump_job_ptr->end_time;
 		} else if (dump_job_ptr->start_time != 0) {
 			/* Report expected start time,
 			 * making sure that time is not in the past */
 			start_time = MAX(dump_job_ptr->start_time, time(NULL));
-		} else	/* earliest start time in the future */
+			if (time_limit != NO_VAL) {
+				end_time = MAX(dump_job_ptr->end_time,
+					       (start_time + time_limit * 60));
+			}
+		} else	if (begin_time > time(NULL)) {
+			/* earliest start time in the future */
 			start_time = begin_time;
+			if (time_limit != NO_VAL) {
+				end_time = MAX(dump_job_ptr->end_time,
+					       (start_time + time_limit * 60));
+			}
+		}
 		pack_time(start_time, buffer);
+		pack_time(end_time, buffer);
 
-		pack_time(dump_job_ptr->end_time, buffer);
 		pack_time(dump_job_ptr->suspend_time, buffer);
 		pack_time(dump_job_ptr->pre_sus_time, buffer);
 		pack_time(dump_job_ptr->resize_time, buffer);
@@ -14220,23 +14229,31 @@ static int _job_requeue(uid_t uid, struct job_record *job_ptr, bool preempt,
 		return ESLURM_ACCESS_DENIED;
 	}
 
+	if (state & JOB_RECONFIG_FAIL)
+		node_features_g_get_node(job_ptr->nodes);
+
 	/* If the partition was removed don't allow the job to be
 	 * requeued.  If it doesn't have details then something is very
 	 * wrong and if the job doesn't want to be requeued don't.
 	 */
 	if (!job_ptr->part_ptr || !job_ptr->details
 	    || !job_ptr->details->requeue) {
+		if (state & JOB_RECONFIG_FAIL)
+			(void) job_fail(job_ptr->job_id, JOB_BOOT_FAIL);
 		return ESLURM_DISABLED;
 	}
+
+	if (job_ptr->batch_flag == 0) {
+		debug("Job-requeue can only be done for batch jobs");
+		if (state & JOB_RECONFIG_FAIL)
+			(void) job_fail(job_ptr->job_id, JOB_BOOT_FAIL);
+		return ESLURM_BATCH_ONLY;
+	}
+
 
 	/* If the job is already pending, just return an error. */
 	if (IS_JOB_PENDING(job_ptr))
 		return ESLURM_JOB_PENDING;
-
-	if (job_ptr->batch_flag == 0) {
-		debug("Job-requeue can only be done for batch jobs");
-		return ESLURM_BATCH_ONLY;
-	}
 
 	slurm_sched_g_requeue(job_ptr, "Job requeued by user/admin");
 	last_job_update = now;

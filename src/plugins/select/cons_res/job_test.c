@@ -1690,6 +1690,7 @@ static int _eval_nodes_busy(struct job_record *job_ptr, bitstr_t *node_map,
 			total_cpus += avail_cpus;
 			rem_cpus   -= avail_cpus;
 			rem_nodes--;
+			min_rem_nodes--;
 			max_nodes--;
 			if ((max_nodes <= 0) ||
 			    ((rem_cpus <= 0) && (rem_nodes <= 0)))
@@ -1708,6 +1709,7 @@ static int _eval_nodes_busy(struct job_record *job_ptr, bitstr_t *node_map,
 			total_cpus += avail_cpus;
 			rem_cpus   -= avail_cpus;
 			rem_nodes--;
+			min_rem_nodes--;
 			max_nodes--;
 			if ((max_nodes <= 0) ||
 			    ((rem_cpus <= 0) && (rem_nodes <= 0)))
@@ -3368,6 +3370,10 @@ extern int cr_job_test(struct job_record *job_ptr, bitstr_t *node_bitmap,
 			bit_and(free_cores, tmpcore);
 		}
 	}
+
+	if (job_ptr->details->whole_node == 1)
+		_block_whole_nodes(node_bitmap, avail_cores, free_cores);
+
 	cpu_count = _select_nodes(job_ptr, min_nodes, max_nodes, req_nodes,
 				  node_bitmap, cr_node_cnt, free_cores,
 				  node_usage, cr_type, test_only,
@@ -3434,6 +3440,11 @@ extern int cr_job_test(struct job_record *job_ptr, bitstr_t *node_bitmap,
 		bit_copybits(tmpcore, jp_ptr->row[i].row_bitmap);
 		bit_not(tmpcore);
 		bit_and(free_cores, tmpcore);
+
+		if (job_ptr->details->whole_node == 1)
+			_block_whole_nodes(node_bitmap, avail_cores,
+					   free_cores);
+
 		cpu_count = _select_nodes(job_ptr, min_nodes, max_nodes,
 					  req_nodes, node_bitmap, cr_node_cnt,
 					  free_cores, node_usage, cr_type,

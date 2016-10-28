@@ -906,7 +906,7 @@ of groups allowed to use a partition will be updated periodically, even when
 there have been no changes to the /etc/group file.
 Otherwise group member information will be updated periodically only after the
 /etc/group file is updated
-The default value is 1.
+The default value is 0.
 Also see the \fBGroupUpdateTime\fR parameter.
 
 .TP
@@ -966,6 +966,10 @@ Note that the \fBHealthCheckProgram\fR will be executed at the same time
 on all nodes to minimize its impact upon parallel programs.
 This program is will be killed if it does not terminate normally within
 60 seconds.
+When slurmd is first started, this program will be run repeatedly until
+it returns an exit code of 0, and will block slurmd from registering with
+slurmctld until this has been satisfied.
+The return code is otherwise ignored.
 By default, no program will be executed.
 
 .TP
@@ -2932,6 +2936,8 @@ Schedule resources to jobs on the least loaded nodes (based upon the number
 of idle CPUs). This is generally only recommended for an environment with
 serial jobs as idle resources will tend to be highly fragmented, resulting
 in parallel jobs being distributed across many nodes.
+Note that node \fBWeight\fR takes precedence over how many idle resources are
+on each node.
 Also see the partition configuration parameter \fBLLN\fR
 use the least loaded nodes in selected partitions.
 .TP
@@ -4349,6 +4355,8 @@ Schedule resources to jobs on the least loaded nodes (based upon the number
 of idle CPUs). This is generally only recommended for an environment with
 serial jobs as idle resources will tend to be highly fragmented, resulting
 in parallel jobs being distributed across many nodes.
+Note that node \fBWeight\fR takes precedence over how many idle resources are
+on each node.
 Also see the \fBSelectParameters\fR configuration parameter \fBCR_LLN\fR to
 use the least loaded nodes in every partition.
 

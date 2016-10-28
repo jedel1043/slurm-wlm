@@ -1536,21 +1536,29 @@ static void _set_options(const int argc, char **argv)
 			xfree(opt.task_epilog);
 			opt.task_epilog = xstrdup(optarg);
 			break;
-		case LONG_OPT_NICE:
+		case LONG_OPT_NICE: {
+			long long tmp_nice;
 			if (optarg)
-				opt.nice = strtol(optarg, NULL, 10);
+				tmp_nice = strtoll(optarg, NULL, 10);
 			else
-				opt.nice = 100;
-			if (opt.nice < 0) {
+				tmp_nice = 100;
+			if (llabs(tmp_nice) > (NICE_OFFSET - 3)) {
+				error("Nice value out of range (+/- %u). Value "
+				      "ignored", NICE_OFFSET - 3);
+				tmp_nice = 0;
+			}
+			if (tmp_nice < 0) {
 				uid_t my_uid = getuid();
 				if ((my_uid != 0) &&
 				    (my_uid != slurm_get_slurm_user_id())) {
-					error("Nice value must be non-negative, "
-					      "value ignored");
-					opt.nice = 0;
+					error("Nice value must be "
+					      "non-negative, value ignored");
+					tmp_nice = 0;
 				}
 			}
+			opt.nice = (int) tmp_nice;
 			break;
+		}
 		case LONG_OPT_PRIORITY: {
 			long long priority;
 			if (strcasecmp(optarg, "TOP") == 0) {
@@ -2186,6 +2194,7 @@ static bool _opt_verify(void)
 			opt.min_nodes = MAX(hl_cnt, opt.min_nodes);
 		else
 			opt.min_nodes = hl_cnt;
+		opt.nodes_set = true;
 	}
 
 	if ((opt.nodes_set || opt.extra_set)				&&
@@ -2922,7 +2931,7 @@ static void _help(void)
 #endif
 #ifdef HAVE_NATIVE_CRAY			/* Native Cray specific options */
 "Cray related options:\n"
-"      --network=type          Use network performace counters\n"
+"      --network=type          Use network performance counters\n"
 "                              (system, network, or processor)\n"
 "\n"
 #endif
