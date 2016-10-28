@@ -1,8 +1,12 @@
-slurm-llnl (16.05.6-1) UNRELEASED; urgency=medium
+slurm-llnl (16.05.6-1) unstable; urgency=medium
 
-  * New upstream release 
+  * Update libslurm{,db} symbols files
+  * Remove unused hardening-no-bindnow lintian overrides
+  * Add lsb-base dependency to slurmdbd
+  * Change libmysqlclient-dev build dependency to default
+  * Add libpmi2-0 packages thanks to Markus Geimer (Closes: #840404)
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 28 Oct 2016 08:07:23 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 28 Oct 2016 16:23:07 +0200
 
 slurm-llnl (16.05.5-1) unstable; urgency=medium
 
