@@ -448,6 +448,7 @@ libslurmdb.so.30 libslurmdb30 #MINVER#
  slurm_get_prolog_timeout@Base 15.08.0
  slurm_get_propagate_prio_process@Base 2.2.0
  slurm_get_rem_time@Base 2.2.0
+ slurm_get_resume_program@Base 16.05.6
  slurm_get_resume_timeout@Base 2.2.0
  slurm_get_return_code@Base 2.2.0
  slurm_get_root_filter@Base 2.2.0
