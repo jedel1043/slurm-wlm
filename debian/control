@@ -342,6 +342,7 @@ Depends:
  slurm-wlm-basic-plugins (= ${binary:Version}),
  adduser,
  munge,
+ lsb-base (>= 3.2-12),
  ucf
 Replaces: slurm-llnl-slurmdbd (<< 14.03)
 Breaks: slurm-llnl-slurmdbd (<< 14.03)
