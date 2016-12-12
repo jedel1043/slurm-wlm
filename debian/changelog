@@ -2,6 +2,8 @@ slurm-llnl (16.05.7-1) UNRELEASED; urgency=medium
 
   * New upstream release (Closes: #828549)
   * Add libswitch-perl dependency to slurm-wlm-torque (Closes: #847342)
+  * Add slurmd.README.Debian (Closes: #845268) 
+  * Move README.Debian to slurmctld.README.Debian
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 12 Dec 2016 11:42:06 +0100
 
