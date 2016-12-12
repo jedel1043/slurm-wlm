@@ -1,3 +1,9 @@
+slurm-llnl (16.05.7-1) UNRELEASED; urgency=medium
+
+  * New upstream release (Closes: #828549)
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 12 Dec 2016 11:42:06 +0100
+
 slurm-llnl (16.05.6-1) unstable; urgency=medium
 
   * Update libslurm{,db} symbols files
