@@ -438,6 +438,7 @@ Depends:
  libslurmdb-perl (>= ${source:Version}),
  ${perl:Depends},
  ${misc:Depends},
+ libswitch-perl,
  slurm-client (>= ${source:Version})
 Replaces: slurm-llnl-torque (<< 14.03)
 Breaks: slurm-llnl-torque (<< 14.03)
