@@ -5,6 +5,7 @@ slurm-llnl (16.05.7-1) UNRELEASED; urgency=medium
   * Add slurmd.README.Debian (Closes: #845268) 
   * Move README.Debian to slurmctld.README.Debian
   * Add lintian overrides for no bindnow in many packages
+  * Use jquery.min.js provided by libjs-jquery instead of upstream's
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 12 Dec 2016 11:42:06 +0100
 

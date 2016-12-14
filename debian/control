@@ -309,6 +309,7 @@ Package: slurm-wlm-doc
 Section: doc
 Architecture: all
 Depends:
+ libjs-jquery,
  ${shlibs:Depends},
  ${misc:Depends}
 Replaces: slurm-llnl-doc (<< 14.03)

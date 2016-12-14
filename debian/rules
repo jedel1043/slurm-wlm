@@ -63,6 +63,9 @@ override_dh_auto_install:
 			pod2man $$i > debian/tmp/usr/share/man/man1/$$(basename $$i).1; \
 	done
 
+	# Remove embedded jquery.min.js
+	rm -f debian/tmp/usr/share/doc/slurm-wlm-doc/html/jquery.min.js
+
 	# Rename binaries that are also in the slurm-wlm-emulator
 	mv debian/tmp/usr/sbin/slurmctld debian/tmp/usr/sbin/slurmctld-wlm
 	mv debian/tmp/usr/sbin/slurmd debian/tmp/usr/sbin/slurmd-wlm
