@@ -1,4 +1,4 @@
-slurm-llnl (16.05.7-1) UNRELEASED; urgency=medium
+slurm-llnl (16.05.7-1) unstable; urgency=medium
 
   * New upstream release (Closes: #828549)
   * Add libswitch-perl dependency to slurm-wlm-torque (Closes: #847342)
@@ -8,7 +8,7 @@ slurm-llnl (16.05.7-1) UNRELEASED; urgency=medium
   * Use jquery.min.js provided by libjs-jquery instead of upstream's
   * Add jquery source in missing-sources
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 12 Dec 2016 11:42:06 +0100
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 14 Dec 2016 11:01:06 +0100
 
 slurm-llnl (16.05.6-1) unstable; urgency=medium
 
