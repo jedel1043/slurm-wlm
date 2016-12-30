@@ -28,7 +28,10 @@ case "$1" in
               -a ! -e /usr/bin/squeue ] ; then
             # Killing all slurm owned process
             pkill -9 -u slurm || true
-            deluser --quiet slurm || true
+            # Deleting slurm user
+            if [ -n "$(id -u slurm 2>/dev/null)" ] ; then
+              deluser --quiet slurm || true
+            fi
             rm -rf /var/run/slurm-llnl
             if which ucf >/dev/null; then
               ucf --purge /etc/slurm-llnl/slurm.conf

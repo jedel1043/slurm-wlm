@@ -29,7 +29,10 @@ case "$1" in
               -a ! -e /usr/sbin/slurmd \
               -a ! -e /usr/bin/squeue ] ; then
            pkill -9 -u slurm || true
-           deluser --quiet slurm || true
+           # Deleting slurm user
+           if [ -n "$(id -u slurm 2>/dev/null)" ] ; then
+             deluser --quiet slurm || true
+           fi
            rm -rf /var/run/slurm-llnl
          fi
         ;;
