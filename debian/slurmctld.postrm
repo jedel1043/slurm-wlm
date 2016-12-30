@@ -27,7 +27,7 @@ case "$1" in
               -a ! -e /usr/sbin/slurmdbd \
               -a ! -e /usr/bin/squeue ] ; then
             # Killing all slurm owned process
-            pkill -9 -u slurm || true
+            pkill -9 -u 64030 || true
             # Deleting slurm user
             if [ -n "$(id -u slurm 2>/dev/null)" ] ; then
               deluser --quiet slurm || true
