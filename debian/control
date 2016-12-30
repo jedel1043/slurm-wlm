@@ -92,7 +92,6 @@ Depends:
  adduser,
  ucf,
  munge,
- openssl-blacklist,
  openssl (>= 0.9.8g-9),
  lsb-base (>= 3.2-12)
 Replaces: slurm-llnl (<< 14.03)
@@ -129,7 +128,6 @@ Depends:
  adduser,
  ucf,
  munge,
- openssl-blacklist,
  openssl (>= 0.9.8g-9),
  lsb-base (>= 3.2-12)
 Replaces: slurm-llnl (<< 14.03)
