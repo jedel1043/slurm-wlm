@@ -26,8 +26,6 @@ case "$1" in
          if [    ! -e /usr/sbin/slurmctld \
               -a ! -e /usr/sbin/slurmdbd \
               -a ! -e /usr/bin/squeue ] ; then
-            # Killing all slurm owned process
-            pkill -9 -u slurm || true
             deluser --quiet slurm || true
             rm -rf /var/run/slurm-llnl
             if which ucf >/dev/null; then
