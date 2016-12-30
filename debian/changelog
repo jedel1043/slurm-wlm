@@ -1,4 +1,4 @@
-slurm-llnl (16.05.7-2) UNRELEASED; urgency=medium
+slurm-llnl (16.05.7-2) unstable; urgency=medium
 
   * Enable multiple slurmd support (Closes: #849140)
   * Drop dependency on openssl-blacklist (Closes: #848627)
@@ -6,7 +6,7 @@ slurm-llnl (16.05.7-2) UNRELEASED; urgency=medium
   * Checks whether the slurm user exists before deleting
   * Use numerical uid 64030 to kill slurm owned processes
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 28 Dec 2016 09:17:56 +0100
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 30 Dec 2016 16:06:07 +0100
 
 slurm-llnl (16.05.7-1) unstable; urgency=medium
 
