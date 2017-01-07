@@ -1,3 +1,10 @@
+slurm-llnl (16.05.8-1) UNRELEASED; urgency=medium
+
+  * New upstream release 
+  * Remove wiki.conf.5 from slurm-client manpages
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 04 Jan 2017 23:44:58 +0100
+
 slurm-llnl (16.05.7-2) unstable; urgency=medium
 
   * Enable multiple slurmd support (Closes: #849140)
