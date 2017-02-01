@@ -574,6 +574,7 @@ extern void set_job_elig_time(void)
 	ListIterator job_iterator;
 	slurmctld_lock_t job_write_lock =
 		{ READ_LOCK, WRITE_LOCK, WRITE_LOCK, READ_LOCK };
+	time_t now = time(NULL);
 #ifdef HAVE_BG
 	static uint16_t cpus_per_node = 0;
 	if (!cpus_per_node)
@@ -591,7 +592,8 @@ extern void set_job_elig_time(void)
 			continue;
 		if (part_ptr == NULL)
 			continue;
-		if ((job_ptr->details == NULL) || job_ptr->details->begin_time)
+		if ((job_ptr->details == NULL) ||
+		    (job_ptr->details->begin_time > now))
 			continue;
 		if ((part_ptr->state_up & PARTITION_SCHED) == 0)
 			continue;
@@ -863,8 +865,20 @@ next_part:		part_ptr = (struct part_record *)
 			info("sched: Allocate JobId=%u Partition=%s NodeList=%s #CPUs=%u",
 			     job_ptr->job_id, job_ptr->part_ptr->name,
 			     job_ptr->nodes, job_ptr->total_cpus);
-			if ((job_ptr->details->prolog_running == 0) &&
-			    ((job_ptr->bit_flags & NODE_REBOOT) == 0)) {
+
+			if (
+#ifdef HAVE_BG
+				/* On a bluegene system we need to run the
+				 * prolog while the job is CONFIGURING so this
+				 * can't work off the CONFIGURING flag as done
+				 * elsewhere.
+				 */
+				!job_ptr->details->prolog_running &&
+				!(job_ptr->bit_flags & NODE_REBOOT)
+#else
+				!IS_JOB_CONFIGURING(job_ptr)
+#endif
+				) {
 				launch_msg = build_launch_job_msg(job_ptr,
 							msg->protocol_version);
 			}
@@ -1842,10 +1856,20 @@ next_task:
 #endif
 			if (job_ptr->batch_flag == 0)
 				srun_allocate(job_ptr->job_id);
-			else if ((job_ptr->details->prolog_running == 0) &&
-			         ((job_ptr->bit_flags & NODE_REBOOT) == 0)) {
+			else if (
+#ifdef HAVE_BG
+				/* On a bluegene system we need to run the
+				 * prolog while the job is CONFIGURING so this
+				 * can't work off the CONFIGURING flag as done
+				 * elsewhere.
+				 */
+				!job_ptr->details->prolog_running &&
+				!(job_ptr->bit_flags & NODE_REBOOT)
+#else
+				!IS_JOB_CONFIGURING(job_ptr)
+#endif
+				)
 				launch_job(job_ptr);
-			}
 			rebuild_job_part_list(job_ptr);
 			job_cnt++;
 			if (is_job_array_head &&
@@ -3181,7 +3205,8 @@ extern int job_start_data(job_desc_msg_t *job_desc_msg,
 	}
 
 	/* Enforce reservation: access control, time and nodes */
-	if (job_ptr->details->begin_time)
+	if (job_ptr->details->begin_time &&
+	    (job_ptr->details->begin_time > now))
 		start_res = job_ptr->details->begin_time;
 	else
 		start_res = now;
@@ -3753,10 +3778,10 @@ extern int prolog_slurmctld(struct job_record *job_ptr)
 		return errno;
 	}
 
-	if (job_ptr->details)
+	if (job_ptr->details) {
 		job_ptr->details->prolog_running++;
-
-	job_ptr->job_state |= JOB_CONFIGURING;
+		job_ptr->job_state |= JOB_CONFIGURING;
+	}
 
 	slurm_attr_init(&thread_attr_prolog);
 	pthread_attr_setdetachstate(&thread_attr_prolog,
