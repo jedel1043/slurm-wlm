@@ -7470,6 +7470,7 @@ extern void job_config_fini(struct job_record *job_ptr)
 {
 	time_t now = time(NULL);
 
+	last_job_update = now;
 	job_ptr->job_state &= (~JOB_CONFIGURING);
 	job_ptr->tot_sus_time = difftime(now, job_ptr->start_time);
 	if ((job_ptr->time_limit != INFINITE) && (job_ptr->tot_sus_time != 0)) {
@@ -7486,9 +7487,20 @@ static bool _test_nodes_ready(struct job_record *job_ptr)
 	if (bit_overlap(job_ptr->node_bitmap, power_node_bitmap))
 		return false;
 
-	if (job_ptr->wait_all_nodes && 
-	    ((select_g_job_ready(job_ptr) & READY_NODE_STATE) == 0))
-		return false;
+	if (job_ptr->wait_all_nodes) {
+		/* Make sure all nodes ready to start job */
+		if ((select_g_job_ready(job_ptr) & READY_NODE_STATE) == 0)
+			return false;
+	} else if (job_ptr->batch_flag) {
+		/* Make first node is ready to start batch job */
+		int i_first = bit_ffs(job_ptr->node_bitmap);
+		struct node_record *node_ptr = node_record_table_ptr + i_first;
+		if ((i_first != -1) &&
+		    (IS_NODE_POWER_SAVE(node_ptr) ||
+		     IS_NODE_POWER_UP(node_ptr))) {
+			return false;
+		}
+	}
 
 	return true;
 }
@@ -12846,6 +12858,7 @@ job_alloc_info(uint32_t uid, uint32_t job_id, struct job_record **job_pptr)
 	if (job_ptr->alias_list && !xstrcmp(job_ptr->alias_list, "TBD") &&
 	    (prolog == 0) && job_ptr->node_bitmap &&
 	    (bit_overlap(power_node_bitmap, job_ptr->node_bitmap) == 0)) {
+		last_job_update = time(NULL);
 		job_ptr->job_state &= (~JOB_CONFIGURING);
 		set_job_alias_list(job_ptr);
 	}
@@ -14372,6 +14385,8 @@ reply:
 	/* Since the job completion logger removes the submit we need
 	 * to add it again. */
 	acct_policy_add_job_submit(job_ptr);
+
+	acct_policy_update_pending_job(job_ptr);
 
 	if (state & JOB_SPECIAL_EXIT) {
 		job_ptr->job_state |= JOB_SPECIAL_EXIT;
