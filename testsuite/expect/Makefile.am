@@ -11,7 +11,6 @@ EXTRA_DIST = \
 	mpi-testscripts/script.slurm.sh	\
 	globals				\
 	globals_accounting		\
-	pkill				\
 	README				\
 	regression			\
 	regression.py			\
@@ -139,6 +138,8 @@ EXTRA_DIST = \
 	test1.111			\
 	test1.112			\
 	test1.113			\
+	test1.114			\
+	test1.115			\
 	test2.1				\
 	test2.2				\
 	test2.3				\
@@ -231,6 +232,8 @@ EXTRA_DIST = \
 	test6.13.prog.c			\
 	test6.14			\
 	test6.15			\
+	test6.16			\
+	test6.17			\
 	test7.1				\
 	test7.2				\
 	test7.2.prog.c			\
@@ -443,6 +446,7 @@ EXTRA_DIST = \
 	test17.42			\
 	test17.43			\
 	test17.44			\
+	test17.45			\
 	test17.51			\
 	test17.52			\
 	test17.53			\
@@ -515,6 +519,7 @@ EXTRA_DIST = \
 	test21.34			\
 	test21.35			\
 	test21.36			\
+	test21.37			\
 	inc21.30.1                      \
 	inc21.30.2                      \
 	inc21.30.3                      \
@@ -604,10 +609,16 @@ EXTRA_DIST = \
 	test34.2			\
 	test35.1			\
 	test35.2			\
+	test35.3			\
 	test36.1			\
 	test36.2			\
 	test36.3			\
-	test36.4
+	test36.4			\
+	test37.1			\
+	test37.2			\
+	test37.3			\
+	test37.4			\
+	test37.5
 
 distclean-local:
 	rm -rf *error *output

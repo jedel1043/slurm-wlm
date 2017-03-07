@@ -8,7 +8,7 @@
  *  CODE-OCEC-09-009. All rights reserved.
  *
  *  This file is part of SLURM, a resource management program.
- *  For details, see <http://slurm.schedmd.com/>.
+ *  For details, see <https://slurm.schedmd.com/>.
  *  Please also read the included file: DISCLAIMER.
  *
  *  SLURM is free software; you can redistribute it and/or modify it under
@@ -42,7 +42,7 @@
 #include "src/common/read_config.h"
 #include "src/common/slurm_time.h"
 #include "src/common/uid.h"
-#include "src/common/slurm_strcasestr.h"
+#include "src/common/xstring.h"
 #include "sacct.h"
 #include <time.h>
 
@@ -493,7 +493,7 @@ void parse_command_line(int argc, char **argv)
 	struct stat stat_buf;
 	char *dot = NULL;
 	char *env_val = NULL;
-	bool brief_output = FALSE, long_output = FALSE;
+	bool brief_output = false, long_output = false;
 	bool all_users = 0;
 	bool all_clusters = 0;
 	slurmdb_job_cond_t *job_cond = params.job_cond;
