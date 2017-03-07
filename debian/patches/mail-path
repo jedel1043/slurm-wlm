@@ -6,9 +6,11 @@ Bug-Debian: http://bugs.debian.org/588862
 Forwarded: no
 Last-Update: 2015-09-23
 
---- slurm-llnl-15.08.0.orig/doc/man/man1/strigger.1
-+++ slurm-llnl-15.08.0/doc/man/man1/strigger.1
-@@ -298,7 +298,7 @@ primary slurmctld fails.
+Index: slurm-llnl/doc/man/man1/strigger.1
+===================================================================
+--- slurm-llnl.orig/doc/man/man1/strigger.1
++++ slurm-llnl/doc/man/man1/strigger.1
+@@ -304,7 +304,7 @@ primary slurmctld fails.
  strigger \-\-set \-\-primary_slurmctld_failure \\
           \-\-program=/usr/sbin/primary_slurmctld_failure
  # Notify the administrator of the failure using by e\-mail
@@ -17,7 +19,7 @@ Last-Update: 2015-09-23
  
  > strigger \-\-set \-\-primary_slurmctld_failure \\
             \-\-program=/usr/sbin/primary_slurmctld_failure
-@@ -317,7 +317,7 @@ argument to the script by Slurm).
+@@ -323,7 +323,7 @@ argument to the script by Slurm).
  strigger \-\-set \-\-node \-\-down \\
           \-\-program=/usr/sbin/slurm_admin_notify
  # Notify administrator using by e\-mail
@@ -26,9 +28,11 @@ Last-Update: 2015-09-23
  
  > strigger \-\-set \-\-node \-\-down \\
             \-\-program=/usr/sbin/slurm_admin_notify
---- slurm-llnl-15.08.0.orig/doc/man/man5/slurm.conf.5
-+++ slurm-llnl-15.08.0/doc/man/man5/slurm.conf.5
-@@ -1302,7 +1302,7 @@ including the microseconds, the daemon's
+Index: slurm-llnl/doc/man/man5/slurm.conf.5
+===================================================================
+--- slurm-llnl.orig/doc/man/man5/slurm.conf.5
++++ slurm-llnl/doc/man/man5/slurm.conf.5
+@@ -1324,7 +1324,7 @@ local address itself.
  .TP
  \fBMailProg\fR
  Fully qualified pathname to the program used to send email per user request.
@@ -37,9 +41,11 @@ Last-Update: 2015-09-23
  
  .TP
  \fBMaxArraySize\fR
---- slurm-llnl-15.08.0.orig/src/common/read_config.h
-+++ slurm-llnl-15.08.0/src/common/read_config.h
-@@ -115,7 +115,7 @@ extern char *default_plugstack;
+Index: slurm-llnl/src/common/read_config.h
+===================================================================
+--- slurm-llnl.orig/src/common/read_config.h
++++ slurm-llnl/src/common/read_config.h
+@@ -117,7 +117,7 @@ extern char *default_plugstack;
  #  define DEFAULT_LAUNCH_TYPE         "launch/slurm"
  #endif
  
@@ -47,4 +53,4 @@ Last-Update: 2015-09-23
 +#define DEFAULT_MAIL_PROG           "/usr/bin/mail"
  #define DEFAULT_MAX_ARRAY_SIZE      1001
  #define DEFAULT_MAX_JOB_COUNT       10000
- #define DEFAULT_MAX_JOB_ID          0x7fff0000
+ #define DEFAULT_MAX_JOB_ID          0x03ff0000
