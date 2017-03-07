@@ -34,7 +34,7 @@
  *  CODE-OCEC-09-009. All rights reserved.
  *
  *  This file is part of SLURM, a resource management program.
- *  For details, see <http://slurm.schedmd.com/>.
+ *  For details, see <https://slurm.schedmd.com/>.
  *  Please also read the included file: DISCLAIMER.
  *
  *  SLURM is free software; you can redistribute it and/or modify it under
@@ -66,16 +66,9 @@
 #ifndef __SLURM_XLATOR_H__
 #define __SLURM_XLATOR_H__
 
-#if HAVE_CONFIG_H
-#  include "config.h"
-#endif
+#include "config.h"
 
 #if USE_ALIAS
-
-/* arg_desc.[ch] functions*/
-#define	arg_count		slurm_arg_count
-#define	arg_idx_by_name		slurm_arg_idx_by_name
-#define	arg_name_by_inx		slurm_arg_name_by_inx
 
 /* bitstring.[ch] functions*/
 #define	bit_alloc		slurm_bit_alloc
@@ -98,7 +91,6 @@
 #define	bit_set_count_range	slurm_bit_set_count_range
 #define	bit_clear_count		slurm_bit_clear_count
 #define	bit_nset_max_count	slurm_bit_nset_max_count
-#define	bit_and_set_count	slurm_bit_and_set_count
 #define	bit_rotate_copy		slurm_bit_rotate_copy
 #define	bit_rotate		slurm_bit_rotate
 #define	bit_fmt			slurm_bit_fmt
@@ -332,6 +324,7 @@
 #define xstrchr			slurm_xstrchr
 #define xstrcmp			slurm_xstrcmp
 #define xstrcasecmp		slurm_xstrcasecmp
+#define xstrcasestr		slurm_xstrcasestr
 
 /* slurm_protocol_api.[ch] functions */
 #define convert_num_unit2       slurm_convert_num_unit2
@@ -358,7 +351,6 @@
 
 /* slurmdbd_defs.[ch] functions */
 #define slurmdbd_free_list_msg	slurmdb_slurmdbd_free_list_msg
-#define slurmdbd_free_rc_msg    slurmdb_slurmdbd_free_rc_msg
 #define slurmdbd_free_usage_msg slurmdb_slurmdbd_free_usage_msg
 #define slurmdbd_free_id_rc_msg slurmdb_slurmdbd_free_id_rc_msg
 
@@ -435,7 +427,6 @@
 #endif /* USE_ALIAS */
 
 /* Include the function definitions after redefining their names. */
-#include "src/common/arg_desc.h"
 #include "src/common/bitstring.h"
 #include "src/common/callerid.h"
 #include "src/common/eio.h"
