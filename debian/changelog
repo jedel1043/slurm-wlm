@@ -1,8 +1,12 @@
-slurm-llnl (17.02.1.2-1) UNRELEASED; urgency=medium
+slurm-llnl (17.02.1.2-1) unstable; urgency=medium
 
-  * New upstream major release 
+  * New upstream major release
+  * Update libslurm{,db} package files to soname 31
+  * Refresh patches and remove those included upstream
+  * Remove srun_cr man page not installed without blcr support
+  * Update service files to avoid killing job (Closes: #855905)
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 07 Mar 2017 18:35:19 +0100
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 08 Mar 2017 08:57:37 +0100
 
 slurm-llnl (16.05.9-1) unstable; urgency=medium
 
