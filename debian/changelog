@@ -1,6 +1,7 @@
 slurm-llnl (17.02.2-1) UNRELEASED; urgency=medium
 
   * New upstream release.
+  * Refresh patches.
 
  -- Mehdi Dogguy <mehdi@debian.org>  Thu, 27 Apr 2017 00:01:35 +0200
 

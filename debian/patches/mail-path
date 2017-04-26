@@ -6,11 +6,9 @@ Bug-Debian: http://bugs.debian.org/588862
 Forwarded: no
 Last-Update: 2015-09-23
 
-Index: slurm-llnl/doc/man/man1/strigger.1
-===================================================================
---- slurm-llnl.orig/doc/man/man1/strigger.1
-+++ slurm-llnl/doc/man/man1/strigger.1
-@@ -304,7 +304,7 @@ primary slurmctld fails.
+--- a/doc/man/man1/strigger.1
++++ b/doc/man/man1/strigger.1
+@@ -304,7 +304,7 @@
  strigger \-\-set \-\-primary_slurmctld_failure \\
           \-\-program=/usr/sbin/primary_slurmctld_failure
  # Notify the administrator of the failure using by e\-mail
@@ -19,7 +17,7 @@ Index: slurm-llnl/doc/man/man1/strigger.1
  
  > strigger \-\-set \-\-primary_slurmctld_failure \\
             \-\-program=/usr/sbin/primary_slurmctld_failure
-@@ -323,7 +323,7 @@ argument to the script by Slurm).
+@@ -323,7 +323,7 @@
  strigger \-\-set \-\-node \-\-down \\
           \-\-program=/usr/sbin/slurm_admin_notify
  # Notify administrator using by e\-mail
@@ -28,11 +26,9 @@ Index: slurm-llnl/doc/man/man1/strigger.1
  
  > strigger \-\-set \-\-node \-\-down \\
             \-\-program=/usr/sbin/slurm_admin_notify
-Index: slurm-llnl/doc/man/man5/slurm.conf.5
-===================================================================
---- slurm-llnl.orig/doc/man/man5/slurm.conf.5
-+++ slurm-llnl/doc/man/man5/slurm.conf.5
-@@ -1324,7 +1324,7 @@ local address itself.
+--- a/doc/man/man5/slurm.conf.5
++++ b/doc/man/man5/slurm.conf.5
+@@ -1324,7 +1324,7 @@
  .TP
  \fBMailProg\fR
  Fully qualified pathname to the program used to send email per user request.
@@ -41,11 +37,9 @@ Index: slurm-llnl/doc/man/man5/slurm.conf.5
  
  .TP
  \fBMaxArraySize\fR
-Index: slurm-llnl/src/common/read_config.h
-===================================================================
---- slurm-llnl.orig/src/common/read_config.h
-+++ slurm-llnl/src/common/read_config.h
-@@ -117,7 +117,7 @@ extern char *default_plugstack;
+--- a/src/common/read_config.h
++++ b/src/common/read_config.h
+@@ -117,7 +117,7 @@
  #  define DEFAULT_LAUNCH_TYPE         "launch/slurm"
  #endif
  
