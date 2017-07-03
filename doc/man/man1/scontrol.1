@@ -163,7 +163,7 @@ Display a description of scontrol options and commands.
 
 .TP
 \fBhold\fP \fIjob_list\fP
-Prevent a pending job from beginning started (sets it's priority to 0).
+Prevent a pending job from being started (sets it's priority to 0).
 Use the \fIrelease\fP command to permit the job to be scheduled.
 The job_list argument is a comma separated list of job IDs OR
 "jobname=" with the job's name, which will attempt to hold all jobs having
@@ -172,6 +172,9 @@ Note that when a job is held by a system administrator using the \fBhold\fP
 command, only a system administrator may release the job for execution (also
 see the \fBuhold\fP command). When the job is held by its owner, it may also
 be released by the job's owner.
+Additionally, attempting to hold a running job will have not suspend or cancel
+it. But, it will set the job priority to 0 and update the job reason field,
+which would hold the job if it was requeued at a later time.
 
 .TP
 \fBnotify\fP \fIjob_id\fP \fImessage\fP

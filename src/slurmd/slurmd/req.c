@@ -252,7 +252,11 @@ static pthread_mutex_t job_limits_mutex = PTHREAD_MUTEX_INITIALIZER;
 static List job_limits_list = NULL;
 static bool job_limits_loaded = false;
 
-#define FINI_JOB_CNT 32
+/*
+ * To be fixed in 17.11 to match the count of cpus on a node instead of a hard
+ * code.
+ */
+#define FINI_JOB_CNT 256
 static pthread_mutex_t fini_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint32_t fini_job_id[FINI_JOB_CNT];
 static int next_fini_job_inx = 0;
@@ -923,7 +927,7 @@ _forkexec_slurmstepd(uint16_t type, void *req,
 		}
 
 		/*
-		 * Just incase we (or someone we are linking to)
+		 * Just in case we (or someone we are linking to)
 		 * opened a file and didn't do a close on exec.  This
 		 * is needed mostly to protect us against libs we link
 		 * to that don't set the flag as we should already be
@@ -2599,6 +2603,10 @@ _rpc_reboot(slurm_msg_t *msg)
 				sp = xstrdup(reboot_program);
 			reboot_msg = (reboot_msg_t *) msg->data;
 			if (reboot_msg && reboot_msg->features) {
+				/*
+				 * Run reboot_program with only arguments given
+				 * in reboot_msg->features.
+				 */
 				info("Node reboot request with features %s being processed",
 				     reboot_msg->features);
 				(void) node_features_g_node_set(
@@ -2610,7 +2618,8 @@ _rpc_reboot(slurm_msg_t *msg)
 					cmd = xstrdup(sp);
 				}
 			} else {
-				cmd = xstrdup(sp);
+				/* Run reboot_program verbatim */
+				cmd = xstrdup(reboot_program);
 				info("Node reboot request being processed");
 			}
 			if (access(sp, R_OK | X_OK) < 0)
@@ -5401,6 +5410,11 @@ _rpc_terminate_job(slurm_msg_t *msg)
 		return;
 	}
 
+	/*
+	 * Note the job is finishing to avoid a race condition for batch jobs
+	 * that finish before the slurmd knows it finished launching.
+	 */
+	_note_batch_job_finished(req->job_id);
 	/*
 	 * "revoke" all future credentials for this jobid
 	 */
