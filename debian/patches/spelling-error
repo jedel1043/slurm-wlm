@@ -1,0 +1,17 @@
+Description: spelling error in manpage
+ Fix spelling error in slurm.conf.5
+Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+Forwarded: https://bugs.schedmd.com/show_bug.cgi?id=3947
+Last-Update: 2017-06-30
+
+--- slurm-llnl-17.02.5.orig/doc/man/man5/slurm.conf.5
++++ slurm-llnl-17.02.5/doc/man/man5/slurm.conf.5
+@@ -2794,7 +2794,7 @@ thus reducing potential fragmentation. T
+ conjunction with \fBCompleteWait\fR. By default if a job is found
+ completing then no jobs are scheduled. If this parameter is used the node in
+ a completing job are taken out of consideration.
+-NOTE: With this set there may be a slight performance penality in scheduling
++NOTE: With this set there may be a slight performance penalty in scheduling
+ depending on queue depth.
+ NOTE: \fBCompleteWait\fR must be set for this to work.
+ .TP
