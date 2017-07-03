@@ -454,6 +454,7 @@ libslurmdb.so.31 libslurmdb31 #MINVER#
  slurm_get_prolog_flags@Base 14.03.0
  slurm_get_prolog_timeout@Base 15.08.0
  slurm_get_propagate_prio_process@Base 2.2.0
+ slurm_get_reboot_program@Base 17.02.5
  slurm_get_rem_time@Base 2.2.0
  slurm_get_resume_program@Base 16.05.6
  slurm_get_resume_timeout@Base 2.2.0
@@ -885,11 +886,11 @@ libslurmdb.so.31 libslurmdb31 #MINVER#
  slurm_shutdown_msg_engine@Base 2.2.0
  slurm_signal_job@Base 2.2.0
  slurm_signal_job_step@Base 2.2.0
- slurm_slurmdbd_defs_fini@Base 17.02.2-1
- slurm_slurmdbd_defs_init@Base 17.02.2-1
- slurm_slurmdbd_free_id_rc_msg@Base 17.02.2-1
- slurm_slurmdbd_free_list_msg@Base 17.02.2-1
- slurm_slurmdbd_free_usage_msg@Base 17.02.2-1
+ slurm_slurmdbd_defs_fini@Base 17.02.2
+ slurm_slurmdbd_defs_init@Base 17.02.2
+ slurm_slurmdbd_free_id_rc_msg@Base 17.02.2
+ slurm_slurmdbd_free_list_msg@Base 17.02.2
+ slurm_slurmdbd_free_usage_msg@Base 17.02.2
  slurm_sort_char_list_asc@Base 2.2.0
  slurm_sort_char_list_desc@Base 2.2.0
  slurm_sort_key_pairs@Base 2.2.0
@@ -1236,10 +1237,10 @@ libslurmdb.so.31 libslurmdb31 #MINVER#
  slurmdb_setup_cluster_name_dims@Base 2.3.1
  slurmdb_setup_plugin_id_select@Base 16.05.0
  slurmdb_shutdown@Base 17.02.0
-#MISSING: 17.02.2-1# slurmdb_slurmdbd_free_id_rc_msg@Base 2.2.0
-#MISSING: 17.02.2-1# slurmdb_slurmdbd_free_list_msg@Base 2.2.0
+#MISSING: 17.02.2# slurmdb_slurmdbd_free_id_rc_msg@Base 2.2.0
+#MISSING: 17.02.2# slurmdb_slurmdbd_free_list_msg@Base 2.2.0
 #MISSING: 17.02.0# slurmdb_slurmdbd_free_rc_msg@Base 2.2.0
-#MISSING: 17.02.2-1# slurmdb_slurmdbd_free_usage_msg@Base 2.2.0
+#MISSING: 17.02.2# slurmdb_slurmdbd_free_usage_msg@Base 2.2.0
  slurmdb_sort_hierarchical_assoc_list@Base 2.2.0
  slurmdb_sort_tres_by_id_asc@Base 15.08.0
  slurmdb_str_2_cluster_flags@Base 2.2.0
