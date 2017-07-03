@@ -1,10 +1,14 @@
-slurm-llnl (17.02.2-1) UNRELEASED; urgency=medium
+slurm-llnl (17.02.5-1) unstable; urgency=medium
 
+  [ Mehdi Dogguy and Gennaro Oliva ]
   * New upstream release.
   * Refresh patches.
   * Update libslurm{db,}31.symbols
 
- -- Mehdi Dogguy <mehdi@debian.org>  Thu, 27 Apr 2017 00:01:35 +0200
+  [ Gennaro Oliva ]
+  * Update d/copyright and switch to copyright-format 1.0
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 03 Jul 2017 15:30:51 +0200
 
 slurm-llnl (17.02.1.2-1) unstable; urgency=medium
 
