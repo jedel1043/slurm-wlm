@@ -7,8 +7,10 @@ Author: Rémi Palancher <remi@rezib.org>
 Forwarded: http://thread.gmane.org/gmane.comp.distributed.slurm.devel/5483
 Last-Update: 2014-09-15
 
---- a/src/sacctmgr/sacctmgr.c
-+++ b/src/sacctmgr/sacctmgr.c
+Index: slurm-llnl/src/sacctmgr/sacctmgr.c
+===================================================================
+--- slurm-llnl.orig/src/sacctmgr/sacctmgr.c
++++ slurm-llnl/src/sacctmgr/sacctmgr.c
 @@ -45,8 +45,6 @@
  #include "src/common/xsignal.h"
  #include "src/common/proc_args.h"
@@ -18,8 +20,10 @@ Last-Update: 2014-09-15
  char *command_name;
  int exit_code;		/* sacctmgr's exit code, =1 on any error at any time */
  int exit_flag;		/* program to terminate if =1 */
---- a/src/sacctmgr/sacctmgr.h
-+++ b/src/sacctmgr/sacctmgr.h
+Index: slurm-llnl/src/sacctmgr/sacctmgr.h
+===================================================================
+--- slurm-llnl.orig/src/sacctmgr/sacctmgr.h
++++ slurm-llnl/src/sacctmgr/sacctmgr.h
 @@ -67,7 +67,7 @@
  
  #define CKPT_WAIT	10
