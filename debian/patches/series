@@ -3,3 +3,4 @@ header
 sacctmgr-increase-buffer
 manpages
 honor-without-rpath-hwloc
+CVE-2016-10030
