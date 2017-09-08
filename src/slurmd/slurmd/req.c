@@ -258,7 +258,7 @@ static bool job_limits_loaded = false;
  */
 #define FINI_JOB_CNT 256
 static pthread_mutex_t fini_mutex = PTHREAD_MUTEX_INITIALIZER;
-static uint32_t fini_job_id[FINI_JOB_CNT];
+static uint32_t fini_job_id[FINI_JOB_CNT] = {0};
 static int next_fini_job_inx = 0;
 
 /* NUM_PARALLEL_SUSP_JOBS controls the number of jobs that can be suspended or
@@ -268,13 +268,13 @@ static int next_fini_job_inx = 0;
  * suspended at one time. */
 #define NUM_PARALLEL_SUSP_STEPS 8
 static pthread_mutex_t suspend_mutex = PTHREAD_MUTEX_INITIALIZER;
-static uint32_t job_suspend_array[NUM_PARALLEL_SUSP_JOBS];
+static uint32_t job_suspend_array[NUM_PARALLEL_SUSP_JOBS] = {0};
 static int job_suspend_size = 0;
 
 #define JOB_STATE_CNT 64
 static pthread_mutex_t job_state_mutex   = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  job_state_cond    = PTHREAD_COND_INITIALIZER;
-static uint32_t active_job_id[JOB_STATE_CNT];
+static uint32_t active_job_id[JOB_STATE_CNT] = {0};
 
 static pthread_mutex_t prolog_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t prolog_serial_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -6374,7 +6374,7 @@ _add_starting_step(uint16_t type, void *req)
 
 	/* Add the step info to a list of starting processes that
 	   cannot reliably be contacted. */
-	slurm_mutex_lock(&conf->starting_steps_lock);
+
 	starting_step = xmalloc(sizeof(starting_step_t));
 	if (!starting_step) {
 		error("%s failed to allocate memory", __func__);
@@ -6413,7 +6413,6 @@ _add_starting_step(uint16_t type, void *req)
 	}
 
 fail:
-	slurm_mutex_unlock(&conf->starting_steps_lock);
 	return rc;
 }
 
@@ -6421,22 +6420,21 @@ fail:
 static int
 _remove_starting_step(uint16_t type, void *req)
 {
-	uint32_t job_id, step_id;
-	ListIterator iter;
-	starting_step_t *starting_step;
+	starting_step_t starting_step;
 	int rc = SLURM_SUCCESS;
-	bool found = false;
-
-	slurm_mutex_lock(&conf->starting_steps_lock);
 
 	switch(type) {
 	case LAUNCH_BATCH_JOB:
-		job_id =  ((batch_job_launch_msg_t *)req)->job_id;
-		step_id = ((batch_job_launch_msg_t *)req)->step_id;
+		starting_step.job_id =
+			((batch_job_launch_msg_t *)req)->job_id;
+		starting_step.step_id =
+			((batch_job_launch_msg_t *)req)->step_id;
 		break;
 	case LAUNCH_TASKS:
-		job_id =  ((launch_tasks_request_msg_t *)req)->job_id;
-		step_id = ((launch_tasks_request_msg_t *)req)->job_step_id;
+		starting_step.job_id =
+			((launch_tasks_request_msg_t *)req)->job_id;
+		starting_step.step_id =
+			((launch_tasks_request_msg_t *)req)->job_step_id;
 		break;
 	default:
 		error("%s called with an invalid type: %u", __func__, type);
@@ -6444,24 +6442,16 @@ _remove_starting_step(uint16_t type, void *req)
 		goto fail;
 	}
 
-	iter = list_iterator_create(conf->starting_steps);
-	while ((starting_step = list_next(iter))) {
-		if (starting_step->job_id  == job_id &&
-		    starting_step->step_id == step_id) {
-			starting_step = list_remove(iter);
-			xfree(starting_step);
-
-			found = true;
-			slurm_cond_broadcast(&conf->starting_steps_cond);
-			break;
-		}
-	}
-	if (!found) {
-		error("%s: step %u.%u not found", __func__, job_id, step_id);
+	if (!list_delete_all(conf->starting_steps,
+			     _compare_starting_steps,
+			     &starting_step)) {
+		error("%s: step %u.%u not found", __func__,
+		      starting_step.job_id,
+		      starting_step.step_id);
 		rc = SLURM_FAILURE;
 	}
+	slurm_cond_broadcast(&conf->starting_steps_cond);
 fail:
-	slurm_mutex_unlock(&conf->starting_steps_lock);
 	return rc;
 }
 
@@ -6486,12 +6476,15 @@ static int _compare_starting_steps(void *listentry, void *key)
 
 static int _wait_for_starting_step(uint32_t job_id, uint32_t step_id)
 {
-	starting_step_t  starting_step;
-	starting_step.job_id  = job_id;
-	starting_step.step_id = step_id;
+	static pthread_mutex_t dummy_lock = PTHREAD_MUTEX_INITIALIZER;
+	struct timespec ts = {0, 0};
+	struct timeval now;
+
+	starting_step_t starting_step;
 	int num_passes = 0;
 
-	slurm_mutex_lock(&conf->starting_steps_lock);
+	starting_step.job_id  = job_id;
+	starting_step.step_id = step_id;
 
 	while (list_find_first( conf->starting_steps,
 				&_compare_starting_steps,
@@ -6506,8 +6499,14 @@ static int _wait_for_starting_step(uint32_t job_id, uint32_t step_id)
 		}
 		num_passes++;
 
-		slurm_cond_wait(&conf->starting_steps_cond,
-				&conf->starting_steps_lock);
+		gettimeofday(&now, NULL);
+		ts.tv_sec = now.tv_sec+1;
+		ts.tv_nsec = now.tv_usec * 1000;
+
+		slurm_mutex_lock(&dummy_lock);
+		slurm_cond_timedwait(&conf->starting_steps_cond,
+				     &dummy_lock, &ts);
+		slurm_mutex_unlock(&dummy_lock);
 	}
 	if (num_passes > 0) {
 		if (step_id != NO_VAL)
@@ -6517,7 +6516,6 @@ static int _wait_for_starting_step(uint32_t job_id, uint32_t step_id)
 			debug( "Finished wait for job %d, all steps",
 				job_id);
 	}
-	slurm_mutex_unlock(&conf->starting_steps_lock);
 
 	return SLURM_SUCCESS;
 }
@@ -6533,15 +6531,12 @@ static bool _step_is_starting(uint32_t job_id, uint32_t step_id)
 	starting_step.step_id = step_id;
 	bool ret = false;
 
-	slurm_mutex_lock(&conf->starting_steps_lock);
-
 	if (list_find_first( conf->starting_steps,
 			     &_compare_starting_steps,
 			     &starting_step )) {
 		ret = true;
 	}
 
-	slurm_mutex_unlock(&conf->starting_steps_lock);
 	return ret;
 }
 
@@ -6551,7 +6546,6 @@ static void _add_job_running_prolog(uint32_t job_id)
 	uint32_t *job_running_prolog;
 
 	/* Add the job to a list of jobs whose prologs are running */
-	slurm_mutex_lock(&conf->prolog_running_lock);
 	job_running_prolog = xmalloc(sizeof(uint32_t));
 	if (!job_running_prolog) {
 		error("_add_job_running_prolog failed to allocate memory");
@@ -6565,33 +6559,16 @@ static void _add_job_running_prolog(uint32_t job_id)
 	}
 
 fail:
-	slurm_mutex_unlock(&conf->prolog_running_lock);
+	return;
 }
 
 /* Remove this job from the list of jobs currently running their prolog */
 static void _remove_job_running_prolog(uint32_t job_id)
 {
-	ListIterator iter;
-	uint32_t *job_running_prolog;
-	bool found = false;
-
-	slurm_mutex_lock(&conf->prolog_running_lock);
-
-	iter = list_iterator_create(conf->prolog_running_jobs);
-	while ((job_running_prolog = list_next(iter))) {
-		if (*job_running_prolog  == job_id) {
-			job_running_prolog = list_remove(iter);
-			xfree(job_running_prolog);
-
-			found = true;
-			slurm_cond_broadcast(&conf->prolog_running_cond);
-			break;
-		}
-	}
-	if (!found)
+	if (!list_delete_all(conf->prolog_running_jobs,
+			     _match_jobid, &job_id))
 		error("_remove_job_running_prolog: job not found");
-
-	slurm_mutex_unlock(&conf->prolog_running_lock);
+	slurm_cond_broadcast(&conf->prolog_running_cond);
 }
 
 static int _match_jobid(void *listentry, void *key)
@@ -6614,15 +6591,24 @@ static int _prolog_is_running (uint32_t jobid)
 /* Wait for the job's prolog to complete */
 static void _wait_for_job_running_prolog(uint32_t job_id)
 {
+	static pthread_mutex_t dummy_lock = PTHREAD_MUTEX_INITIALIZER;
+	struct timespec ts = {0, 0};
+	struct timeval now;
+
 	debug( "Waiting for job %d's prolog to complete", job_id);
-	slurm_mutex_lock(&conf->prolog_running_lock);
 
 	while (_prolog_is_running (job_id)) {
-		slurm_cond_wait(&conf->prolog_running_cond,
-				&conf->prolog_running_lock);
+
+		gettimeofday(&now, NULL);
+		ts.tv_sec = now.tv_sec+1;
+		ts.tv_nsec = now.tv_usec * 1000;
+
+		slurm_mutex_lock(&dummy_lock);
+		slurm_cond_timedwait(&conf->prolog_running_cond,
+				     &dummy_lock, &ts);
+		slurm_mutex_unlock(&dummy_lock);
 	}
 
-	slurm_mutex_unlock(&conf->prolog_running_lock);
 	debug( "Finished wait for job %d's prolog to complete", job_id);
 }
 
