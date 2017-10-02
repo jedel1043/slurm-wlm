@@ -1,6 +1,6 @@
 Source: slurm-llnl
 Section: admin
-Priority: extra
+Priority: optional
 Maintainer: Gennaro Oliva <oliva.g@na.icar.cnr.it>
 Uploaders: Rémi Palancher <remi@rezib.org>, Mehdi Dogguy <mehdi@debian.org>
 Build-Depends:
