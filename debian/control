@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Gennaro Oliva <oliva.g@na.icar.cnr.it>
 Uploaders: Rémi Palancher <remi@rezib.org>, Mehdi Dogguy <mehdi@debian.org>
 Build-Depends:
- debhelper (>= 9.20130504),
+ debhelper (>= 9.20160709),
  autotools-dev,
  libmunge-dev,
  libncurses5-dev,
@@ -24,7 +24,6 @@ Build-Depends:
  dh-exec,
  librrd-dev,
  libipmimonitoring-dev,
- dh-systemd (>= 1.5),
  hdf5-helpers,
  libhdf5-dev
 Standards-Version: 4.1.1
