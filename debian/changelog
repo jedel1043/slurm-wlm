@@ -5,6 +5,7 @@ slurm-llnl (17.02.7-1) unstable; urgency=medium
   * Switch from -dbg packages to automatic -dbgsym
   * Change package priority to optional as required by the new standard
   * Change d/copyright format uri to https
+  * Standard version upgraded to 4.1.1
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 15 Sep 2017 18:54:53 +0200
 
