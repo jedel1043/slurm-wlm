@@ -7,8 +7,9 @@ slurm-llnl (17.02.7-1) unstable; urgency=medium
   * Change d/copyright format uri to https
   * Standard version upgraded to 4.1.1
   * Increase debhelper version dependency to get rid of dh-systemd
+  * Add srun, sbatch and sacct autopkgtests
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 15 Sep 2017 18:54:53 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sat, 07 Oct 2017 01:25:22 +0200
 
 slurm-llnl (17.02.5-1) unstable; urgency=medium
 
