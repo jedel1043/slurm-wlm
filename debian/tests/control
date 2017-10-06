@@ -1,0 +1,4 @@
+Tests: srun
+Features: no-build-needed,isolation-container
+Restrictions: needs-root
+Depends: slurmctld, slurmd, slurm-client
