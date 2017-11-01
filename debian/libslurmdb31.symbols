@@ -1014,7 +1014,9 @@ libslurmdb.so.31 libslurmdb31 #MINVER#
  slurm_xstrfmtcat@Base 2.2.0
  slurm_xstrftimecat@Base 2.2.0
  slurm_xstring_is_whitespace@Base 2.2.0
+ slurm_xstrncasecmp@Base 17.02.9
  slurm_xstrncat@Base 2.2.0
+ slurm_xstrncmp@Base 17.02.9
  slurm_xstrndup@Base 2.2.0
  slurm_xstrstrip@Base 2.2.0
  slurm_xstrsubstitute@Base 2.2.0
