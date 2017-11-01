@@ -1,3 +1,9 @@
+slurm-llnl (17.02.9-1) UNRELEASED; urgency=medium
+
+  * New upstream release fixes CVE-2017-15566 
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 01 Nov 2017 20:01:03 +0100
+
 slurm-llnl (17.02.7-1) unstable; urgency=medium
 
   * New upstream release
