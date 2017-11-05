@@ -1,11 +1,11 @@
-slurm-llnl (17.02.9-1) UNRELEASED; urgency=medium
+slurm-llnl (17.02.9-1) unstable; urgency=medium
 
   * New upstream release fixes CVE-2017-15566 (Closes: #880530)
   * Add new symbols to libslurm31 and libslurmdb31
   * Modify header patch to remove google script in the footer
   * Rename header patch
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 01 Nov 2017 20:01:03 +0100
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sun, 05 Nov 2017 01:02:24 +0100
 
 slurm-llnl (17.02.7-1) unstable; urgency=medium
 
