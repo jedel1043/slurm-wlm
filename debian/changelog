@@ -1,6 +1,6 @@
 slurm-llnl (17.02.9-1) UNRELEASED; urgency=medium
 
-  * New upstream release fixes CVE-2017-15566
+  * New upstream release fixes CVE-2017-15566 (Closes: #880530)
   * Add new symbols to libslurm31 and libslurmdb31
   * Modify header patch to remove google script in the footer
   * Rename header patch
