@@ -2,3 +2,4 @@ mail-path
 header
 sacctmgr-increase-buffer
 spelling
+CVE-2017-15566

@@ -1,3 +1,11 @@
+slurm-llnl (16.05.9-1+deb9u1) stretch-security; urgency=high
+
+  * Fix CVE-2017-15566 caused by insecure SPANK environment variable
+    handling, allowing privilege escalation to root during Prolog or
+    Epilog execution (Closes: #880530)
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sun, 05 Nov 2017 11:28:51 +0100
+
 slurm-llnl (16.05.9-1) unstable; urgency=medium
 
   * New upstream release
