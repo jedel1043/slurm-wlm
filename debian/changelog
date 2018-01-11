@@ -1,3 +1,9 @@
+slurm-llnl (17.11.2-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+
+ -- Mehdi Dogguy <mehdi@debian.org>  Thu, 11 Jan 2018 22:34:43 +0100
+
 slurm-llnl (17.02.9-1) unstable; urgency=medium
 
   * New upstream release fixes CVE-2017-15566 (Closes: #880530)
