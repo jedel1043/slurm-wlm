@@ -96,8 +96,8 @@ override_dh_auto_install:
 	mv debian/tmp-emulator/usr/bin/sstat	debian/tmp-emulator/usr/bin/sstat-emulator
 
 override_dh_strip:
-	dh_strip -plibslurm31 --dbgsym-migration='libslurm31-dbg (<< 17.02.6~)'
-	dh_strip -plibslurmdb31 --dbgsym-migration='libslurmdb31-dbg (<< 17.02.6~)'
+	dh_strip -plibslurm32
+	dh_strip -plibslurmdb32
 	dh_strip -plibpmi0 --dbgsym-migration='libpmi0-dbg (<< 17.02.6~)'
 	dh_strip -plibpmi2-0 --dbgsym-migration='libpmi2-0-dbg (<< 17.02.6~)'
 	dh_strip -pslurm-wlm-basic-plugins --dbgsym-migration='slurm-wlm-basic-plugins-dbg (<< 17.02.6~)'
