@@ -5,6 +5,8 @@ slurm-llnl (17.11.2-1) UNRELEASED; urgency=medium
   * Drop old transitional packages (Closes: #878864) and old Replaces
     and Breaks statements.
   * Fix default pidfile for slurm daemons (Closes: #885759)
+  * Use --runstatedir instead of --localstatedir in debian/rules to
+    specify run state directory.
 
  -- Mehdi Dogguy <mehdi@debian.org>  Thu, 11 Jan 2018 22:34:43 +0100
 
