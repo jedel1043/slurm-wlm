@@ -38,8 +38,6 @@ Depends:
  slurmd (= ${binary:Version}),
  slurmctld (= ${binary:Version}),
  slurm-client (= ${binary:Version})
-Replaces: slurm-llnl (<< 14.03)
-Breaks: slurm-llnl (<< 14.03)
 Description: Simple Linux Utility for Resource Management
  SLURM stands for Simple Linux Utility for Resource Management, it
  is an open-source cluster resource management and job scheduling system
@@ -57,8 +55,6 @@ Depends:
  munge,
  adduser,
  ucf
-Replaces: slurm-llnl (<< 14.03), slurmdbd (<< 14.03.9-5)
-Breaks: slurm-llnl (<< 14.03), slurmdbd (<< 14.03.9-5)
 Conflicts: sinfo (<< 0.0.47-4)
 Description: SLURM client side commands
  SLURM stands for Simple Linux Utility for Resource Management, it
@@ -79,8 +75,6 @@ Depends:
  munge,
  openssl (>= 0.9.8g-9),
  lsb-base (>= 3.2-12)
-Replaces: slurm-llnl (<< 14.03)
-Breaks: slurm-llnl (<< 14.03)
 Description: SLURM compute node daemon
  SLURM stands for Simple Linux Utility for Resource Management, it
  is an open-source cluster resource management and job scheduling system
@@ -101,8 +95,6 @@ Depends:
  munge,
  openssl (>= 0.9.8g-9),
  lsb-base (>= 3.2-12)
-Replaces: slurm-llnl (<< 14.03)
-Breaks: slurm-llnl (<< 14.03)
 Description: SLURM central management daemon
  SLURM stands for Simple Linux Utility for Resource Management, it
  is an open-source cluster resource management and job scheduling system
@@ -211,8 +203,6 @@ Depends:
  libjs-jquery,
  ${shlibs:Depends},
  ${misc:Depends}
-Replaces: slurm-llnl-doc (<< 14.03)
-Breaks: slurm-llnl-doc (<< 14.03)
 Description: SLURM documentation
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
@@ -223,8 +213,6 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
-Replaces: slurm-llnl-basic-plugins (<< 14.03)
-Breaks: slurm-llnl-basic-plugins (<< 14.03)
 Description: SLURM basic plugins
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
@@ -237,8 +225,6 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  slurm-wlm-basic-plugins (= ${binary:Version})
-Replaces: slurm-llnl-basic-plugins-dev (<< 14.03)
-Breaks: slurm-llnl-basic-plugins-dev (<< 14.03)
 Description: SLURM basic plugins development files
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
@@ -250,8 +236,6 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  slurm-client (= ${binary:Version})
-Replaces: slurm-llnl-sview (<< 14.03)
-Breaks: slurm-llnl-sview (<< 14.03)
 Description: GUI to view and modify SLURM state
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
@@ -269,8 +253,6 @@ Depends:
  munge,
  lsb-base (>= 3.2-12),
  ucf
-Replaces: slurm-llnl-slurmdbd (<< 14.03)
-Breaks: slurm-llnl-slurmdbd (<< 14.03)
 Description: Secure enterprise-wide interface to a database for SLURM
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
@@ -314,8 +296,6 @@ Depends:
  ${misc:Depends},
  libswitch-perl,
  slurm-client (>= ${source:Version})
-Replaces: slurm-llnl-torque (<< 14.03)
-Breaks: slurm-llnl-torque (<< 14.03)
 Conflicts: gridengine-client, torque-client, torque-client-x11
 Description: Torque compatibility wrappers for SLURM
  SLURM, the Simple Linux Utility for Resource Management,
@@ -334,22 +314,6 @@ Description: PAM module to authenticate using the SLURM resource manager
  nodes where SLURM performs resource management. Access to the node is
  restricted to user root and users who have been allocated resources on
  that node.
-
-Package: slurm-llnl
-Architecture: all
-Section: oldlibs
-Depends: slurm-wlm, ${misc:Depends}
-Description: transitional dummy package for slurm-wlm
- This is a transitional dummy package for slurm-wlm.
- It can safely be removed.
-
-Package: slurm-llnl-slurmdbd
-Architecture: all
-Section: oldlibs
-Depends: slurmdbd, ${misc:Depends}
-Description: transitional dummy package for slurmdbd
- This is a transitional dummy package for slurmdbd
- It can safely be removed.
 
 Package: slurm-wlm-emulator
 Architecture: any
