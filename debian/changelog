@@ -11,6 +11,7 @@ slurm-llnl (17.11.2-1) UNRELEASED; urgency=medium
     libslurmfull.so
   * Drop unused lintian spelling-error-in-binary overrides
   * Update d/copyright
+  * Upgrade Standards-Version to 4.1.2, no changes needed
 
  -- Mehdi Dogguy <mehdi@debian.org>  Thu, 11 Jan 2018 22:34:43 +0100
 

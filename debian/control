@@ -26,7 +26,7 @@ Build-Depends:
  libipmimonitoring-dev,
  hdf5-helpers,
  libhdf5-dev
-Standards-Version: 4.1.1
+Standards-Version: 4.1.2
 Homepage: http://slurm.schedmd.com
 Vcs-Browser: https://anonscm.debian.org/git/collab-maint/slurm-llnl.git
 Vcs-Git: https://anonscm.debian.org/git/collab-maint/slurm-llnl.git
