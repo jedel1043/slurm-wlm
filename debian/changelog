@@ -9,6 +9,7 @@ slurm-llnl (17.11.2-1) UNRELEASED; urgency=medium
     specify run state directory.
   * Override call to dh_shlibdeps so that dpkg-shlibdeps finds
     libslurmfull.so
+  * Drop unused lintian spelling-error-in-binary overrides
 
  -- Mehdi Dogguy <mehdi@debian.org>  Thu, 11 Jan 2018 22:34:43 +0100
 
