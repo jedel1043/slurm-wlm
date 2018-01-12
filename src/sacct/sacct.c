@@ -60,7 +60,7 @@ print_field_t fields[] = {
 	{10, "Cluster", print_fields_str, PRINT_CLUSTER},
 	{14, "Comment", print_fields_str, PRINT_COMMENT},
 	{14, "ConsumedEnergy", print_fields_str, PRINT_CONSUMED_ENERGY},
-	{17, "ConsumedEnergyRaw", print_fields_double,
+	{17, "ConsumedEnergyRaw", print_fields_uint64,
 	 PRINT_CONSUMED_ENERGY_RAW},
 	{10, "CPUTime", print_fields_time_from_secs, PRINT_CPU_TIME},
 	{10, "CPUTimeRAW", print_fields_uint64, PRINT_CPU_TIME_RAW},
@@ -91,6 +91,7 @@ print_field_t fields[] = {
 	{10, "MaxVMSize", print_fields_str, PRINT_MAXVSIZE},
 	{14, "MaxVMSizeNode", print_fields_str, PRINT_MAXVSIZENODE},
 	{14, "MaxVMSizeTask", print_fields_uint, PRINT_MAXVSIZETASK},
+	{12, "McsLabel", print_fields_str, PRINT_MCS_LABEL},
 	{10, "MinCPU", print_fields_str, PRINT_MINCPU},
 	{10, "MinCPUNode", print_fields_str, PRINT_MINCPUNODE},
 	{10, "MinCPUTask", print_fields_uint, PRINT_MINCPUTASK},
@@ -128,6 +129,7 @@ print_field_t fields[] = {
 	{10, "UserCPU", print_fields_str, PRINT_USERCPU},
 	{10, "WCKey", print_fields_str, PRINT_WCKEY},
 	{10, "WCKeyID", print_fields_uint, PRINT_WCKEYID},
+	{20, "WorkDir", print_fields_str, PRINT_WORK_DIR},
 	{0,  NULL, NULL, 0}};
 
 List jobs = NULL;

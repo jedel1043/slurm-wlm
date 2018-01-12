@@ -109,7 +109,7 @@ static pthread_mutex_t s_p_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void _s_p_atfork_child(void)
 {
-	pthread_mutex_init(&s_p_lock, NULL);
+	slurm_mutex_init(&s_p_lock);
 	keyvalue_initialized = false;
 }
 
@@ -290,6 +290,17 @@ void s_p_hashtbl_destroy(s_p_hashtbl_t *hashtbl) {
 		}
 	}
 	xfree(hashtbl);
+
+	/*
+	 * Now clear the global variables to free their memory as well.
+	 */
+	slurm_mutex_lock(&s_p_lock);
+	if (keyvalue_initialized) {
+		regfree(&keyvalue_re);
+		keyvalue_initialized = false;
+	}
+	slurm_mutex_unlock(&s_p_lock);
+
 }
 
 static void _keyvalue_regex_init(void)
@@ -1128,7 +1139,7 @@ static int _parse_include_directive(s_p_hashtbl_t *hashtbl, uint32_t *hash_val,
 	int rc;
 
 	*leftover = NULL;
-	if (strncasecmp("include", line, strlen("include")) == 0) {
+	if (xstrncasecmp("include", line, strlen("include")) == 0) {
 		ptr = (char *)line + strlen("include");
 
 		if (!isspace((int)*ptr))

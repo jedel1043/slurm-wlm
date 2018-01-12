@@ -59,6 +59,7 @@
 #include "src/common/macros.h"
 #include "src/common/pack.h"
 #include "src/common/parse_config.h"
+#include "src/common/run_command.h"
 #include "src/common/slurm_protocol_api.h"
 #include "src/common/slurm_protocol_defs.h"
 #include "src/common/timers.h"
@@ -226,7 +227,6 @@ static int	_create_bufs(struct job_record *job_ptr, bb_job_t *bb_job,
 static void *	_create_persistent(void *x);
 static void *	_destroy_persistent(void *x);
 static void	_free_create_args(create_buf_data_t *create_args);
-static void	_free_script_argv(char **script_argv);
 static bb_job_t *_get_bb_job(struct job_record *job_ptr);
 static bool	_have_dw_cmd_opts(bb_job_t *bb_job);
 static void	_job_queue_del(void *x);
@@ -305,16 +305,6 @@ static void _python2json(char *buf)
 				break;
 		}
 	}
-}
-
-/* Free an array of xmalloced records. The array must be NULL terminated. */
-static void _free_script_argv(char **script_argv)
-{
-	int i;
-
-	for (i = 0; script_argv[i]; i++)
-		xfree(script_argv[i]);
-	xfree(script_argv);
 }
 
 /* Log a command's arguments. */
@@ -491,11 +481,8 @@ static bb_job_t *_get_bb_job(struct job_record *job_ptr)
 	bb_job->account = xstrdup(job_ptr->account);
 	if (job_ptr->part_ptr)
 		bb_job->partition = xstrdup(job_ptr->part_ptr->name);
-	if (job_ptr->qos_ptr) {
-		slurmdb_qos_rec_t *qos_ptr =
-			(slurmdb_qos_rec_t *)job_ptr->qos_ptr;
-		bb_job->qos = xstrdup(qos_ptr->name);
-	}
+	if (job_ptr->qos_ptr)
+		bb_job->qos = xstrdup(job_ptr->qos_ptr->name);
 	bb_job->state = BB_STATE_PENDING;
 	bb_job->user_id = job_ptr->user_id;
 	bb_specs = xstrdup(job_ptr->burst_buffer);
@@ -661,7 +648,7 @@ static bb_job_t *_get_bb_job(struct job_record *job_ptr)
 				} else {
 					bb_job->swap_nodes = 1;
 				}
-				tmp_cnt = bb_job->swap_size *
+				tmp_cnt = (uint64_t) bb_job->swap_size *
 					  bb_job->swap_nodes;
 				if ((sub_tok = strstr(tok, "pool="))) {
 					xfree(bb_job->job_pool);
@@ -892,7 +879,7 @@ static void _recover_bb_state(void)
 {
 	char *state_file = NULL, *data = NULL;
 	int data_allocated, data_read = 0;
-	uint16_t protocol_version = (uint16_t)NO_VAL;
+	uint16_t protocol_version = NO_VAL16;
 	uint32_t data_size = 0, rec_count = 0, name_len = 0;
 	uint32_t id = 0, user_id = 0;
 	uint64_t size = 0;
@@ -933,7 +920,9 @@ static void _recover_bb_state(void)
 
 	buffer = create_buf(data, data_size);
 	safe_unpack16(&protocol_version, buffer);
-	if (protocol_version == (uint16_t)NO_VAL) {
+	if (protocol_version == NO_VAL16) {
+		if (!ignore_state_errors)
+			fatal("Can not recover burst_buffer/cray state, data version incompatible, start with '-i' to ignore this");
 		error("******************************************************************");
 		error("Can not recover burst_buffer/cray state, data version incompatible");
 		error("******************************************************************");
@@ -942,7 +931,7 @@ static void _recover_bb_state(void)
 
 	safe_unpack32(&rec_count, buffer);
 	for (i = 0; i < rec_count; i++) {
-		if (protocol_version >= SLURM_16_05_PROTOCOL_VERSION) {
+		if (protocol_version >= SLURM_MIN_PROTOCOL_VERSION) {
 			safe_unpackstr_xmalloc(&account,   &name_len, buffer);
 			safe_unpack_time(&create_time, buffer);
 			safe_unpack32(&id, buffer);
@@ -953,17 +942,6 @@ static void _recover_bb_state(void)
 			safe_unpack32(&user_id, buffer);
 			if (bb_state.bb_config.flags & BB_FLAG_EMULATE_CRAY)
 				safe_unpack64(&size, buffer);
-		} else {
-			safe_unpackstr_xmalloc(&account,   &name_len, buffer);
-			safe_unpack_time(&create_time, buffer);
-			safe_unpack32(&id, buffer);
-			safe_unpackstr_xmalloc(&name,      &name_len, buffer);
-			safe_unpackstr_xmalloc(&partition, &name_len, buffer);
-			safe_unpackstr_xmalloc(&qos,       &name_len, buffer);
-			safe_unpack32(&user_id, buffer);
-			if (bb_state.bb_config.flags & BB_FLAG_EMULATE_CRAY)
-				safe_unpack64(&size, buffer);
-			pool = xstrdup(bb_state.bb_config.default_pool);
 		}
 
 		if ((bb_state.bb_config.flags & BB_FLAG_EMULATE_CRAY) &&
@@ -1016,6 +994,8 @@ static void _recover_bb_state(void)
 	return;
 
 unpack_error:
+	if (!ignore_state_errors)
+		fatal("Incomplete burst buffer data checkpoint file, start with '-i' to ignore this");
 	error("Incomplete burst buffer data checkpoint file");
 	xfree(account);
 	xfree(name);
@@ -1116,10 +1096,9 @@ static void _set_assoc_mgr_ptrs(bb_alloc_t *bb_alloc)
 
 	memset(&qos_rec, 0, sizeof(slurmdb_qos_rec_t));
 	qos_rec.name = bb_alloc->qos;
-	assoc_mgr_fill_in_qos(acct_db_conn, &qos_rec,
-			      accounting_enforce,
-			      &bb_alloc->qos_ptr,
-			      true);
+	if (assoc_mgr_fill_in_qos(acct_db_conn, &qos_rec, accounting_enforce,
+				  &bb_alloc->qos_ptr, true) != SLURM_SUCCESS)
+		verbose("%s: Invalid QOS name: %s", __func__, bb_alloc->qos);
 
 	assoc_mgr_unlock(&assoc_locks);
 }
@@ -1439,8 +1418,6 @@ static int _queue_stage_in(struct job_record *job_ptr, bb_job_t *bb_job)
 	char **setup_argv, **data_in_argv;
 	stage_args_t *stage_args;
 	int hash_inx = job_ptr->job_id % 10;
-	pthread_attr_t stage_attr;
-	pthread_t stage_tid = 0;
 	int rc = SLURM_SUCCESS;
 
 	xstrfmtcat(hash_dir, "%s/hash.%d", state_save_loc, hash_inx);
@@ -1502,19 +1479,7 @@ static int _queue_stage_in(struct job_record *job_ptr, bb_job_t *bb_job)
 	stage_args->args1   = setup_argv;
 	stage_args->args2   = data_in_argv;
 
-	slurm_attr_init(&stage_attr);
-	if (pthread_attr_setdetachstate(&stage_attr, PTHREAD_CREATE_DETACHED))
-		error("pthread_attr_setdetachstate error %m");
-	while (pthread_create(&stage_tid, &stage_attr, _start_stage_in,
-			      stage_args)) {
-		if (errno != EAGAIN) {
-			error("%s: pthread_create: %m", __func__);
-			_start_stage_in(stage_args);	/* Do in-line */
-			break;
-		}
-		usleep(100000);
-	}
-	slurm_attr_destroy(&stage_attr);
+	slurm_thread_create_detached(NULL, _start_stage_in, stage_args);
 
 	xfree(hash_dir);
 	xfree(job_dir);
@@ -1549,9 +1514,9 @@ static void *_start_stage_in(void *x)
 		timeout = DEFAULT_OTHER_TIMEOUT * 1000;
 	op = "setup";
 	START_TIMER;
-	resp_msg = bb_run_script("setup",
-				 bb_state.bb_config.get_sys_state,
-				 setup_argv, timeout, &status);
+	resp_msg = run_command("setup",
+			       bb_state.bb_config.get_sys_state,
+			       setup_argv, timeout, &status);
 	END_TIMER;
 	info("%s: setup for job %u ran for %s",
 	     __func__, stage_args->job_id, TIME_STR);
@@ -1605,9 +1570,9 @@ static void *_start_stage_in(void *x)
 		xfree(resp_msg);
 		op = "dws_data_in";
 		START_TIMER;
-		resp_msg = bb_run_script("dws_data_in",
-					 bb_state.bb_config.get_sys_state,
-					 data_in_argv, timeout, &status);
+		resp_msg = run_command("dws_data_in",
+				       bb_state.bb_config.get_sys_state,
+				       data_in_argv, timeout, &status);
 		END_TIMER;
 		info("%s: dws_data_in for job %u ran for %s",
 		     __func__, stage_args->job_id, TIME_STR);
@@ -1638,9 +1603,9 @@ static void *_start_stage_in(void *x)
 		size_argv[3] = xstrdup("--token");
 		xstrfmtcat(size_argv[4], "%u", stage_args->job_id);
 		START_TIMER;
-		resp_msg2 = bb_run_script("real_size",
-					  bb_state.bb_config.get_sys_state,
-					  size_argv, timeout, &status);
+		resp_msg2 = run_command("real_size",
+				        bb_state.bb_config.get_sys_state,
+				        size_argv, timeout, &status);
 		END_TIMER;
 		if ((DELTA_TIMER > 200000) ||	/* 0.2 secs */
 		    bb_state.bb_config.debug_flag)
@@ -1671,7 +1636,7 @@ static void *_start_stage_in(void *x)
 			}
 		}
 		xfree(resp_msg2);
-		_free_script_argv(size_argv);
+		free_command_argv(size_argv);
 	}
 
 	lock_slurmctld(job_write_lock);
@@ -1734,8 +1699,8 @@ static void *_start_stage_in(void *x)
 	unlock_slurmctld(job_write_lock);
 
 	xfree(resp_msg);
-	_free_script_argv(setup_argv);
-	_free_script_argv(data_in_argv);
+	free_command_argv(setup_argv);
+	free_command_argv(data_in_argv);
 	xfree(stage_args->pool);
 	xfree(stage_args);
 	return NULL;
@@ -1747,8 +1712,6 @@ static int _queue_stage_out(bb_job_t *bb_job)
 	char **post_run_argv, **data_out_argv;
 	stage_args_t *stage_args;
 	int hash_inx = bb_job->job_id % 10, rc = SLURM_SUCCESS;
-	pthread_attr_t stage_attr;
-	pthread_t stage_tid = 0;
 
 	xstrfmtcat(hash_dir, "%s/hash.%d", state_save_loc, hash_inx);
 	xstrfmtcat(job_dir, "%s/job.%u", hash_dir, bb_job->job_id);
@@ -1778,19 +1741,7 @@ static int _queue_stage_out(bb_job_t *bb_job)
 	stage_args->timeout = bb_state.bb_config.stage_out_timeout;
 	stage_args->user_id = bb_job->user_id;
 
-	slurm_attr_init(&stage_attr);
-	if (pthread_attr_setdetachstate(&stage_attr, PTHREAD_CREATE_DETACHED))
-		error("pthread_attr_setdetachstate error %m");
-	while (pthread_create(&stage_tid, &stage_attr, _start_stage_out,
-			      stage_args)) {
-		if (errno != EAGAIN) {
-			error("%s: pthread_create: %m", __func__);
-			_start_stage_out(stage_args);	/* Do in-line */
-			break;
-		}
-		usleep(100000);
-	}
-	slurm_attr_destroy(&stage_attr);
+	slurm_thread_create_detached(NULL, _start_stage_out, stage_args);
 
 	xfree(hash_dir);
 	xfree(job_dir);
@@ -1819,9 +1770,9 @@ static void *_start_stage_out(void *x)
 		timeout = DEFAULT_OTHER_TIMEOUT * 1000;
 	op = "dws_post_run";
 	START_TIMER;
-	resp_msg = bb_run_script("dws_post_run",
-				 bb_state.bb_config.get_sys_state,
-				 post_run_argv, timeout, &status);
+	resp_msg = run_command("dws_post_run",
+			       bb_state.bb_config.get_sys_state,
+			       post_run_argv, timeout, &status);
 	END_TIMER;
 	if ((DELTA_TIMER > 500000) ||	/* 0.5 secs */
 	    bb_state.bb_config.debug_flag) {
@@ -1857,9 +1808,9 @@ static void *_start_stage_out(void *x)
 		op = "dws_data_out";
 		START_TIMER;
 		xfree(resp_msg);
-		resp_msg = bb_run_script("dws_data_out",
-					 bb_state.bb_config.get_sys_state,
-					 data_out_argv, timeout, &status);
+		resp_msg = run_command("dws_data_out",
+				       bb_state.bb_config.get_sys_state,
+				       data_out_argv, timeout, &status);
 		END_TIMER;
 		if ((DELTA_TIMER > 1000000) ||	/* 10 secs */
 		    bb_state.bb_config.debug_flag) {
@@ -1932,8 +1883,8 @@ static void *_start_stage_out(void *x)
 	unlock_slurmctld(job_write_lock);
 
 	xfree(resp_msg);
-	_free_script_argv(post_run_argv);
-	_free_script_argv(data_out_argv);
+	free_command_argv(post_run_argv);
+	free_command_argv(data_out_argv);
 	xfree(stage_args);
 	return NULL;
 }
@@ -1945,8 +1896,6 @@ static void _queue_teardown(uint32_t job_id, uint32_t user_id, bool hurry)
 	char **teardown_argv;
 	stage_args_t *teardown_args;
 	int fd, hash_inx = job_id % 10;
-	pthread_attr_t teardown_attr;
-	pthread_t teardown_tid = 0;
 
 	xstrfmtcat(hash_dir, "%s/hash.%d", state_save_loc, hash_inx);
 	xstrfmtcat(job_script, "%s/job.%u/script", hash_dir, job_id);
@@ -1957,8 +1906,13 @@ static void _queue_teardown(uint32_t job_id, uint32_t user_id, bool hurry)
 		if (stat(job_script, &buf) == -1) {
 			fd = creat(job_script, 0755);
 			if (fd >= 0) {
+				int len;
 				char *dummy_script = "#!/bin/bash\nexit 0\n";
-				write(fd, dummy_script, strlen(dummy_script)+1);
+				len = strlen(dummy_script) + 1;
+				if (write(fd, dummy_script, len) != len) {
+					verbose("%s: write(%s): %m",
+						__func__, job_script);
+				}
 				close(fd);
 			}
 		}
@@ -1981,19 +1935,7 @@ static void _queue_teardown(uint32_t job_id, uint32_t user_id, bool hurry)
 	teardown_args->timeout = bb_state.bb_config.other_timeout;
 	teardown_args->args1   = teardown_argv;
 
-	slurm_attr_init(&teardown_attr);
-	if (pthread_attr_setdetachstate(&teardown_attr,PTHREAD_CREATE_DETACHED))
-		error("pthread_attr_setdetachstate error %m");
-	while (pthread_create(&teardown_tid, &teardown_attr, _start_teardown,
-			      teardown_args)) {
-		if (errno != EAGAIN) {
-			error("%s: pthread_create: %m", __func__);
-			_start_teardown(teardown_args);	/* Do in-line */
-			break;
-		}
-		usleep(100000);
-	}
-	slurm_attr_destroy(&teardown_attr);
+	slurm_thread_create_detached(NULL, _start_teardown, teardown_args);
 
 	xfree(hash_dir);
 	xfree(job_script);
@@ -2025,9 +1967,9 @@ static void *_start_teardown(void *x)
 		timeout = teardown_args->timeout * 1000;
 	else
 		timeout = DEFAULT_OTHER_TIMEOUT * 1000;
-	resp_msg = bb_run_script("teardown",
-				 bb_state.bb_config.get_sys_state,
-				 teardown_argv, timeout, &status);
+	resp_msg = run_command("teardown",
+			       bb_state.bb_config.get_sys_state,
+			       teardown_argv, timeout, &status);
 	END_TIMER;
 	info("%s: teardown for job %u ran for %s",
 	     __func__, teardown_args->job_id, TIME_STR);
@@ -2092,7 +2034,7 @@ static void *_start_teardown(void *x)
 	}
 
 	xfree(resp_msg);
-	_free_script_argv(teardown_argv);
+	free_command_argv(teardown_argv);
 	xfree(teardown_args);
 	return NULL;
 }
@@ -2455,8 +2397,8 @@ static int _parse_bb_opts(struct job_descriptor *job_desc, uint64_t *bb_size,
 	char *bb_script, *save_ptr = NULL;
 	char *bb_name = NULL, *bb_pool, *capacity;
 	char *end_ptr = NULL, *sub_tok, *tok;
-	uint64_t tmp_cnt;
-	int rc = SLURM_SUCCESS, swap_cnt = 0;
+	uint64_t tmp_cnt, swap_cnt = 0;
+	int rc = SLURM_SUCCESS;
 	bool enable_persist = false, have_bb = false, have_stage_out = false;
 
 	xassert(bb_size);
@@ -2637,7 +2579,10 @@ static int _xlate_batch(struct job_descriptor *job_desc)
 		} else {
 			if (is_cont) {
 				if (line_type != prev_type) {
-					/* Mixing "#DW" with "#BB", error */
+					/*
+					 * Mixing "#DW" with "#BB" on same
+					 * (continued) line, error
+					 */
 					rc =ESLURM_INVALID_BURST_BUFFER_REQUEST;
 					break;
 				}
@@ -2835,8 +2780,6 @@ static int _build_bb_script(struct job_record *job_ptr, char *script_file)
  */
 extern int init(void)
 {
-	pthread_attr_t attr;
-
 	slurm_mutex_init(&bb_state.bb_mutex);
 	slurm_mutex_lock(&bb_state.bb_mutex);
 	bb_load_config(&bb_state, (char *)plugin_type); /* Removes "const" */
@@ -2846,15 +2789,7 @@ extern int init(void)
 	if (!state_save_loc)
 		state_save_loc = slurm_get_state_save_location();
 	bb_alloc_cache(&bb_state);
-	slurm_attr_init(&attr);
-	while (pthread_create(&bb_state.bb_thread, &attr, _bb_agent, NULL)) {
-		if (errno != EAGAIN) {
-			fatal("%s: Unable to start thread: %m", __func__);
-			break;
-		}
-		usleep(100000);
-	}
-	slurm_attr_destroy(&attr);
+	slurm_thread_create(&bb_state.bb_thread, _bb_agent, NULL);
 	slurm_mutex_unlock(&bb_state.bb_mutex);
 
 	return SLURM_SUCCESS;
@@ -2868,8 +2803,8 @@ extern int fini(void)
 {
 	int pc, last_pc = 0;
 
-	bb_shutdown();
-	while ((pc = bb_proc_count()) > 0) {
+	run_command_shutdown();
+	while ((pc = run_command_count()) > 0) {
 		if ((last_pc != 0) && (last_pc != pc)) {
 			info("%s: waiting for %d running processes",
 			     plugin_type, pc);
@@ -3279,7 +3214,7 @@ extern int bb_p_job_validate2(struct job_record *job_ptr, char **err_msg)
 	dw_cli_path = xstrdup(bb_state.bb_config.get_sys_state);
 	slurm_mutex_unlock(&bb_state.bb_mutex);
 
-	/* Standard file location for job arrays, version 16.05+ */
+	/* Standard file location for job arrays */
 	if ((job_ptr->array_task_id != NO_VAL) &&
 	    (job_ptr->array_job_id != job_ptr->job_id)) {
 		hash_inx = job_ptr->array_job_id % 10;
@@ -3296,10 +3231,7 @@ extern int bb_p_job_validate2(struct job_record *job_ptr, char **err_msg)
 		} else {
 			xfree(hash_dir);
 		}
-	}
-	/* Standard file location for all regular jobs and
-	 * job arrays in versions 14.11 & 15.08 */
-	if (fd < 0) {
+	} else {
 		hash_inx = job_ptr->job_id % 10;
 		xstrfmtcat(hash_dir, "%s/hash.%d", state_save_loc, hash_inx);
 		(void) mkdir(hash_dir, 0700);
@@ -3318,9 +3250,9 @@ extern int bb_p_job_validate2(struct job_record *job_ptr, char **err_msg)
 	script_argv[3] = xstrdup("--job");
 	xstrfmtcat(script_argv[4], "%s", script_file);
 	START_TIMER;
-	resp_msg = bb_run_script("job_process",
-				 bb_state.bb_config.get_sys_state,
-				 script_argv, timeout, &status);
+	resp_msg = run_command("job_process",
+			       bb_state.bb_config.get_sys_state,
+			       script_argv, timeout, &status);
 	END_TIMER;
 	if ((DELTA_TIMER > 200000) ||	/* 0.2 secs */
 	    bb_state.bb_config.debug_flag)
@@ -3336,7 +3268,7 @@ extern int bb_p_job_validate2(struct job_record *job_ptr, char **err_msg)
 		rc = ESLURM_INVALID_BURST_BUFFER_REQUEST;
 	}
 	xfree(resp_msg);
-	_free_script_argv(script_argv);
+	free_command_argv(script_argv);
 
 	/* Clean-up */
 	xfree(hash_dir);
@@ -3642,8 +3574,6 @@ extern int bb_p_job_begin(struct job_record *job_ptr)
 	int hash_inx, rc = SLURM_SUCCESS, status = 0;
 	bb_job_t *bb_job;
 	char jobid_buf[64];
-	pthread_attr_t pre_run_attr;
-	pthread_t pre_run_tid = 0;
 	uint32_t timeout;
 	bool do_pre_run;
 	DEF_TIMERS;
@@ -3729,15 +3659,15 @@ extern int bb_p_job_begin(struct job_record *job_ptr)
 		xstrfmtcat(script_argv[8], "%s/path", job_dir);
 		path_file = script_argv[8];
 		START_TIMER;
-		resp_msg = bb_run_script("paths",
-					 bb_state.bb_config.get_sys_state,
-					 script_argv, timeout, &status);
+		resp_msg = run_command("paths",
+				       bb_state.bb_config.get_sys_state,
+				       script_argv, timeout, &status);
 		END_TIMER;
 		if ((DELTA_TIMER > 200000) ||	/* 0.2 secs */
 		    bb_state.bb_config.debug_flag)
 			info("%s: paths ran for %s", __func__, TIME_STR);
 		_log_script_argv(script_argv, resp_msg);
-		_free_script_argv(script_argv);
+		free_command_argv(script_argv);
 #if 1
 		//FIXME: Cray API returning "job_file_valid True" but exit 1 in some cases
 		if ((!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) &&
@@ -3782,20 +3712,7 @@ extern int bb_p_job_begin(struct job_record *job_ptr)
 			job_ptr->job_state |= JOB_CONFIGURING;
 		}
 
-		slurm_attr_init(&pre_run_attr);
-		if (pthread_attr_setdetachstate(&pre_run_attr,
-						PTHREAD_CREATE_DETACHED))
-			error("pthread_attr_setdetachstate error %m");
-		while (pthread_create(&pre_run_tid, &pre_run_attr,
-				      _start_pre_run, pre_run_args)) {
-			if (errno != EAGAIN) {
-				error("%s: pthread_create: %m", __func__);
-				_start_pre_run(pre_run_argv);	/* Do in-line */
-				break;
-			}
-			usleep(100000);
-		}
-		slurm_attr_destroy(&pre_run_attr);
+		slurm_thread_create_detached(NULL, _start_pre_run, pre_run_args);
 	}
 
 fini:
@@ -3864,9 +3781,9 @@ static void *_start_pre_run(void *x)
 		timeout = DEFAULT_OTHER_TIMEOUT * 1000;
 
 	START_TIMER;
-	resp_msg = bb_run_script("dws_pre_run",
-				 bb_state.bb_config.get_sys_state,
-				 pre_run_args->args, timeout, &status);
+	resp_msg = run_command("dws_pre_run",
+			       bb_state.bb_config.get_sys_state,
+			       pre_run_args->args, timeout, &status);
 	END_TIMER;
 
 	lock_slurmctld(job_write_lock);
@@ -3919,7 +3836,7 @@ static void *_start_pre_run(void *x)
 	unlock_slurmctld(job_write_lock);
 
 	xfree(resp_msg);
-	_free_script_argv(pre_run_args->args);
+	free_command_argv(pre_run_args->args);
 	xfree(pre_run_args);
 	return NULL;
 }
@@ -4157,8 +4074,6 @@ static void _free_create_args(create_buf_data_t *create_args)
 static int _create_bufs(struct job_record *job_ptr, bb_job_t *bb_job,
 			bool job_ready)
 {
-	pthread_attr_t create_attr;
-	pthread_t create_tid = 0;
 	create_buf_data_t *create_args;
 	bb_buf_t *buf_ptr;
 	bb_alloc_t *bb_alloc;
@@ -4208,22 +4123,9 @@ static int _create_bufs(struct job_record *job_ptr, bb_job_t *bb_job,
 			create_args->size = buf_ptr->size;
 			create_args->type = xstrdup(buf_ptr->type);
 			create_args->user_id = job_ptr->user_id;
-			slurm_attr_init(&create_attr);
-			if (pthread_attr_setdetachstate(
-				    &create_attr, PTHREAD_CREATE_DETACHED))
-				error("pthread_attr_setdetachstate error %m");
-			while (pthread_create(&create_tid, &create_attr,
-					      _create_persistent,
-					      create_args)) {
-				if (errno != EAGAIN) {
-					error("%s: pthread_create: %m",
-					      __func__);
-					_create_persistent(create_args);
-					break;
-				}
-				usleep(100000);
-			}
-			slurm_attr_destroy(&create_attr);
+
+			slurm_thread_create_detached(NULL, _create_persistent,
+						     create_args);
 		} else if (buf_ptr->destroy && job_ready) {
 			/* Delete the buffer */
 			bb_alloc = bb_find_name_rec(buf_ptr->name,
@@ -4266,22 +4168,9 @@ static int _create_bufs(struct job_record *job_ptr, bb_job_t *bb_job,
 				   state_save_loc, hash_inx, job_ptr->job_id);
 			create_args->name = xstrdup(buf_ptr->name);
 			create_args->user_id = job_ptr->user_id;
-			slurm_attr_init(&create_attr);
-			if (pthread_attr_setdetachstate(
-				    &create_attr, PTHREAD_CREATE_DETACHED))
-				error("pthread_attr_setdetachstate error %m");
-			while (pthread_create(&create_tid, &create_attr,
-					      _destroy_persistent,
-					      create_args)) {
-				if (errno != EAGAIN) {
-					error("%s: pthread_create: %m",
-					      __func__);
-					_destroy_persistent(create_args);
-					break;
-				}
-				usleep(100000);
-			}
-			slurm_attr_destroy(&create_attr);
+
+			slurm_thread_create_detached(NULL, _destroy_persistent,
+						     create_args);
 		} else if (buf_ptr->destroy) {
 			rc++;
 		} else {
@@ -4447,11 +4336,11 @@ static void *_create_persistent(void *x)
 	 * currently not used by Slurm */
 
 	START_TIMER;
-	resp_msg = bb_run_script("create_persistent",
-				 bb_state.bb_config.get_sys_state,
-				 script_argv, timeout, &status);
+	resp_msg = run_command("create_persistent",
+			       bb_state.bb_config.get_sys_state,
+			       script_argv, timeout, &status);
 	_log_script_argv(script_argv, resp_msg);
-	_free_script_argv(script_argv);
+	free_command_argv(script_argv);
 	END_TIMER;
 	info("create_persistent of %s ran for %s",
 	     create_args->name, TIME_STR);
@@ -4512,8 +4401,7 @@ static void *_create_persistent(void *x)
 					",%u,", assoc->id);
 			}
 			if (job_ptr->qos_ptr) {
-				slurmdb_qos_rec_t *qos_ptr =
-					(slurmdb_qos_rec_t *)job_ptr->qos_ptr;
+				slurmdb_qos_rec_t *qos_ptr = job_ptr->qos_ptr;
 				bb_alloc->qos_ptr = qos_ptr;
 				bb_alloc->qos = xstrdup(qos_ptr->name);
 			}
@@ -4591,11 +4479,11 @@ static void *_destroy_persistent(void *x)
 		script_argv[7] = xstrdup("--hurry");
 
 	START_TIMER;
-	resp_msg = bb_run_script("destroy_persistent",
-				 bb_state.bb_config.get_sys_state,
-				 script_argv, timeout, &status);
+	resp_msg = run_command("destroy_persistent",
+			       bb_state.bb_config.get_sys_state,
+			       script_argv, timeout, &status);
 	_log_script_argv(script_argv, resp_msg);
-	_free_script_argv(script_argv);
+	free_command_argv(script_argv);
 	END_TIMER;
 	info("destroy_persistent of %s ran for %s",
 	     destroy_args->name, TIME_STR);
@@ -4678,14 +4566,14 @@ _bb_get_configs(int *num_ent, bb_state_t *state_ptr, uint32_t timeout)
 	script_argv[2] = xstrdup("show_configurations");
 
 	START_TIMER;
-	resp_msg = bb_run_script("show_configurations",
-				 state_ptr->bb_config.get_sys_state,
-				 script_argv, timeout, &status);
+	resp_msg = run_command("show_configurations",
+			       state_ptr->bb_config.get_sys_state,
+			       script_argv, timeout, &status);
 	END_TIMER;
 	if (bb_state.bb_config.debug_flag)
 		debug("%s: show_configurations ran for %s", __func__, TIME_STR);
 	_log_script_argv(script_argv, resp_msg);
-	_free_script_argv(script_argv);
+	free_command_argv(script_argv);
 #if 0
 	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
 #else
@@ -4746,14 +4634,14 @@ _bb_get_instances(int *num_ent, bb_state_t *state_ptr, uint32_t timeout)
 	script_argv[2] = xstrdup("show_instances");
 
 	START_TIMER;
-	resp_msg = bb_run_script("show_instances",
-				 state_ptr->bb_config.get_sys_state,
-				 script_argv, timeout, &status);
+	resp_msg = run_command("show_instances",
+			       state_ptr->bb_config.get_sys_state,
+			       script_argv, timeout, &status);
 	END_TIMER;
 	if (bb_state.bb_config.debug_flag)
 		debug("%s: show_instances ran for %s", __func__, TIME_STR);
 	_log_script_argv(script_argv, resp_msg);
-	_free_script_argv(script_argv);
+	free_command_argv(script_argv);
 #if 0
 	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
 #else
@@ -4813,9 +4701,9 @@ _bb_get_pools(int *num_ent, bb_state_t *state_ptr, uint32_t timeout)
 	script_argv[2] = xstrdup("pools");
 
 	START_TIMER;
-	resp_msg = bb_run_script("pools",
-				 state_ptr->bb_config.get_sys_state,
-				 script_argv, timeout, &status);
+	resp_msg = run_command("pools",
+			       state_ptr->bb_config.get_sys_state,
+			       script_argv, timeout, &status);
 	END_TIMER;
 	if (bb_state.bb_config.debug_flag) {
 		/* Only log pools data if different to limit volume of logs */
@@ -4828,7 +4716,7 @@ _bb_get_pools(int *num_ent, bb_state_t *state_ptr, uint32_t timeout)
 			_log_script_argv(script_argv, resp_msg);
 		last_csum = resp_csum;
 	}
-	_free_script_argv(script_argv);
+	free_command_argv(script_argv);
 	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
 		trigger_burst_buffer();
 		error("%s: pools status:%u response:%s",
@@ -4878,14 +4766,14 @@ _bb_get_sessions(int *num_ent, bb_state_t *state_ptr, uint32_t timeout)
 	script_argv[2] = xstrdup("show_sessions");
 
 	START_TIMER;
-	resp_msg = bb_run_script("show_sessions",
-				 state_ptr->bb_config.get_sys_state,
-				 script_argv, timeout, &status);
+	resp_msg = run_command("show_sessions",
+			       state_ptr->bb_config.get_sys_state,
+			       script_argv, timeout, &status);
 	END_TIMER;
 	if (bb_state.bb_config.debug_flag)
 		debug("%s: show_sessions ran for %s", __func__, TIME_STR);
 	_log_script_argv(script_argv, resp_msg);
-	_free_script_argv(script_argv);
+	free_command_argv(script_argv);
 #if 0
 	if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
 #else
@@ -4900,7 +4788,7 @@ _bb_get_sessions(int *num_ent, bb_state_t *state_ptr, uint32_t timeout)
 	if (resp_msg == NULL) {
 		info("%s: %s returned no sessions",
 		     __func__, state_ptr->bb_config.get_sys_state);
-		_free_script_argv(script_argv);
+		free_command_argv(script_argv);
 		return ents;
 	}
 

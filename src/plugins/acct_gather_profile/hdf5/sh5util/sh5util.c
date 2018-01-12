@@ -66,8 +66,6 @@
 #include "../hdf5_api.h"
 #include "sh5util.h"
 
-#include "libsh5util_old/sh5util_old.h"
-
 #define MAX_PROFILE_PATH 1024
 // #define MAX_ATTR_NAME 64
 #define MAX_GROUP_NAME 64
@@ -217,8 +215,6 @@ main(int argc, char **argv)
 		break;
 	}
 
-	if (cc == SLURM_PROTOCOL_VERSION_ERROR)
-		cc = run_old(argc, argv);
 ouch:
 	_cleanup();
 
@@ -292,18 +288,20 @@ static void _remove_empty_output(void)
 	struct stat sb;
 
 	if (stat(params.output, &sb) == -1) {
-		/* Ignore the error as the file may have
-		 * not been created yet.
+		/*
+		 * Ignore the error as the file may have not been created yet.
 		 */
 		return;
 	}
 
-	/* Remove the file if 0 size which means
+	/*
+	 * Remove the file if 0 size which means
 	 * the program failed somewhere along the
 	 * way and the file is just left hanging...
 	 */
-	if (sb.st_size == 0)
-		remove(params.output);
+	if ((sb.st_size == 0) &&
+	    (remove(params.output) == -1))
+		error("%s: remove(%s): %m", __func__, params.output);
 }
 
 static void _init_opts(void)
@@ -510,8 +508,10 @@ _check_params(void)
 	return 0;
 }
 
-/* Copy the group "/{NodeName}" of the hdf5 file file_name into the location
- * jgid_nodes */
+/*
+ * Copy the group "/{NodeName}" of the hdf5 file file_name into the location
+ * jgid_nodes
+ */
 static int _merge_node_step_data(char* file_name, hid_t jgid_nodes,
 				 sh5util_file_t *sh5util_file)
 {
@@ -538,8 +538,10 @@ static int _merge_node_step_data(char* file_name, hid_t jgid_nodes,
 		goto endit;
 	}
 
-	if (!params.keepfiles)
-		remove(file_name);
+	if (!params.keepfiles &&
+	    (remove(file_name) == -1))
+		error("%s: remove(%s): %m", __func__, file_name);
+
 endit:
 	xfree(group_name);
 	H5Fclose(fid_nodestep);
@@ -1231,7 +1233,7 @@ static void _item_analysis_uint(hsize_t nb_tables, hid_t *tables,
 	uint64_t v;
 	uint64_t values[nb_tables];
 	uint8_t  *buffer;
-	uint64_t et, et_max = 0;
+	uint64_t et = 0, et_max = 0;
 
 	buffer = xmalloc(buf_size);
 	for (;;) {
@@ -1332,7 +1334,7 @@ static void _item_analysis_double(hsize_t nb_tables, hid_t *tables,
 	double   v;
 	double   values[nb_tables];
 	uint8_t  *buffer;
-	uint64_t et, et_max = 0;
+	uint64_t et = 0, et_max = 0;
 
 	buffer = xmalloc(buf_size);
 	for (;;) {
