@@ -30,6 +30,10 @@ override_dh_auto_build:
 	dh_auto_build
 	dh_auto_build --builddirectory build-emulator
 
+override_dh_shlibdeps:
+	env LD_LIBRARY_PATH=$(CURIDR)/debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/slurm/ \
+	dh_shlibdeps -O--builddirectory -O--parallel
+
 override_dh_auto_install:
 	dh_auto_install
 	

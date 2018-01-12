@@ -7,6 +7,8 @@ slurm-llnl (17.11.2-1) UNRELEASED; urgency=medium
   * Fix default pidfile for slurm daemons (Closes: #885759)
   * Use --runstatedir instead of --localstatedir in debian/rules to
     specify run state directory.
+  * Override call to dh_shlibdeps so that dpkg-shlibdeps finds
+    libslurmfull.so
 
  -- Mehdi Dogguy <mehdi@debian.org>  Thu, 11 Jan 2018 22:34:43 +0100
 
