@@ -2366,6 +2366,7 @@ free_slurm_conf (slurm_ctl_conf_t *ctl_conf_ptr, bool purge_node_hash)
 	xfree (ctl_conf_ptr->layouts);
 	xfree (ctl_conf_ptr->licenses);
 	xfree (ctl_conf_ptr->licenses_used);
+	xfree (ctl_conf_ptr->mail_domain);
 	xfree (ctl_conf_ptr->mail_prog);
 	xfree (ctl_conf_ptr->mcs_plugin);
 	xfree (ctl_conf_ptr->mcs_plugin_params);
@@ -2510,6 +2511,7 @@ init_slurm_conf (slurm_ctl_conf_t *ctl_conf_ptr)
 	xfree (ctl_conf_ptr->launch_type);
 	xfree (ctl_conf_ptr->layouts);
 	xfree (ctl_conf_ptr->licenses);
+	xfree (ctl_conf_ptr->mail_domain);
 	xfree (ctl_conf_ptr->mail_prog);
 	ctl_conf_ptr->max_array_sz		= NO_VAL;
 	ctl_conf_ptr->max_job_cnt		= NO_VAL;
@@ -4121,6 +4123,19 @@ _validate_and_set_defaults(slurm_ctl_conf_t *conf, s_p_hashtbl_t *hashtbl)
 			}
 			conf->slurmctld_port_count = port_long + 1 -
 						     conf->slurmctld_port;
+
+			/*
+			 * The port count needs to be at most FD_SETSIZE,
+			 * otherwise we cannot select() on those high numbered
+			 * ports and may miss traffic.
+			 */
+			if (conf->slurmctld_port_count > FD_SETSIZE) {
+				error("SlurmctldPort=%s exceeds FD_SETSIZE=%d,"
+				      " truncating to %d-%d", temp_str,
+				      FD_SETSIZE, conf->slurmctld_port,
+				      (conf->slurmctld_port + FD_SETSIZE - 1));
+				conf->slurmctld_port_count = FD_SETSIZE;
+			}
 		} else if (end_ptr[0] != '\0') {
 			error("Invalid SlurmctldPort %s", temp_str);
 			return SLURM_ERROR;

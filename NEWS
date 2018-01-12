@@ -1,6 +1,69 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 17.11.1-2
+============================
+ -- MYSQL - Make index for pack_job_id
+
+* Changes in Slurm 17.11.1
+==========================
+ -- Fix --with-shared-libslurm option to work correctly.
+ -- Make it so only daemons log errors on configuration option duplicates.
+ -- Fix for ConstrainDevices=yes to work correctly.
+ -- Fix to purge old jobs using burst buffer if slurmctld daemon restarted
+    after the job's burst buffer work was already completed.
+ -- Make logging prefix for slurmstepd to happen as soon as possible.
+ -- mpi/pmix: Fix the job registration for the PMIx v2.1.
+ -- Fix uid check for signaling a step with anything but SIGKILL.
+ -- Fix uid check when requesting a jobid from a pid.
+ -- Return ESLURM_TRANSITION_STATE_NO_UPDATE instead of EAGAIN when trying to
+    signal a step that is still running a prolog.
+ -- Update Cray slurm_playbook.yaml with latest recommended version.
+ -- Only say a prolog is done running after the extern step is launched.
+ -- Wait to start a batch step until the prolog and extern step are
+    fully ran/launched.  Only matters if running with
+    PrologFlags=[contain|alloc].
+ -- Truncate a range for SlurmctldPort to FD_SETSIZE elements and throw an
+    error, otherwise network traffic may be lost due to poll() not detecting
+    traffic.
+ -- Fix for srun --pack-group option that can reuse/corrupt memory.
+ -- Fix handling ultra long hostlists in a hostfile.
+ -- X11: fix xauth regex to handle '-' in hostnames again.
+ -- Fix potential node reboot timeout problem for "scontrol reboot" command.
+ -- Add ability for squeue to sort jobs by submit time.
+ -- CRAY - Switch to standard pid files on Cray systems.
+ -- Update jobcomp records on duplicate inserts.
+ -- If unrecognized configuration file option found then print an appropriate
+    fatal error message rather than relying upon random errno value.
+ -- Initialize job_desc_msg_t's instead of just memset'ing them.
+ -- Fix divide by zero when job requests no tasks and more memory than
+    MaxMemPer{CPU|NODE}.
+ -- Avoid changing Slurm internal errno on syslog() failures.
+ -- BB - Only launch dependent jobs after the burst buffer is staged-out
+    completely instead of right after the parent job finishes.
+ -- node_features/knl_generic - If plugin can not fully load then do not spawn
+    a background pthread (which will fail with invalid memory reference).
+ -- Don't set the next jobid to give out to the highest jobid in the system on
+    controller startup. Just use the checkpointed next use jobid.
+ -- Docs - add Slurm/PMIx and OpenMPI build notes to the mpi_guide page.
+ -- Add lustre_no_flush option to LaunchParameters for Native Cray systems.
+ -- Fix rpmbuild issue with rpm 4.13+ / Fedora 25+.
+ -- sacct - fix the display for the NNodes field when using the --units option.
+ -- Prevent possible double-xfree on a buffer in stepd_completion.
+ -- Fix for record job state on successful allocation but failed reply message.
+ -- Fill in the user_name field for batch jobs if not sent by the slurmctld.
+    (Which is the default behavior if PrologFlags=send_gids is not enabled.)
+    This prevents job launch problems for sites using UsePAM=1.
+ -- Handle syncing federated jobs that ran on non-origin clusters and were
+    cancelled while the origin cluster was down.
+ -- Fix accessing variable outside of lock.
+ -- slurm.spec: move libpmi to a separate package to solve a conflict with the
+    version provided by PMIx. This will require a separate change to PMIx as
+    well.
+ -- X11 forwarding: change xauth handling to use hostname/unix:display format,
+    rather than localhost:display.
+ -- mpi/pmix - Fix warning if not compiling with debug.
+
 * Changes in Slurm 17.11.0
 ==========================
  -- Fix documentation for MaxQueryTimeRange option in slurmdbd.conf.
@@ -436,6 +499,11 @@ documents those changes that are of interest to users and administrators.
  -- Fix potential of slurmstepd segfaulting when the extern step fails to start.
  -- Allow nodes state to be updated between FAIL and DRAIN.
  -- Avoid registering a job'd credential multiple times.
+ -- Fix sbatch --wait to stop waiting after job is gone from memory.
+ -- Fix memory leak of MailDomain configuration string when slurmctld daemon is
+    reconfigured.
+ -- Fix to properly remove extern steps from the starting_steps list.
+ -- Fix Slurm to work correctly with HDF5 1.10+.
 
 * Changes in Slurm 17.02.9
 ==========================
@@ -1873,6 +1941,16 @@ documents those changes that are of interest to users and administrators.
  -- Add SchedulerParameter no_env_cache, if set no env cache will be use when
     launching a job, instead the job will fail and drain the node if the env
     isn't loaded normally.
+ -- burst_buffer/cray - Plug small memory leak on DataWarp create_persistent
+    buffer error.
+ -- burst_buffer/cray - Do not purge a job record if it's stage-out operation
+    fails. The description of the failure will be in the job's "Reason" field.
+ -- burst_buffer/cray - Append information about errors to job's AdminComments
+    field.
+ -- DBD - When using LogTimeFormat=thread_id fill in the cluster name before
+    printing anything for a connection.
+ -- Have srun read in modern env var's instead of obsolete ones
+ -- mpi/pmix: add the thresholds for the parameters of micro-benchmarks.
 
 * Changes in Slurm 16.05.0pre1
 ==============================

@@ -628,6 +628,7 @@ extern int initialize_and_process_args(int argc, char **argv, int *argc_off)
 		opt_dup->srun_opt = xmalloc(sizeof(srun_opt_t));
 		memcpy(opt_dup->srun_opt, &sropt, sizeof(srun_opt_t));
 		opt_dup->srun_opt->cmd_name = xstrdup(sropt.cmd_name);
+		opt_dup->srun_opt->pack_group = xstrdup(sropt.pack_group);
 
 		list_append(opt_list, opt_dup);
 		pending_append = false;
@@ -994,8 +995,8 @@ env_vars_t env_vars[] = {
 {"SLURM_MPI_TYPE",      OPT_MPI,        NULL,               NULL             },
 {"SLURM_NCORES_PER_SOCKET",OPT_NCORES,  NULL,               NULL             },
 {"SLURM_NETWORK",       OPT_STRING,     &opt.network,  &sropt.network_set_env},
-{"SLURM_NNODES",        OPT_NODES,      NULL,               NULL             },
-{"SLURM_NODELIST",      OPT_STRING,     &sropt.alloc_nodelist,NULL           },
+{"SLURM_JOB_NUM_NODES", OPT_NODES,      NULL,               NULL             },
+{"SLURM_JOB_NODELIST",  OPT_STRING,     &sropt.alloc_nodelist,NULL           },
 {"SLURM_NO_ROTATE",     OPT_NO_ROTATE,  NULL,               NULL             },
 {"SLURM_NTASKS",        OPT_INT,        &opt.ntasks,        &opt.ntasks_set  },
 {"SLURM_NPROCS",        OPT_INT,        &opt.ntasks,        &opt.ntasks_set  },

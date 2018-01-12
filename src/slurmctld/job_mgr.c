@@ -1350,7 +1350,7 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 	uint32_t resv_id, spank_job_env_size = 0, qos_id, derived_ec = 0;
 	uint32_t array_job_id = 0, req_switch = 0, wait4switch = 0;
 	uint32_t profile = ACCT_GATHER_PROFILE_NOT_SET;
-	uint32_t job_state, local_job_id = 0, delay_boot = 0;
+	uint32_t job_state, delay_boot = 0;
 	time_t start_time, end_time, end_time_exp, suspend_time,
 		pre_sus_time, tot_sus_time;
 	time_t preempt_time = 0, deadline = 0;
@@ -2031,6 +2031,12 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 		lowest_prio  = MIN(lowest_prio,  priority);
 	}
 
+#if 0
+	/*
+	 * This is not necessary since the job_id_sequence is checkpointed and
+	 * the jobid will be checked if it's in use in get_next_job_id().
+	 */
+
 	/* Base job_id_sequence off of local job id but only if the job
 	 * originated from this cluster -- so that the local job id of a
 	 * different cluster isn't restored here. */
@@ -2039,6 +2045,7 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 		local_job_id = fed_mgr_get_local_id(job_id);
 	if (job_id_sequence <= local_job_id)
 		job_id_sequence = local_job_id + 1;
+#endif
 
 	xfree(job_ptr->tres_alloc_str);
 	job_ptr->tres_alloc_str = tres_alloc_str;
@@ -4817,7 +4824,7 @@ extern int job_allocate(job_desc_msg_t * job_specs, int immediate,
 	if (will_run && resp) {
 		job_desc_msg_t job_desc_msg;
 		int rc;
-		memset(&job_desc_msg, 0, sizeof(job_desc_msg_t));
+		slurm_init_job_desc_msg(&job_desc_msg);
 		job_desc_msg.job_id = job_ptr->job_id;
 		rc = job_start_data(&job_desc_msg, resp);
 		job_ptr->job_state  = JOB_FAILED;
@@ -5770,6 +5777,10 @@ static int _job_complete(struct job_record *job_ptr, uid_t uid, bool requeue,
 			job_ptr->exit_code = job_return_code;
 			job_ptr->state_reason = FAIL_EXIT_CODE;
 			xfree(job_ptr->state_desc);
+		} else if (WIFSIGNALED(job_return_code)) {
+			job_ptr->job_state = JOB_FAILED | job_comp_flag;
+			job_ptr->exit_code = job_return_code;
+			job_ptr->state_reason = FAIL_LAUNCH;
 		} else if (job_comp_flag
 			   && ((job_ptr->end_time
 				+ over_time_limit * 60) < now)) {
@@ -6431,7 +6442,7 @@ extern int job_limits_check(struct job_record **job_pptr, bool check_min_time)
 	 * anything else is ever checked in that function this will most likely
 	 * have to be updated.
 	 */
-	memset(&job_desc, 0, sizeof(job_desc_msg_t));
+	slurm_init_job_desc_msg(&job_desc);
 	job_desc.reservation = job_ptr->resv_name;
 	job_desc.user_id = job_ptr->user_id;
 	job_desc.alloc_node = job_ptr->alloc_node;
@@ -6516,7 +6527,8 @@ extern int job_limits_check(struct job_record **job_pptr, bool check_min_time)
 		 */
 		job_desc.pn_min_memory = detail_ptr->pn_min_memory;
 		job_desc.cpus_per_task = detail_ptr->cpus_per_task;
-		job_desc.num_tasks = detail_ptr->num_tasks;
+		job_desc.num_tasks = detail_ptr->num_tasks ?
+			detail_ptr->num_tasks : job_desc.min_cpus;
 		//job_desc.min_cpus = detail_ptr->min_cpus; /* init'ed above */
 		job_desc.max_cpus = detail_ptr->max_cpus;
 		job_desc.shared = (uint16_t)detail_ptr->share_res;
@@ -8121,6 +8133,7 @@ static bool _valid_pn_min_mem(job_desc_msg_t * job_desc_msg,
 		job_desc_msg->pn_min_memory = ((job_mem_limit + mem_ratio - 1) /
 					       mem_ratio) | MEM_PER_CPU;
 		if ((job_desc_msg->num_tasks != NO_VAL) &&
+		    (job_desc_msg->num_tasks != 0) &&
 		    (job_desc_msg->min_cpus  != NO_VAL)) {
 			cpu_ratio = job_desc_msg->min_cpus /
 				    job_desc_msg->num_tasks;
