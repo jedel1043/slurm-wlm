@@ -153,8 +153,8 @@ Files: src/common/cpu_frequency.c
        src/common/cpu_frequency.h
        src/common/slurm_acct_gather_filesystem.c
        src/common/slurm_acct_gather_filesystem.h
-       src/common/slurm_acct_gather_infiniband.c
-       src/common/slurm_acct_gather_infiniband.h
+       src/common/slurm_acct_gather_interconnect.c
+       src/common/slurm_acct_gather_interconnect.h
        src/common/slurm_acct_gather_profile.c
        src/common/slurm_acct_gather_profile.h
        src/common/slurm_route.c
@@ -163,7 +163,6 @@ Files: src/common/cpu_frequency.c
        src/plugins/accounting_storage/mysql/as_mysql_resource.c
        src/plugins/accounting_storage/mysql/as_mysql_resource.h
        src/plugins/acct_gather_profile/hdf5/hdf5_api.c
-       src/plugins/acct_gather_profile/hdf5/sh5util/libsh5util_old/hdf5_api.c
        src/plugins/acct_gather_profile/none/acct_gather_profile_none.c
        src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup_blkio.c
        src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup_cpuacct.c
@@ -183,9 +182,19 @@ Files: src/plugins/mpi/pmix/mpi_pmix.c
        src/plugins/mpi/pmix/pmixp_agent.h
        src/plugins/mpi/pmix/pmixp_client.c
        src/plugins/mpi/pmix/pmixp_client.h
+       src/plugins/mpi/pmix/pmixp_client_v1.c
+       src/plugins/mpi/pmix/pmixp_client_v2.c
        src/plugins/mpi/pmix/pmixp_coll.c
        src/plugins/mpi/pmix/pmixp_coll.h
        src/plugins/mpi/pmix/pmixp_common.h
+       src/plugins/mpi/pmix/pmixp_conn.c
+       src/plugins/mpi/pmix/pmixp_conn.h
+       src/plugins/mpi/pmix/pmixp_dconn.c
+       src/plugins/mpi/pmix/pmixp_dconn.h
+       src/plugins/mpi/pmix/pmixp_dconn_tcp.c
+       src/plugins/mpi/pmix/pmixp_dconn_tcp.h
+       src/plugins/mpi/pmix/pmixp_dconn_ucx.c
+       src/plugins/mpi/pmix/pmixp_dconn_ucx.h
        src/plugins/mpi/pmix/pmixp_debug.h
        src/plugins/mpi/pmix/pmixp_dmdx.c
        src/plugins/mpi/pmix/pmixp_dmdx.h
@@ -310,7 +319,7 @@ License: GPL-2+ with OpenSSL exception
 
 Files: src/plugins/acct_gather_energy/ipmi/acct_gather_energy_ipmi.c
        src/plugins/acct_gather_filesystem/none/acct_gather_filesystem_none.c
-       src/plugins/acct_gather_infiniband/none/acct_gather_infiniband_none.c
+       src/plugins/acct_gather_interconnect/none/acct_gather_interconnect_none.c
        src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup.c
        src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup.h
        src/plugins/task/affinity/cpuset.c
@@ -321,8 +330,6 @@ License: GPL-2+ with OpenSSL exception
 Files: src/common/msg_aggr.c
        src/common/msg_aggr.h
        src/plugins/acct_gather_profile/hdf5/hdf5_api.h
-       src/plugins/acct_gather_profile/hdf5/sh5util/libsh5util_old/hdf5_api.h
-       src/plugins/acct_gather_profile/hdf5/sh5util/libsh5util_old/sh5util.c
        src/plugins/acct_gather_profile/hdf5/sh5util/sh5util.c
 Copyright: 2013,2015 Bull
            2013-2016 SchedMD LLC
@@ -381,8 +388,8 @@ License: GPL-2+ with OpenSSL exception
 
 Files: src/plugins/acct_gather_energy/rapl/acct_gather_energy_rapl.c
        src/plugins/acct_gather_filesystem/lustre/acct_gather_filesystem_lustre.c
-       src/plugins/acct_gather_infiniband/ofed/acct_gather_infiniband_ofed.c
-       src/plugins/acct_gather_infiniband/ofed/acct_gather_infiniband_ofed.h
+       src/plugins/acct_gather_interconnect/ofed/acct_gather_interconnect_ofed.c
+       src/plugins/acct_gather_interconnect/ofed/acct_gather_interconnect_ofed.h
 Copyright: 2012-2013 Bull - Yiannis Georgiou
            2002 The Regents of the University of California
 License: GPL-2+ with OpenSSL exception
@@ -459,11 +466,6 @@ Files: testsuite/expect/test1.76
        testsuite/expect/test33.1
 Copyright: 2013-2014 Bull
 License: GPL-2+
-
-Files: src/slurmd/slurmd/slurmd_plugstack.c
-       src/slurmd/slurmd/slurmd_plugstack.h
-Copyright: 2013 Intel Inc
-License: GPL-2+ with OpenSSL exception
 
 Files: src/slurmctld/powercapping.c
        src/slurmd/common/xcpuinfo.c
@@ -542,11 +544,6 @@ Files: contribs/sgi/README.txt
        contribs/sgi/netloc_to_topology.c
 Copyright: 2014 Silicon Graphics, Inc
 License: None
-
-Files: contribs/phpext/slurm_php/slurm_php.?
-Copyright: 2011 Trinity Centre for High Performance Computing
-           2011 Trinity College Dublin
-License: GPL-2+ with OpenSSL exception
 
 Files: contribs/sgather/sgather
        contribs/sgather/sgather.1
@@ -797,8 +794,15 @@ License: GPL-3+ with Autoconf exception
 Files: auxdir/ltmain.sh
 Copyright: 1996-2015 Free Software Foundation, Inc
 License: GPL-2+ and GPL-3+
-Comment:
- Test
+
+Files: auxdir/ax_check_compile_flag.m4
+Copyright: 2008 Guido U. Draheim
+           2011 Maarten Bosmans
+License: GPL-3+ with Autoconf exception
+
+Files: auxdir/x_ac_ucx.m4
+Copyright: 2017 Mellanox Technologies
+License: None
 
 License: GPL-2+ with OpenSSL exception
  This file is part of SLURM, a resource management program.
