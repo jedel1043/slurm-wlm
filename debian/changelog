@@ -1,5 +1,6 @@
 slurm-llnl (17.11.2-1) UNRELEASED; urgency=medium
 
+  [ Mehdi Dogguy ]
   * New upstream release
     - Refresh patches
   * Drop old transitional packages (Closes: #878864) and old Replaces
@@ -12,6 +13,8 @@ slurm-llnl (17.11.2-1) UNRELEASED; urgency=medium
   * Override lintian error binary-or-shlib-defines-rpath: Slurm provides
     a private shared library. Its location matches the future name of the
     source package.
+
+  [ Gennaro Oliva ]
   * Drop unused lintian spelling-error-in-binary overrides
   * Update d/copyright
   * Upgrade Standards-Version to 4.1.2, no changes needed
