@@ -1,4 +1,4 @@
-slurm-llnl (17.11.2-1) UNRELEASED; urgency=medium
+slurm-llnl (17.11.2-1) unstable; urgency=medium
 
   [ Mehdi Dogguy ]
   * New upstream release
@@ -19,7 +19,7 @@ slurm-llnl (17.11.2-1) UNRELEASED; urgency=medium
   * Update d/copyright
   * Upgrade Standards-Version to 4.1.2, no changes needed
 
- -- Mehdi Dogguy <mehdi@debian.org>  Thu, 11 Jan 2018 22:34:43 +0100
+ -- Mehdi Dogguy <mehdi@debian.org>  Sun, 14 Jan 2018 10:59:47 +0100
 
 slurm-llnl (17.02.9-1) unstable; urgency=medium
 
