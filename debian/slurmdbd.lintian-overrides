@@ -1,1 +1,2 @@
 slurmdbd: hardening-no-bindnow
+slurmdbd: binary-or-shlib-defines-rpath

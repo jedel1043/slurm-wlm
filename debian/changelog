@@ -9,6 +9,9 @@ slurm-llnl (17.11.2-1) UNRELEASED; urgency=medium
     specify run state directory.
   * Override call to dh_shlibdeps so that dpkg-shlibdeps finds
     libslurmfull.so
+  * Override lintian error binary-or-shlib-defines-rpath: Slurm provides
+    a private shared library. Its location matches the future name of the
+    source package.
   * Drop unused lintian spelling-error-in-binary overrides
   * Update d/copyright
   * Upgrade Standards-Version to 4.1.2, no changes needed
