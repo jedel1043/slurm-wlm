@@ -4,8 +4,7 @@ Priority: optional
 Maintainer: Gennaro Oliva <oliva.g@na.icar.cnr.it>
 Uploaders: Rémi Palancher <remi@rezib.org>, Mehdi Dogguy <mehdi@debian.org>
 Build-Depends:
- debhelper (>= 9.20160709),
- autotools-dev,
+ debhelper (>= 10),
  libmunge-dev,
  libncurses5-dev,
  libssl-dev,
@@ -20,7 +19,6 @@ Build-Depends:
  libpam0g-dev,
  liblua5.1-0-dev,
  libhwloc-dev,
- dh-autoreconf,
  dh-exec,
  librrd-dev,
  libipmimonitoring-dev,

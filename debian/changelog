@@ -1,7 +1,11 @@
 slurm-llnl (17.11.2-2) UNRELEASED; urgency=medium
 
+  [ Mehdi Dogguy ]
   * Add an empty /etc/slurm-llnl/plugstack.conf.d directory for plugin
     configuration and associated configuration file plugstack.conf
+
+  [ Gennaro Oliva ]
+  * Bump debhelper compat level to 10
 
  -- Mehdi Dogguy <mehdi@debian.org>  Tue, 16 Jan 2018 07:34:53 +0100
 
