@@ -7,8 +7,9 @@ slurm-llnl (17.11.2-2) UNRELEASED; urgency=medium
   [ Gennaro Oliva ]
   * Bump debhelper compat level to 10
   * Bump standard version to 4.1.3
+  * Delete old transitional packages' files
 
- -- Mehdi Dogguy <mehdi@debian.org>  Tue, 16 Jan 2018 07:34:53 +0100
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 18 Jan 2018 11:03:37 +0100
 
 slurm-llnl (17.11.2-1) unstable; urgency=medium
 
