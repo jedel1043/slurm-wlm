@@ -830,7 +830,8 @@ extern void pack_all_node (char **buffer_ptr, int *buffer_size,
 			if (((show_flags & SHOW_ALL) == 0) && (uid != 0) &&
 			    (_node_is_hidden(node_ptr, uid)))
 				hidden = true;
-			else if (IS_NODE_FUTURE(node_ptr))
+			else if (IS_NODE_FUTURE(node_ptr) &&
+				 ((show_flags & SHOW_FUTURE) == 0))
 				hidden = true;
 			else if (_is_cloud_hidden(node_ptr))
 				hidden = true;
@@ -916,7 +917,8 @@ extern void pack_one_node (char **buffer_ptr, int *buffer_size,
 			if (((show_flags & SHOW_ALL) == 0) && (uid != 0) &&
 			    (_node_is_hidden(node_ptr, uid)))
 				hidden = true;
-			else if (IS_NODE_FUTURE(node_ptr))
+			else if (IS_NODE_FUTURE(node_ptr) &&
+				 ((show_flags & SHOW_FUTURE) == 0))
 				hidden = true;
 //			Don't hide the node if explicitly requested by name
 //			else if (_is_cloud_hidden(node_ptr))
@@ -1365,13 +1367,17 @@ int update_node ( update_node_msg_t * update_node_msg )
 				orig_features_act = xstrdup(node_ptr->features);
 		}
 		if (update_node_msg->features) {
-			if (update_node_msg->features_act &&
-			    !node_ptr->features_act) {
-				node_ptr->features_act = node_ptr->features;
-				node_ptr->features = NULL;
-			} else {
-				xfree(node_ptr->features);
+			if (!update_node_msg->features_act &&
+			    (node_features_g_count() == 0)) {
+				/*
+				 * If no NodeFeatures plugin and no explicit
+				 * active features, then make active and
+				 * available feature values match
+				 */
+				update_node_msg->features_act =
+					xstrdup(update_node_msg->features);
 			}
+			xfree(node_ptr->features);
 			if (update_node_msg->features[0]) {
 				node_ptr->features =
 					node_features_g_node_xlate2(
@@ -1549,6 +1555,15 @@ int update_node ( update_node_msg_t * update_node_msg )
 			} else if ((state_val == NODE_STATE_DRAIN) ||
 				   (state_val == NODE_STATE_FAIL)) {
 				uint32_t new_state = state_val;
+				if ((IS_NODE_ALLOCATED(node_ptr) ||
+				     IS_NODE_MIXED(node_ptr)) &&
+				    (IS_NODE_POWER_SAVE(node_ptr) ||
+				     IS_NODE_POWER_UP(node_ptr))) {
+					info("%s: DRAIN/FAIL request for node %s which is allocated and being powered up. Requeueing jobs",
+					     __func__, this_node_name);
+					kill_running_job_by_node_name(
+								this_node_name);
+				}
 				bit_clear (avail_node_bitmap, node_inx);
 				node_ptr->node_state &= (~NODE_STATE_DRAIN);
 				node_ptr->node_state &= (~NODE_STATE_FAIL);
@@ -1696,10 +1711,11 @@ int update_node ( update_node_msg_t * update_node_msg )
  */
 extern void restore_node_features(int recover)
 {
-	int i;
+	int i, node_features_plugin_cnt;
 	struct node_record *node_ptr;
 
-	for (i=0, node_ptr=node_record_table_ptr; i<node_record_count;
+	node_features_plugin_cnt = node_features_g_count();
+	for (i = 0, node_ptr = node_record_table_ptr; i < node_record_count;
 	     i++, node_ptr++) {
 		if (node_ptr->weight != node_ptr->config_ptr->weight) {
 			error("Node %s Weight(%u) differ from slurm.conf",
@@ -1714,16 +1730,13 @@ extern void restore_node_features(int recover)
 		}
 
 		if (xstrcmp(node_ptr->config_ptr->feature, node_ptr->features)){
-			error("Node %s Features(%s) differ from slurm.conf",
-			      node_ptr->name, node_ptr->features);
+			if (node_features_plugin_cnt == 0) {
+				error("Node %s Features(%s) differ from slurm.conf",
+				      node_ptr->name, node_ptr->features);
+			}
 			if (recover == 2) {
 				_update_node_avail_features(node_ptr->name,
 							    node_ptr->features);
-			} else {
-				xfree(node_ptr->features);
-				node_ptr->features = xstrdup(node_ptr->
-							     config_ptr->
-							     feature);
 			}
 		}
 
@@ -2813,6 +2826,8 @@ extern int validate_nodes_via_front_end(
 	char step_str[64];
 
 	xassert(verify_lock(CONFIG_LOCK, READ_LOCK));
+	xassert(verify_lock(JOB_LOCK, READ_LOCK));
+	xassert(verify_lock(FED_LOCK, READ_LOCK));
 
 	if (reg_msg->up_time > now) {
 		error("Node up_time on %s is invalid: %u>%u",
@@ -3616,8 +3631,8 @@ extern void make_node_comp(struct node_record *node_ptr,
 		}
 	}
 
-	if (!IS_NODE_DOWN(node_ptr))  {
-		/* Don't verify  RPC if DOWN */
+	if (!IS_NODE_DOWN(node_ptr) && !IS_NODE_POWER_UP(node_ptr)) {
+		/* Don't verify RPC if node in DOWN or POWER_UP state */
 		(node_ptr->comp_job_cnt)++;
 		node_ptr->node_state |= NODE_STATE_COMPLETING;
 		bit_set(cg_node_bitmap, inx);

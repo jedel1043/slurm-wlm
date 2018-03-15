@@ -700,7 +700,7 @@ static void _notify_slurmctld_nodes(agent_info_t *agent_ptr,
 	int is_ret_list = 1;
 	/* Locks: Read config, write job, write node */
 	slurmctld_lock_t node_write_lock =
-	    { READ_LOCK, WRITE_LOCK, WRITE_LOCK, NO_LOCK, NO_LOCK };
+	    { READ_LOCK, WRITE_LOCK, WRITE_LOCK, NO_LOCK, READ_LOCK };
 	thd_t *thread_ptr = agent_ptr->thread_struct;
 	int i;
 
@@ -865,7 +865,7 @@ static void *_thread_per_group_rpc(void *args)
 	int sig_array[2] = {SIGUSR1, 0};
 	/* Locks: Write job, write node */
 	slurmctld_lock_t job_write_lock = {
-		NO_LOCK, WRITE_LOCK, WRITE_LOCK, NO_LOCK, NO_LOCK };
+		NO_LOCK, WRITE_LOCK, WRITE_LOCK, NO_LOCK, READ_LOCK };
 	/* Lock: Read node */
 	slurmctld_lock_t node_read_lock = {
 		NO_LOCK, NO_LOCK, READ_LOCK, NO_LOCK, NO_LOCK };
@@ -1752,7 +1752,9 @@ static void _set_job_term_info(struct job_record *job_ptr, uint16_t mail_type,
 		int exit_code_min, exit_code_max;
 
 		base_state = job_ptr->job_state & JOB_STATE_BASE;
-		if (job_ptr->array_recs) {
+		if (job_ptr->array_recs &&
+		    !(job_ptr->mail_type & MAIL_ARRAY_TASKS)) {
+			/* Summarize array tasks. */
 			exit_status_min = job_ptr->array_recs->min_exit_code;
 			exit_status_max = job_ptr->array_recs->max_exit_code;
 			if (WIFEXITED(exit_status_min) &&
@@ -1838,14 +1840,14 @@ extern void mail_job_info (struct job_record *job_ptr, uint16_t mail_type)
 	_set_job_time(job_ptr, mail_type, job_time, sizeof(job_time));
 	_set_job_term_info(job_ptr, mail_type, term_msg, sizeof(term_msg));
 	if (job_ptr->array_recs && !(job_ptr->mail_type & MAIL_ARRAY_TASKS)) {
-		mi->message = xstrdup_printf("SLURM Job_id=%u_* (%u) Name=%s "
-					     "%s%s%s",
+		mi->message = xstrdup_printf("SLURM Array Summary Job_id=%u_* (%u) Name=%s "
+					     "%s%s",
 					     job_ptr->array_job_id,
 					     job_ptr->job_id, job_ptr->name,
 					     _mail_type_str(mail_type),
-					     job_time, term_msg);
+					     term_msg);
 	} else if (job_ptr->array_task_id != NO_VAL) {
-		mi->message = xstrdup_printf("SLURM Job_id=%u_%u (%u) Name=%s "
+		mi->message = xstrdup_printf("SLURM Array Task Job_id=%u_%u (%u) Name=%s "
 					     "%s%s%s",
 					     job_ptr->array_job_id,
 					     job_ptr->array_task_id,
