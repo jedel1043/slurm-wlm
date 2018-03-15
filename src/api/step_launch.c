@@ -243,6 +243,7 @@ extern int slurm_step_launch(slurm_step_ctx_t *ctx,
 	if (params->pack_jobid && (params->pack_jobid != NO_VAL))
 		_rebuild_mpi_layout(ctx, params);
 
+	mpi_env = xmalloc(sizeof(char *));  /* Needed for setenvf used by MPI */
 	if ((ctx->launch_state->mpi_state =
 	     mpi_hook_client_prelaunch(ctx->launch_state->mpi_info, &mpi_env))
 	    == NULL) {
@@ -1423,6 +1424,7 @@ _step_missing_handler(struct step_launch_state *sls, slurm_msg_t *missing_msg)
 	slurm_mutex_lock(&sls->lock);
 
 	if (!sls->io_timeout_thread_created) {
+		sls->io_timeout_thread_created = true;
 		slurm_thread_create(&sls->io_timeout_thread,
 				    _check_io_timeout, sls);
 	}

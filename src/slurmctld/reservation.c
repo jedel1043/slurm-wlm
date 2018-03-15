@@ -1875,6 +1875,9 @@ static bool _resv_overlap(time_t start_time, time_t end_time,
 			continue;	/* skip self */
 		if (resv_ptr->node_bitmap == NULL)
 			continue;	/* no specific nodes in reservation */
+		if ((resv_ptr->flags & RESERVE_FLAG_MAINT) ||
+		    (resv_ptr->flags & RESERVE_FLAG_OVERLAP))
+			continue;
 		if (!bit_overlap(resv_ptr->node_bitmap, node_bitmap))
 			continue;	/* no overlap */
 		if (!resv_ptr->full_nodes)
@@ -2676,6 +2679,8 @@ extern int update_resv(resv_desc_msg_t *resv_desc_ptr)
 		}
 		if (resv_desc_ptr->flags & RESERVE_FLAG_PURGE_COMP)
 			resv_ptr->flags |= RESERVE_FLAG_PURGE_COMP;
+		if (resv_desc_ptr->flags & RESERVE_FLAG_NO_PURGE_COMP)
+			resv_ptr->flags &= (~RESERVE_FLAG_PURGE_COMP);
 		if (resv_desc_ptr->flags & RESERVE_FLAG_NO_HOLD_JOBS)
 			resv_ptr->flags |= RESERVE_FLAG_NO_HOLD_JOBS;
 	}
@@ -3927,6 +3932,9 @@ static int  _select_nodes(resv_desc_msg_t *resv_desc_ptr,
 	    !(resv_desc_ptr->flags & RESERVE_FLAG_OVERLAP)) {
 		iter = list_iterator_create(resv_list);
 		while ((resv_ptr = (slurmctld_resv_t *) list_next(iter))) {
+			if ((resv_ptr->flags & RESERVE_FLAG_MAINT) ||
+			    (resv_ptr->flags & RESERVE_FLAG_OVERLAP))
+				continue;
 			if (resv_ptr->end_time <= now)
 				_advance_resv_time(resv_ptr);
 			if (resv_ptr->node_bitmap == NULL)

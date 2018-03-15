@@ -843,19 +843,12 @@ static int _as_mysql_acct_check_tables(mysql_conn_t *mysql_conn)
 				  "auto_increment=1001")
 	    == SLURM_ERROR)
 		return SLURM_ERROR;
-	else {
-		if ((rc = as_mysql_convert_get_bad_tres(mysql_conn)) !=
-		    SLURM_SUCCESS) {
-			error("issue getting bad tres");
-			return rc;
-		} else if (backup_dbd) {
-			/*
-			 * We do not want to create/check the database if we are
-			 * the backup (see Bug 3827). This is only handled on
-			 * the primary.
-			 */
-			return rc;
-		}
+
+	/* This has to run on both backup as well as primary */
+	if ((rc = as_mysql_convert_get_bad_tres(mysql_conn)) != SLURM_SUCCESS) {
+		error("issue getting bad tres");
+		return rc;
+	} else if (!backup_dbd) {
 		/* We always want CPU to be the first one, so create
 		   it now.  We also add MEM here, the others tres
 		   are site specific and could vary.  None but CPU
@@ -917,7 +910,13 @@ static int _as_mysql_acct_check_tables(mysql_conn_t *mysql_conn)
 		 * We do not want to create/check the database if we are the
 		 * backup (see Bug 3827). This is only handled on the primary.
 		 */
+
 		slurm_mutex_unlock(&as_mysql_cluster_list_lock);
+
+		/* We do want to set the QOS count though. */
+		if (rc == SLURM_SUCCESS)
+			rc = _set_qos_cnt(mysql_conn);
+
 		return rc;
 	}
 
@@ -1460,8 +1459,10 @@ extern int create_cluster_tables(mysql_conn_t *mysql_conn, char *cluster_name)
 
 	snprintf(table_name, sizeof(table_name), "\"%s_%s\"",
 		 cluster_name, job_table);
-	/* sacct_def is the index for query's with state as time_tart is used in
-	 * these queries. sacct_def2 is for plain sacct queries. */
+	/*
+	 * sacct_def is the index for query's with state as time_start is used
+	 * in these queries. sacct_def2 is for plain sacct queries.
+	 */
 	if (mysql_db_create_table(mysql_conn, table_name, job_table_fields,
 				  ", primary key (job_db_inx), "
 				  "unique index (id_job, time_submit), "

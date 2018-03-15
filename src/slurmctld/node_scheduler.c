@@ -1521,7 +1521,7 @@ _get_req_features(struct node_set *node_set_ptr, int node_set_size,
  *	ESLURM_REQUESTED_NODE_CONFIG_UNAVAILABLE if request can never
  *	be satisfied,
  *	ESLURM_REQUESTED_PART_CONFIG_UNAVAILABLE if the job can not be
- *	initiated until the parition's configuration changes or
+ *	initiated until the partition's configuration changes or
  *	ESLURM_NODE_NOT_AVAIL if required nodes are DOWN or DRAINED
  *	ESLURM_RESERVATION_BUSY if requested reservation overlaps another
  * NOTE: the caller must FREE_NULL_BITMAP memory pointed to by select_bitmap
@@ -2260,6 +2260,9 @@ extern int select_nodes(struct job_record *job_ptr, bool test_only,
 
 	bb = bb_g_job_test_stage_in(job_ptr, test_only);
 	if (bb != 1) {
+		if ((bb == -1) &&
+		    (job_ptr->state_reason == FAIL_BURST_BUFFER_OP))
+			return ESLURM_BURST_BUFFER_WAIT; /* Fatal BB event */
 		xfree(job_ptr->state_desc);
 		last_job_update = now;
 		if (bb == 0)
@@ -3019,7 +3022,7 @@ static bool _valid_feature_counts(struct job_record *job_ptr,
 				  bitstr_t *node_bitmap, bool *has_xor)
 {
 	struct job_details *detail_ptr = job_ptr->details;
-	List feature_list;
+	List feature_list = NULL;
 	ListIterator job_feat_iter;
 	job_feature_t *job_feat_ptr;
 	node_feature_t *node_feat_ptr;

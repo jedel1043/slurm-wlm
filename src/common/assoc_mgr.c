@@ -444,8 +444,6 @@ static void _clear_qos_used_limit_list(List used_limit_list, uint32_t tres_cnt)
 	return;
 }
 
-
-
 static void _clear_qos_acct_limit_info(slurmdb_qos_rec_t *qos_ptr)
 {
 	_clear_qos_used_limit_list(qos_ptr->usage->acct_limit_list,
@@ -728,7 +726,7 @@ static slurmdb_assoc_rec_t* _find_assoc_parent(
 }
 
 /* locks should be put in place before calling this function
- * ASSOC_WRITE, USER_WRITE, TRES_READ */
+ * ASSOC_WRITE, USER_WRITE, QOS_READ, TRES_READ */
 static int _set_assoc_parent_and_user(slurmdb_assoc_rec_t *assoc,
 				      int reset)
 {
@@ -908,7 +906,7 @@ static void _set_children_level_shares(slurmdb_assoc_rec_t *assoc,
 
 /* transfer slurmdb assoc list to be assoc_mgr assoc list */
 /* locks should be put in place before calling this function
- * ASSOC_WRITE, USER_WRITE, TRES_READ */
+ * ASSOC_WRITE, USER_WRITE, QOS_READ, TRES_READ */
 static int _post_assoc_list(void)
 {
 	slurmdb_assoc_rec_t *assoc = NULL;
@@ -1389,7 +1387,7 @@ static int _get_assoc_mgr_tres_list(void *db_conn, int enforce)
 
 	assoc_mgr_unlock(&locks);
 
-	if (changed && init_setup.update_cluster_tres) {
+	if (!running_cache && changed && init_setup.update_cluster_tres) {
 		/* update jobs here, this needs to be outside of the
 		 * assoc_mgr locks */
 		init_setup.update_cluster_tres();
@@ -1402,7 +1400,7 @@ static int _get_assoc_mgr_assoc_list(void *db_conn, int enforce)
 {
 	slurmdb_assoc_cond_t assoc_q;
 	uid_t uid = getuid();
-	assoc_mgr_lock_t locks = { WRITE_LOCK, NO_LOCK, NO_LOCK, NO_LOCK,
+	assoc_mgr_lock_t locks = { WRITE_LOCK, NO_LOCK, READ_LOCK, NO_LOCK,
 				   READ_LOCK, WRITE_LOCK, NO_LOCK };
 
 //	DEF_TIMERS;
@@ -1625,7 +1623,7 @@ static int _refresh_assoc_mgr_assoc_list(void *db_conn, int enforce)
 	ListIterator curr_itr = NULL;
 	ListIterator assoc_mgr_itr = NULL;
 	slurmdb_assoc_rec_t *curr_assoc = NULL, *assoc = NULL;
-	assoc_mgr_lock_t locks = { WRITE_LOCK, NO_LOCK, NO_LOCK, NO_LOCK,
+	assoc_mgr_lock_t locks = { WRITE_LOCK, NO_LOCK, READ_LOCK, NO_LOCK,
 				   READ_LOCK, WRITE_LOCK, NO_LOCK };
 //	DEF_TIMERS;
 
@@ -1749,7 +1747,9 @@ static int _refresh_assoc_mgr_res_list(void *db_conn, int enforce)
 static int _refresh_assoc_mgr_qos_list(void *db_conn, int enforce)
 {
 	List current_qos = NULL;
+	ListIterator itr;
 	uid_t uid = getuid();
+	slurmdb_qos_rec_t *curr_qos = NULL, *qos_rec = NULL;
 	assoc_mgr_lock_t locks = { NO_LOCK, NO_LOCK, WRITE_LOCK, NO_LOCK,
 				   NO_LOCK, NO_LOCK, NO_LOCK };
 
@@ -1763,6 +1763,19 @@ static int _refresh_assoc_mgr_qos_list(void *db_conn, int enforce)
 	_post_qos_list(current_qos);
 
 	assoc_mgr_lock(&locks);
+
+	/* move usage from old list over to the new one */
+	itr = list_iterator_create(current_qos);
+	while ((curr_qos = list_next(itr))) {
+		if (!(qos_rec = list_find_first(assoc_mgr_qos_list,
+						slurmdb_find_qos_in_list,
+						&curr_qos->id)))
+			continue;
+		slurmdb_destroy_qos_usage(curr_qos->usage);
+		curr_qos->usage = qos_rec->usage;
+		qos_rec->usage = NULL;
+	}
+	list_iterator_destroy(itr);
 
 	FREE_NULL_LIST(assoc_mgr_qos_list);
 
@@ -4848,6 +4861,8 @@ extern int assoc_mgr_update_tres(slurmdb_update_object_t *update, bool locked)
 		_post_tres_list(tmp_list, list_count(tmp_list));
 	} else if (freeit)
 		FREE_NULL_LIST(tmp_list);
+	else
+		assoc_mgr_tres_list = tmp_list;
 
 	if (!locked)
 		assoc_mgr_unlock(&locks);
@@ -5833,7 +5848,6 @@ extern int assoc_mgr_refresh_lists(void *db_conn, uint16_t cache_level)
 		if (_refresh_assoc_wckey_list(
 			    db_conn, init_setup.enforce) == SLURM_ERROR)
 			return SLURM_ERROR;
-
 	if (cache_level & ASSOC_MGR_CACHE_RES)
 		if (_refresh_assoc_mgr_res_list(
 			    db_conn, init_setup.enforce) == SLURM_ERROR)
