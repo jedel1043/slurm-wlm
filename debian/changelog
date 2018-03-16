@@ -10,6 +10,7 @@ slurm-llnl (17.11.5-1) UNRELEASED; urgency=medium
   * Delete old transitional packages' files
   * New upstream release fixes CVE-2018-7033
   * Update libslurm{,db}32 symbols files
+  * Fix slurmdbd.conf.5 and slurm.conf.5 man pages
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 15 Mar 2018 21:46:32 +0100
 
