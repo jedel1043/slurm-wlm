@@ -1123,6 +1123,7 @@ libslurmdb.so.32 libslurmdb32 #MINVER#
  slurmdb_find_assoc_in_list@Base 16.05.0
  slurmdb_find_cluster_accting_tres_in_list@Base 15.08.0
  slurmdb_find_cluster_in_list@Base 17.02.0
+ slurmdb_find_qos_in_list@Base 17.11.5
  slurmdb_find_qos_in_list_by_name@Base 15.08.0
  slurmdb_find_selected_step_in_list@Base 15.08.1
  slurmdb_find_tres_count_in_string@Base 15.08.0
