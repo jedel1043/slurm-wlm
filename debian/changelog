@@ -5,6 +5,7 @@ slurm-llnl (17.11.6-1) UNRELEASED; urgency=medium
   * Change Maintainer to HPC Team
   * Add Gennaro Oliva as Uploader
   * Bump standard version to 4.1.4 (no changes)
+  * Rename the header files directory to slurm (Closes: #887924)
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 22 May 2018 09:07:35 +0200
 
