@@ -4,6 +4,7 @@ slurm-llnl (17.11.6-1) UNRELEASED; urgency=medium
   * Update Vcs info with the new salsa.d.o git repo
   * Change Maintainer to HPC Team
   * Add Gennaro Oliva as Uploader
+  * Bump standard version to 4.1.4 (no changes)
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 22 May 2018 09:07:35 +0200
 
