@@ -1,8 +1,10 @@
 Source: slurm-llnl
 Section: admin
 Priority: optional
-Maintainer: Gennaro Oliva <oliva.g@na.icar.cnr.it>
-Uploaders: Rémi Palancher <remi@rezib.org>, Mehdi Dogguy <mehdi@debian.org>
+Maintainer: Debian HPC Team <debian-hpc@lists.debian.org>
+Uploaders: Rémi Palancher <remi@rezib.org>,
+           Mehdi Dogguy <mehdi@debian.org>,
+           Gennaro Oliva <oliva.g@na.icar.cnr.it>,
 Build-Depends:
  debhelper (>= 10),
  libmunge-dev,
