@@ -1,4 +1,4 @@
-slurm-llnl (17.11.6-1) UNRELEASED; urgency=medium
+slurm-llnl (17.11.6-1) unstable; urgency=medium
 
   * New upstream release
   * Update Vcs info with the new salsa.d.o git repo
@@ -7,7 +7,7 @@ slurm-llnl (17.11.6-1) UNRELEASED; urgency=medium
   * Bump standard version to 4.1.4 (no changes)
   * Rename the header files directory to slurm (Closes: #887924)
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 22 May 2018 09:07:35 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 22 May 2018 11:43:27 +0200
 
 slurm-llnl (17.11.5-1) unstable; urgency=medium
 
