@@ -1,3 +1,9 @@
+slurm-llnl (17.11.6-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 22 May 2018 09:07:35 +0200
+
 slurm-llnl (17.11.5-1) unstable; urgency=medium
 
   [ Mehdi Dogguy ]
