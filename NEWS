@@ -1,6 +1,22 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 17.11.7
+==========================
+ -- Fix for possible slurmctld daemon abort with NULL pointer.
+ -- Fix different issues when requesting memory per cpu/node.
+ -- PMIx - override default paths at configure time if --with-pmix is used.
+ -- Have sprio display jobs before eligible time when
+    PriorityFlags=ACCRUE_ALWAYS is set.
+ -- Make sure locks are always in place when calling _post_qos_list().
+ -- Notify srun and ctld when unkillable stepd exits.
+ -- Fix slurmstepd deadlock in stepd cleanup caused by race condition in
+    the jobacct_gather fini() interfaces introduced in 17.11.6.
+ -- Fix slurmstepd deadlock in PMIx startup.
+ -- task/cgroup - fix invalid free() if the hwloc library does not return a
+    string as expected.
+ -- Fix insecure handling of job requested gid field. CVE-2018-10995.
+
 * Changes in Slurm 17.11.6
 ==========================
  -- CRAY - Add slurmsmwd to the contribs/cray dir.
@@ -745,8 +761,12 @@ documents those changes that are of interest to users and administrators.
     '--quit-on-interrupt' to '--qos'.
  -- Change sched_min_interval default from 0 to 2 microseconds.
 
+* Changes in Slurm 17.02.12
+==========================
+
 * Changes in Slurm 17.02.11
 ==========================
+ -- Fix insecure handling of user_name and gid fields. CVE-2018-10995.
 
 * Changes in Slurm 17.02.10
 ==========================
