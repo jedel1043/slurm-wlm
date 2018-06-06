@@ -1,3 +1,9 @@
+slurm-llnl (17.11.7-1) unstable; urgency=high
+
+  * New upstream release fixes CVE-2018-10995
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 06 Jun 2018 11:15:08 +0200
+
 slurm-llnl (17.11.6-1) unstable; urgency=medium
 
   * New upstream release
