@@ -1,3 +1,11 @@
+slurm-llnl (14.03.9-5+deb8u2) jessie; urgency=medium
+
+  * Team upload.
+  * slurm-client: Add Breaks+Replaces: slurm-llnl-slurmdbd (<< 14.03.9-5) for
+    clean upgrades from wheezy which shipped sacctmgr there. (Closes: #901513)
+
+ -- Andreas Beckmann <anbe@debian.org>  Fri, 15 Jun 2018 15:58:33 +0200
+
 slurm-llnl (14.03.9-5+deb8u1) jessie; urgency=high
 
   * Fix security issue caused by insecure file path handling triggered by
