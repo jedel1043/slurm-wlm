@@ -2930,7 +2930,7 @@ int slurm_init_msg_engine_ports(uint16_t *ports)
 		return -1;
 	}
 
-	cc = listen(s, SLURM_PROTOCOL_DEFAULT_LISTEN_BACKLOG);
+	cc = listen(s, SLURM_DEFAULT_LISTEN_BACKLOG);
 	if (cc < 0) {
 		close(s);
 		return -1;
@@ -3811,7 +3811,7 @@ int slurm_send_node_msg(int fd, slurm_msg_t * msg)
 		free_buf(buffer);
 
 		if ((rc < 0) && (errno == ENOTCONN)) {
-			debug3("slurm_persist_send_msg: pesistant connection has disappeared for msg_type=%u",
+			debug3("slurm_persist_send_msg: persistent connection has disappeared for msg_type=%u",
 			       msg->msg_type);
 		} else if (rc < 0) {
 			slurm_addr_t peer_addr;

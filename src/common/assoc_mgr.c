@@ -1005,6 +1005,7 @@ static int _post_wckey_list(List wckey_list)
 	return SLURM_SUCCESS;
 }
 
+/* NOTE QOS write lock needs to be set before calling this. */
 static int _post_qos_list(List qos_list)
 {
 	slurmdb_qos_rec_t *qos = NULL;
@@ -1747,9 +1748,7 @@ static int _refresh_assoc_mgr_res_list(void *db_conn, int enforce)
 static int _refresh_assoc_mgr_qos_list(void *db_conn, int enforce)
 {
 	List current_qos = NULL;
-	ListIterator itr;
 	uid_t uid = getuid();
-	slurmdb_qos_rec_t *curr_qos = NULL, *qos_rec = NULL;
 	assoc_mgr_lock_t locks = { NO_LOCK, NO_LOCK, WRITE_LOCK, NO_LOCK,
 				   NO_LOCK, NO_LOCK, NO_LOCK };
 
@@ -1760,24 +1759,28 @@ static int _refresh_assoc_mgr_qos_list(void *db_conn, int enforce)
 		      "no new list given back keeping cached one.");
 		return SLURM_ERROR;
 	}
-	_post_qos_list(current_qos);
 
 	assoc_mgr_lock(&locks);
 
-	/* move usage from old list over to the new one */
-	itr = list_iterator_create(current_qos);
-	while ((curr_qos = list_next(itr))) {
-		if (!(qos_rec = list_find_first(assoc_mgr_qos_list,
-						slurmdb_find_qos_in_list,
-						&curr_qos->id)))
-			continue;
-		slurmdb_destroy_qos_usage(curr_qos->usage);
-		curr_qos->usage = qos_rec->usage;
-		qos_rec->usage = NULL;
-	}
-	list_iterator_destroy(itr);
+	_post_qos_list(current_qos);
 
-	FREE_NULL_LIST(assoc_mgr_qos_list);
+	/* move usage from old list over to the new one */
+	if (assoc_mgr_qos_list) {
+		slurmdb_qos_rec_t *curr_qos = NULL, *qos_rec = NULL;
+		ListIterator itr = list_iterator_create(current_qos);
+
+		while ((curr_qos = list_next(itr))) {
+			if (!(qos_rec = list_find_first(assoc_mgr_qos_list,
+							slurmdb_find_qos_in_list,
+							&curr_qos->id)))
+				continue;
+			slurmdb_destroy_qos_usage(curr_qos->usage);
+			curr_qos->usage = qos_rec->usage;
+			qos_rec->usage = NULL;
+		}
+		list_iterator_destroy(itr);
+		FREE_NULL_LIST(assoc_mgr_qos_list);
+	}
 
 	assoc_mgr_qos_list = current_qos;
 
@@ -2151,18 +2154,15 @@ extern int assoc_mgr_get_user_assocs(void *db_conn,
 	xassert(assoc->uid != NO_VAL);
 	xassert(assoc_list);
 
-	/* Call assoc_mgr_refresh_lists instead of just getting the
-	   association list because we need qos and user lists before
-	   the association list can be made.
-	*/
-	if (!assoc_mgr_assoc_list)
-		if (assoc_mgr_refresh_lists(db_conn, 0) == SLURM_ERROR)
-			return SLURM_ERROR;
-
 	if ((!assoc_mgr_assoc_list
 	     || !list_count(assoc_mgr_assoc_list))
 	    && !(enforce & ACCOUNTING_ENFORCE_ASSOCS)) {
 		return SLURM_SUCCESS;
+	}
+
+	if (!assoc_mgr_assoc_list) {
+		error("No assoc list available, this should never happen");
+		return SLURM_ERROR;
 	}
 
 	itr = list_iterator_create(assoc_mgr_assoc_list);
@@ -3708,10 +3708,6 @@ extern int assoc_mgr_update_assocs(slurmdb_update_object_t *update, bool locked)
 				// reset the parent pointers below
 				parents_changed = 1;
 			}
-			/* info("rec has def of %d %d", */
-			/*      rec->def_qos_id, object->def_qos_id); */
-			if (object->def_qos_id != NO_VAL)
-				rec->def_qos_id = object->def_qos_id;
 
 			if (object->qos_list) {
 				if (rec->qos_list) {
@@ -3742,6 +3738,15 @@ extern int assoc_mgr_update_assocs(slurmdb_update_object_t *update, bool locked)
 						rec->qos_list);
 				}
 			}
+
+			/* info("rec has def of %d %d", */
+			/*      rec->def_qos_id, object->def_qos_id); */
+			if (object->def_qos_id != NO_VAL &&
+			    object->def_qos_id >= g_qos_count) {
+				error("qos %d doesn't exist", rec->def_qos_id);
+				rec->def_qos_id = 0;
+			} else  if (object->def_qos_id != NO_VAL)
+				rec->def_qos_id = object->def_qos_id;
 
 			if (rec->def_qos_id && rec->user
 			    && rec->usage && rec->usage->valid_qos
