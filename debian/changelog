@@ -2,6 +2,7 @@ slurm-llnl (17.11.8-1) UNRELEASED; urgency=medium
 
   * New upstream release
   * Bump standard version to 4.1.5 (no changes)
+  * Update html configurators
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 25 Jul 2018 09:13:26 +0200
 
