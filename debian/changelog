@@ -6,6 +6,7 @@ slurm-llnl (17.11.8-1) UNRELEASED; urgency=medium
   * Update libslurm32 symbols file
   * Disable pdf and ttf compression to improve html doc usability
   * Add man2html dependency to enable html man pages in doc
+  * Add libssh2 dependency to enable native X11 forwarding
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 25 Jul 2018 09:13:26 +0200
 
