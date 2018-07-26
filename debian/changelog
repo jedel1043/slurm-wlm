@@ -1,3 +1,10 @@
+slurm-llnl (17.11.8-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+  * Bump standard version to 4.1.5 (no changes)
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 25 Jul 2018 09:13:26 +0200
+
 slurm-llnl (17.11.7-1) unstable; urgency=high
 
   * New upstream release fixes CVE-2018-10995
