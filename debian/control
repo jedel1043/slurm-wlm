@@ -27,7 +27,8 @@ Build-Depends:
  hdf5-helpers,
  libhdf5-dev,
  man2html,
- libssh2-1-dev
+ libssh2-1-dev,
+ libcurl4-openssl-dev
 Standards-Version: 4.1.5
 Homepage: http://slurm.schedmd.com
 Vcs-Browser: https://salsa.debian.org/hpc-team/slurm-wlm
