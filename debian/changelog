@@ -4,6 +4,7 @@ slurm-llnl (17.11.8-1) UNRELEASED; urgency=medium
   * Bump standard version to 4.1.5 (no changes)
   * Update html configurators
   * Update libslurm32 symbols file
+  * Disable pdf and ttf compression to improve html doc usability
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 25 Jul 2018 09:13:26 +0200
 
