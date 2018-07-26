@@ -25,7 +25,8 @@ Build-Depends:
  librrd-dev,
  libipmimonitoring-dev,
  hdf5-helpers,
- libhdf5-dev
+ libhdf5-dev,
+ man2html
 Standards-Version: 4.1.5
 Homepage: http://slurm.schedmd.com
 Vcs-Browser: https://salsa.debian.org/hpc-team/slurm-wlm
