@@ -8,6 +8,7 @@ slurm-llnl (17.11.8-1) UNRELEASED; urgency=medium
   * Add man2html dependency to enable html man pages in doc
   * Add libssh2 dependency to enable native X11 forwarding
   * Add libcurl dependency to build jobcomp/elasticsearch plugin
+  * Add lz4 dependency to enable lz4 compression to sbcast
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 25 Jul 2018 09:13:26 +0200
 
