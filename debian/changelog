@@ -1,4 +1,4 @@
-slurm-llnl (17.11.8-1) UNRELEASED; urgency=medium
+slurm-llnl (17.11.8-1) unstable; urgency=medium
 
   * New upstream release
   * Bump standard version to 4.1.5 (no changes)
@@ -10,7 +10,7 @@ slurm-llnl (17.11.8-1) UNRELEASED; urgency=medium
   * Add libcurl dependency to build jobcomp/elasticsearch plugin
   * Add lz4 dependency to enable lz4 compression to sbcast
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 25 Jul 2018 09:13:26 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 27 Jul 2018 10:06:43 +0200
 
 slurm-llnl (17.11.7-1) unstable; urgency=high
 
