@@ -2,8 +2,10 @@ slurm-llnl (16.05.9-1+deb9u2) stretch-security; urgency=high
 
   * Fix CVE-2018-7033 that can cause SQL Injection attacks against
     SlurmDBD
+  * Fix CVE-2018-7033 that can cause SQL Injection attacks against
+    SlurmDBD
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 23 Jul 2018 12:00:49 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 27 Jul 2018 16:38:16 +0200
 
 slurm-llnl (16.05.9-1+deb9u1) stretch-security; urgency=high
 
