@@ -922,6 +922,8 @@ libslurmdb.so.30 libslurmdb30 #MINVER#
  slurm_unpackmem_ptr@Base 2.2.0
  slurm_unpackmem_xmalloc@Base 2.2.0
  slurm_unpackstr_array@Base 2.2.0
+ slurm_unpackstr_xmalloc_chooser@Base 16.05.9-1+deb9u2~
+ slurm_unpackstr_xmalloc_escaped@Base 16.05.9-1+deb9u2~
  slurm_unsetenvp@Base 2.2.0
  slurm_update_block@Base 2.2.0
  slurm_update_front_end@Base 2.3.1
