@@ -881,6 +881,7 @@ libslurm.so.32 libslurm32 #MINVER#
  slurm_select_init@Base 1.3.8
  slurm_send_addr_recv_msgs@Base 1.3.8
  slurm_send_kvs_comm_set@Base 1.3.8
+ slurm_send_msg_maybe@Base 17.11.9
  slurm_send_node_msg@Base 1.3.8
  slurm_send_only_controller_msg@Base 1.3.8
  slurm_send_only_node_msg@Base 1.3.8
