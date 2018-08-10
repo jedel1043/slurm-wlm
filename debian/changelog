@@ -1,3 +1,11 @@
+slurm-llnl (17.11.9-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+  * Bump standard version to 4.2.0
+    Passing verbose options to commands in d/rules
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 10 Aug 2018 08:45:46 +0200
+
 slurm-llnl (17.11.8-1) unstable; urgency=medium
 
   * New upstream release
