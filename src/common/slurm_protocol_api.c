@@ -45,6 +45,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <poll.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -4529,8 +4530,11 @@ cleanup:
 int slurm_send_only_node_msg(slurm_msg_t *req)
 {
 	int rc = SLURM_SUCCESS;
-	int retry = 0;
 	int fd = -1;
+	struct pollfd pfd;
+	int timeout = slurm_get_msg_timeout();
+	int value = -1;
+	int pollrc;
 
 	if ((fd = slurm_open_msg_conn(&req->address)) < 0) {
 		return SLURM_SOCKET_ERROR;
@@ -4542,15 +4546,82 @@ int slurm_send_only_node_msg(slurm_msg_t *req)
 		debug3("slurm_send_only_node_msg: sent %d", rc);
 		rc = SLURM_SUCCESS;
 	}
+
 	/*
-	 *  Attempt to close an open connection
+	 * Make sure message was received by remote, and that there isn't
+	 * and outstanding write() or that the connection has been reset.
+	 *
+	 * The shutdown() call intentionally falls through to the next block,
+	 * the poll() should hit POLLERR which gives the TICOUTQ count as an
+	 * additional diagnostic element.
+	 *
+	 * The steps below may result in a false-positive on occassion, in
+	 * which case the code path above may opt to retransmit an already
+	 * received message. If this is a concern, you should not be using
+	 * this function.
 	 */
-	while ( (slurm_shutdown_msg_conn(fd) < 0) && (errno == EINTR) ) {
-		if (retry++ > MAX_SHUTDOWN_RETRY)
-			return SLURM_SOCKET_ERROR;
+	if (shutdown(fd, SHUT_WR))
+		error("%s: shutdown call failed: %m", __func__);
+
+again:
+	pfd.fd = fd;
+	pfd.events = POLLIN;
+	pollrc = poll(&pfd, 1, timeout);
+	if (pollrc == -1) {
+		if (errno == EINTR)
+			goto again;
+		error("%s: poll error: %m", __func__);
+		(void) close(fd);
+		return SLURM_ERROR;
 	}
 
+	if (pollrc == 0) {
+		if (ioctl(fd, TIOCOUTQ, &value))
+			error("%s: TIOCOUTQ ioctl failed", __func__);
+		error("%s: poll timed out with %d outstanding: %m", __func__, value);
+		(void) close(fd);
+		return SLURM_ERROR;
+	}
+
+	if (pfd.revents & POLLERR) {
+		int err;
+		socklen_t errlen = sizeof(err);
+		int value = -1;
+
+		if (ioctl(fd, TIOCOUTQ, &value))
+			error("%s: TIOCOUTQ ioctl failed", __func__);
+		if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &errlen))
+			error("%s: getsockopt error with %d outstanding: %m",
+			      __func__, value);
+		else
+			error("%s: poll error with %d outstanding: %s",
+			      __func__, value, strerror(err));
+		(void) close(fd);
+		return SLURM_ERROR;
+	}
+
+	(void) close(fd);
+
 	return rc;
+}
+
+/*
+ * Open a connection to the "address" specified in the slurm msg `req'
+ * Then, immediately close the connection w/out waiting for a reply.
+ * Ignore any errors. This should only be used when you do not care if
+ * the message is ever received.
+ */
+void slurm_send_msg_maybe(slurm_msg_t *req)
+{
+	int fd = -1;
+
+	if ((fd = slurm_open_msg_conn(&req->address)) < 0) {
+		return;
+	}
+
+	(void) slurm_send_node_msg(fd, req);
+
+	(void) close(fd);
 }
 
 /*
