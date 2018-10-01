@@ -130,7 +130,7 @@ Package: libpmi0
 Section: libs
 Architecture: any
 Pre-Depends: ${misc:Pre-Depends}
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, slurm-wlm-basic-plugins (= ${binary:Version}),
 Description: SLURM PMI library implementation
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
