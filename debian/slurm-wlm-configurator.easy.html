@@ -103,8 +103,7 @@ function displayfile()
    "# Put this file on all nodes of your cluster.<br>" +
    "# See the slurm.conf man page for more information.<br>" +
    "#<br>" +
-   "ControlMachine=" + document.config.control_machine.value + "<br>" +
-   get_field("ControlAddr",document.config.control_addr) + "<br>" +
+   "SlurmctldHost=" + document.config.control_machine.value + "<br>" +
    "# <br>" +
    "#MailProg=/bin/mail <br>" +
    "MpiDefault=" + get_radio_value(document.config.mpi_default) + "<br>" +
@@ -186,7 +185,7 @@ function displayfile()
 </HEAD>
 <BODY>
 <FORM name=config>
-<H1>Slurm Version 17.11 Configuration Tool - Easy Version</H1>
+<H1>Slurm Version 18.08 Configuration Tool - Easy Version</H1>
 <P>This form can be used to create a Slurm configuration file with
 you controlling many of the important configuration parameters.</P>
 
@@ -195,7 +194,7 @@ has fewer  options for creating a Slurm configuration file. The full version
 of the Slurm configuration tool is available at
 <a href="file:///usr/share/doc/slurmctld/slurm-wlm-configurator.html">slurm-wlm-configurator.html</a>.</p>
 
-<P><B>This tool supports Slurm version 17.11 only.</B>
+<P><B>This tool supports Slurm version 18.08 only.</B>
 Configuration files for other versions of Slurm should be built
 using the tool distributed with it in <i>doc/html/configurator.html</i>.
 Some parameters will be set to default values, but you can
@@ -218,21 +217,16 @@ file. It will appear on your web browser. Save the file in text format
 as <I>slurm.conf</I> for use by Slurm.
 
 <P>For more information about Slurm, see
-<A HREF="http://slurm.schedmd.com/slurm.html">http://slurm.schedmd.com/slurm.html</A>
+<A HREF="https://slurm.schedmd.com/slurm.html">https://slurm.schedmd.com/slurm.html</A>
 
 <H2>Control Machines</H2>
 Define the hostname of the computer on which the Slurm controller and
-optional backup controller will execute. You can also specify addresses
-of these computers if desired (defaults to their hostnames).
-The IP addresses can be either numeric IP addresses or names.
+optional backup controller will execute.
 Hostname values should should not be the fully qualified domain
 name (e.g. use <I>tux</I> rather than <I>tux.abc.com</I>).
 <P>
-<input type="text" name="control_machine" value="linux0"> <B>ControlMachine</B>:
+<input type="text" name="control_machine" value="linux0"> <B>SlurmctldHost</B>:
 Master Controller Hostname
-<P>
-<input type="text" name="control_addr"> <B>ControlAddr</B>: Master Controller
-Address (optional)
 <P>
 
 <H2>Compute Machines</H2>
