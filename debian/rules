@@ -35,9 +35,6 @@ override_dh_shlibdeps:
 override_dh_auto_install:
 	dh_auto_install
 	
-	# clear dependency_libs field in *.la files
-	# see lintian non-empty-dependency_libs-in-la-file for reference
-	sed -i "/dependency_libs/ s/'.*'/''/" `find debian/tmp/ -name '*.la'`
 	# Rename slurm(1) manpage before dh_installman run. It is not possible
 	# to rename manpages in debian/*.manpages so hardcore `mv` is done here
 	mv -v debian/tmp/usr/share/man/man1/slurm.1 debian/tmp/usr/share/man/man1/slurm-wlm.1
@@ -57,6 +54,10 @@ override_dh_auto_install:
 
 	# run make install for PMI2 pkg
 	$(MAKE) -C obj-$(DEB_BUILD_GNU_TYPE)/contribs/pmi2 install DESTDIR=$(CURDIR)/debian/tmp
+
+	# clear dependency_libs field in *.la files
+	# see lintian non-empty-dependency_libs-in-la-file for reference
+	sed -i "/dependency_libs/ s/'.*'/''/" `find debian/tmp/ -name '*.la'`
 
 	# Rename mpiexec to mpiexec.slurm
 	mv -v debian/tmp/usr/bin/mpiexec	debian/tmp/usr/bin/mpiexec.slurm
