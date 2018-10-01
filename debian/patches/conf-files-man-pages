@@ -3,20 +3,9 @@ Description: Fix man pages typos
 Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
 Last-Update: 2018-02-24
 
---- a/doc/man/man5/slurmdbd.conf.5
-+++ b/doc/man/man5/slurmdbd.conf.5
-@@ -276,7 +276,7 @@ If the slurmdbd daemon is run in the for
- command line option) the \fBDebugLevelSyslog\fR configuration parameter
- will be ignored.
- The default value is \fBquiet\fR unless there is no configured
--\fBSlurmdLogFile\fR, in which case the default value will be \fBfatal\bR so
-+\fBSlurmdLogFile\fR, in which case the default value will be \fBfatal\fR so
- that fatal errors are logged somewhere.
- 
- .RS
 --- a/doc/man/man5/slurm.conf.5
 +++ b/doc/man/man5/slurm.conf.5
-@@ -3572,7 +3572,7 @@ into this directory.
+@@ -3578,7 +3578,7 @@
  Specifies the nodes which are to not be placed in power save mode, even
  if the node remains idle for an extended period of time.
  Use Slurm's hostlist expression to identify nodes with an optional ":" separator
