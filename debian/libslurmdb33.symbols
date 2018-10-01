@@ -1,5 +1,5 @@
 # SymbolsHelper-Confirmed: 17.11.2~ amd64
-libslurmdb.so.32 libslurmdb32 #MINVER#
+libslurmdb.so.33 libslurmdb33 #MINVER#
 #MISSING: 17.11.2~# slurm_accept_msg_conn@Base 2.2.0
 #MISSING: 14.11.0# slurm_accept_stream@Base 2.2.0
 #MISSING: 17.11.2~# slurm_accounting_enforce_string@Base 2.2.0
