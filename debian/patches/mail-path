@@ -4,7 +4,7 @@ Description: mail command absolute pathname
 Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>                    
 Bug-Debian: http://bugs.debian.org/588862
 Forwarded: no
-Last-Update: 2015-09-23
+Last-Update: 2018-10-01
 
 --- a/doc/man/man1/strigger.1
 +++ b/doc/man/man1/strigger.1
@@ -26,25 +26,3 @@ Last-Update: 2015-09-23
  
  > strigger \-\-set \-\-node \-\-down \\
             \-\-program=/usr/sbin/slurm_admin_notify
---- a/doc/man/man5/slurm.conf.5
-+++ b/doc/man/man5/slurm.conf.5
-@@ -1377,7 +1377,7 @@
- .TP
- \fBMailProg\fR
- Fully qualified pathname to the program used to send email per user request.
--The default value is "/bin/mail".
-+The default value is "/usr/bin/mail".
- 
- .TP
- \fBMaxArraySize\fR
---- a/src/common/read_config.h
-+++ b/src/common/read_config.h
-@@ -124,7 +124,7 @@
- #  define DEFAULT_LAUNCH_TYPE         "launch/slurm"
- #endif
- 
--#define DEFAULT_MAIL_PROG           "/bin/mail"
-+#define DEFAULT_MAIL_PROG           "/usr/bin/mail"
- #define DEFAULT_MAX_ARRAY_SIZE      1001
- #define DEFAULT_MAX_JOB_COUNT       10000
- #define DEFAULT_MAX_JOB_ID          0x03ff0000

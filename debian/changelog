@@ -2,6 +2,7 @@ slurm-llnl (18.08.0-1) UNRELEASED; urgency=medium
 
   * New upstream release
   * Update libslurm{,db} symbols file to soname 33
+  * Modifiy the mail patch since /usr/bin/mail is now supported upstream
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 01 Oct 2018 11:04:38 +0200
 
