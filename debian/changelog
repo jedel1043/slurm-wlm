@@ -6,6 +6,7 @@ slurm-llnl (18.08.0-1) UNRELEASED; urgency=medium
   * Refresh patches and remove parts included upstream
   * Update d/copyright
   * Update html configurators
+  * Fix typos in the some man pages
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 01 Oct 2018 11:04:38 +0200
 

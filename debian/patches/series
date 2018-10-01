@@ -3,5 +3,5 @@ remove-google-javascript
 sacctmgr-increase-buffer
 pidfile-path
 rpath
-conf-files-man-pages
+man-pages-typos
 mpiexec-man-page
