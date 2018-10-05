@@ -122,8 +122,9 @@ Also see \fBDefaultStoragePort\fR.
 Comma separated list of resources you wish to track on the cluster.
 These are the resources requested by the sbatch/srun job when it
 is submitted.  Currently this consists of any GRES, BB (burst buffer) or
-license along with CPU, Memory, Node, Energy, FS/[Disk|Lustre], IC/OFED.
-By default Billing, CPU, Energy, Memory, Node, and FS/Disk are tracked.
+license along with CPU, Memory, Node, Energy, FS/[Disk|Lustre], IC/OFED, Pages,
+and VMem. By default Billing, CPU, Energy, Memory, Node, FS/Disk, Pages and VMem
+are tracked.
 AccountingStorageTRES=gres/craynetwork,license/iop1
 will track billing, cpu, energy, memory, nodes, FS/disk along with a
 gres called craynetwork as well as a license called iop1.  Whenever these
@@ -177,8 +178,8 @@ determined by the value of \fBJobAcctGatherFrequency\fR.
 Identifies the plugin to be used for energy consumption accounting.
 The jobacct_gather plugin and slurmd daemon call this plugin to collect
 energy consumption data for jobs and nodes. The collection of energy
-consumption data takes place on node level, hence only in case of exclusive
-job allocation the energy consumption measurements will reflect the jobs
+consumption data takes place on the node level, hence only in case of exclusive
+job allocation the energy consumption measurements will reflect the job's
 real consumption. In case of node sharing between jobs the reported consumed
 energy per job (through sstat or sacct) will not reflect the real energy
 consumed by the jobs.
@@ -202,12 +203,13 @@ execution of the command "sudo modprobe msr".
 .TP
 \fBAcctGatherInfinibandType\fR
 Identifies the plugin to be used for infiniband network traffic accounting.
-The plugin is activated only when profiling on hdf5 files is activated and
-the user asks for network data collection for jobs through \-\-profile=Network
-(or =All). The collection of network traffic data takes place on node level,
+The jobacct_gather plugin and slurmd daemon call this plugin to collect
+network traffic data for jobs and nodes.
+The collection of network traffic data takes place on the node level,
 hence only in case of exclusive job allocation the collected values will
-reflect the jobs real traffic. All network traffic data are logged on hdf5 files
-per job on each node. No storage on the Slurm database takes place.
+reflect the job's real traffic. In case of node sharing between jobs the reported
+network traffic per job (through sstat or sacct) will not reflect the real
+network traffic by the jobs.
 
 Configurable values at present are:
 .RS
@@ -218,17 +220,21 @@ No infiniband network data are collected.
 \fBacct_gather_infiniband/ofed\fR
 Infiniband network traffic data are collected from the hardware monitoring
 counters of Infiniband devices through the OFED library.
+In order to account for per job network traffic, add the "ic/ofed" TRES to
+\fIAccountingStorageTRES\fR.
 .RE
 
 .TP
 \fBAcctGatherFilesystemType\fR
 Identifies the plugin to be used for filesystem traffic accounting.
-The plugin is activated only when profiling on hdf5 files is activated and
-the user asks for filesystem data collection for jobs through \-\-profile=Lustre
-(or =All). The collection of filesystem traffic data takes place on node level,
+The jobacct_gather plugin and slurmd daemon call this plugin to collect
+filesystem traffic data for jobs and nodes.
+The collection of filesystem traffic data takes place on the node level,
 hence only in case of exclusive job allocation the collected values will
-reflect the jobs real traffic. All filesystem traffic data are logged on hdf5 files
-per job on each node. No storage on the Slurm database takes place.
+reflect the job's real traffic. In case of node sharing between jobs the reported
+filesystem traffic per job (through sstat or sacct) will not reflect the real
+filesystem traffic by the jobs.
+
 
 Configurable values at present are:
 .RS
@@ -239,6 +245,8 @@ No filesystem data are collected.
 \fBacct_gather_filesystem/lustre\fR
 Lustre filesystem traffic data are collected from the counters found in
 /proc/fs/lustre/.
+In order to account for per job lustre traffic, add the "disk/lustre" TRES to
+\fIAccountingStorageTRES\fR.
 .RE
 
 .TP
@@ -448,9 +456,10 @@ used for all other system types
 
 .TP
 \fBCpuFreqDef\fR
-Default CPU frequency governor to use when running a job step if it
-has not been explicitly set with the \-\-cpu\-freq option.
-Acceptable values at present include:
+Default CPU frequency value or frequency governor to use when running a
+job step if it has not been explicitly set with the \-\-cpu\-freq option.
+Acceptable values at present include a numeric value (frequency in kilohertz)
+or one of the following governors:
 .RS
 .TP 14
 \fBConservative\fR
@@ -479,18 +488,18 @@ Acceptable values at present include:
 attempts to use the Conservative CPU governor
 .TP
 \fBOnDemand\fR
-attempts to use the OnDemand CPU governor (the default value)
+attempts to use the OnDemand CPU governor (a default value)
 .TP
 \fBPerformance\fR
-attempts to use the Performance CPU governor (the default value)
+attempts to use the Performance CPU governor (a default value)
 .TP
 \fBPowerSave\fR
 attempts to use the PowerSave CPU governor
 .TP
 \fBUserSpace\fR
-attempts to use the UserSpace CPU governor
+attempts to use the UserSpace CPU governor (a default value)
 .RE
-The default is OnDemand, Performance.
+The default is OnDemand, Performance and UserSpace.
 .TP
 \fBCryptoType\fR
 The cryptographic signature tool to be used in the creation of
@@ -1012,15 +1021,17 @@ Exclude shared memory from accounting.
 Use PSS value instead of RSS to calculate real usage of memory.
 The PSS value will be saved as RSS.
 .TP
-\fBNoOverMemoryKill\fR
-Do not kill process that uses more then requested memory.
-This parameter should be used with caution as if jobs exceeds
-its memory allocation it may affect other processes and/or machine
-health.
+\fBOverMemoryKill\fR
+Kill steps that are being detected to use more memory than requested, every
+time accounting information is gathered by JobAcctGather plugin.
+This parameter will not kill a job directly, but only the step.
+See \fBMemLimitEnforce\fB for that purpose. This parameter should be used
+with caution as if jobs exceeds its memory allocation it may affect other
+processes and/or machine health.
 NOTE: It is recommended to limit memory by enabling task/cgroup
-in TaskPlugin and making use of ConstrainRAMSpace=yes cgroup.conf.
-If so, having JobAcctGather as an extra mechanism for memory enforcement
-is not recommended, so setting \fBNoOverMemoryKill\fR is advised.
+in TaskPlugin and making use of ConstrainRAMSpace=yes cgroup.conf instead
+of using this JobAcctGather mechanism for memory enforcement, since the former
+has a lower resolution (JobAcctGatherFreq) and OOMs could happen at some point.
 .RE
 
 .TP
@@ -1070,7 +1081,7 @@ Also see \fBDefaultStoragePort\fR.
 \fBJobCompType\fR
 The job completion logging mechanism type.
 Acceptable values at present include "jobcomp/none", "jobcomp/elasticsearch",
-"jobcomp/filetxt", "jobcomp/mysql" and "jobcomp/script"".
+"jobcomp/filetxt", "jobcomp/mysql" and "jobcomp/script".
 The default value is "jobcomp/none", which means that upon job completion
 the record of the job is purged from the system.  If using the accounting
 infrastructure this plugin may not be of interest since the information
@@ -1419,12 +1430,17 @@ a node cannot be shared with other users.
 
 .TP
 \fBMemLimitEnforce\fR
-If set to "no" then Slurm will not terminate the job or the job step
-if they exceeds the value requested using the \-\-mem\-per\-cpu option of
-salloc/sbatch/srun. This is useful if jobs need to specify \-\-mem\-per\-cpu
-for scheduling but they should not be terminate if they exceed the
-estimated value. The default value is 'yes', terminate the job/step
-if exceed the requested memory.
+If set to yes then Slurm will terminate the job if it exceeds the value
+requested using the \-\-mem\-per\-cpu option of salloc/sbatch/srun.
+This is useful in combination with \fBJobAcctGaterParams=OverMemoryKill\fB.
+Used when jobs need to specify \-\-mem\-per\-cpu for scheduling and they should
+be terminated if they exceed the estimated value.
+The default value is 'no', which disables this enforcing mechanism.
+NOTE: It is recommended to limit memory by enabling task/cgroup
+in TaskPlugin and making use of ConstrainRAMSpace=yes cgroup.conf instead
+of using this JobAcctGather mechanism for memory enforcement, since the former
+has a lower resolution (JobAcctGatherFreq) and OOMs could happen at some point.
+.RE
 
 .TP
 \fBMessageTimeout\fR
@@ -1676,7 +1692,7 @@ scheduling be enabled (i.e, "PreemptMode=SUSPEND,GANG").
 \fBNOTE:
 For performance reasons, the backfill scheduler reserves whole nodes for jobs,
 not partial nodes. If during backfill scheduling a job preempts one or more
-other jbos, the whole nodes for those preempted jobs are reserved for the
+other jobs, the whole nodes for those preempted jobs are reserved for the
 preemptor job, even if the preemptor job requested fewer resources than that.
 These reserved nodes aren't available to other jobs during that backfill
 cycle, even if the other jobs could fit on the nodes. Therefore, jobs may
@@ -3622,7 +3638,7 @@ Related configuration options include \fBResumeTimeout\fR, \fBResumeProgram\fR,
 
 .TP
 \fBSuspendRate\fR
-The rate at which nodes are place into power save mode by \fBSuspendProgram\fR.
+The rate at which nodes are placed into power save mode by \fBSuspendProgram\fR.
 The value is number of nodes per minute and it can be used to prevent
 a large drop in power consumption (e.g. after a large job completes).
 A value of zero results in no limits being imposed.
@@ -4145,7 +4161,7 @@ Isolation of the Slurm daemons from user jobs may improve application performanc
 If this option and \fBCpuSpecList\fR are both designated for a
 node, an error is generated.  For information on the algorithm used by Slurm
 to select the cores refer to the core specialization documentation
-(https://slurm.schedmd.com/core_spec.html).
+( https://slurm.schedmd.com/core_spec.html ).
 
 .TP
 \fBCoresPerSocket\fR
@@ -4161,7 +4177,7 @@ The default value is 1.
 If a job step request does not specify an option to control how tasks are bound
 to allocated CPUs (\-\-cpu-bind) and all nodes allocated to the job have the same
 \fBCpuBind\fR option the node \fBCpuBind\fR option will control how tasks are
-bound to allocated resources. Supported values for\fBCpuBind\fR are "none",
+bound to allocated resources. Supported values for \fBCpuBind\fR are "none",
 "board", "socket", "ldom" (NUMA), "core" and "thread".
 
 .TP
@@ -4855,12 +4871,12 @@ Jobs that run in partitions with "OverSubscribe=EXCLUSIVE" will have
 exclusive access to all allocated nodes.
 .TP
 \fBFORCE\fR
-Makes all resources in the partition available for sharing
-without any means for users to disable it.
+Makes all resources in the partition available for oversubscription without
+any means for users to disable it.
 May be followed with a colon and maximum number of jobs in
 running or suspended state.
 For example "OverSubscribe=FORCE:4" enables each node, socket or
-core to execute up to four jobs at once.
+core to oversubscribe each resource four ways.
 Recommended only for systems running with gang scheduling
 (\fBPreemptMode=suspend,gang\fR).
 NOTE: \fIPreemptType=QOS\fR will permit one additional job to be run

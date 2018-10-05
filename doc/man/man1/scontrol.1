@@ -995,9 +995,8 @@ If the job is suspended, this is the run time accumulated by the job
 Count of desired sockets per node
 .TP
 \fISubmitTime\fP
-The time  and  date stamp (in Universal Time Coordinated, UTC)
-the job was submitted.  The format of the output is identical
-to that of the EndTime field.
+The time  and  date stamp (in localtime) the job was submitted.
+The format of the output is identical to that of the EndTime field.
 
 NOTE: If a job is requeued, the submit time is reset.
 To obtain the original submit time it is necessary
@@ -1380,19 +1379,6 @@ Hidden partitions will by default not be reported by Slurm APIs
 or commands.
 Possible values are "YES" and "NO".
 
-.\ .TP
-.\ \fIJobDefaults\fP=<specs>
-.\ Specify job default values using a comma delimited list of "key=value" pairs.
-.\ Supported keys include
-.\ .RS
-.\ .TP 14
-.\ \fIDefCpuPerGPU\fP
-.\ Default number of CPUs per allocated GPU.
-.\ .TP
-.\ \fIDefMemPerGPU\fP
-.\ Default memory limit (in megabytes) per allocated GPU.
-.\ .RE
-.\ 
 .TP
 \fIMaxMemPerCPU\fP=<MB>
 Set the maximum memory to be allocated per CPU for jobs in this partition.
@@ -1480,6 +1466,20 @@ they will preempt running jobs from lower priority partitions.
 Note that a partition's priority takes precedence over a job's
 priority.
 The value may not exceed 65533.
+
+.TP
+\fIPriorityJobFactor\fP=<count>
+Partition factor used by priority/multifactor plugin in calculating
+job priority.  The value may not exceed 65533.  Also see PriorityTier.
+
+.TP
+\fIPriorityTier\fP=<count>
+Jobs submitted to a partition with a higher priority tier value will
+be dispatched before pending jobs in partition with lower priority tier
+value and,  if  possible,  they  will  preempt  running jobs from
+partitions with lower priority tier values.  Note that a partition's
+priority tier takes precedence over a job's priority.  The value may
+not exceed 65533.  Also see PriorityJobFactor.
 
 .TP
 \fIQOS\fP=<QOSname|blank to remove>

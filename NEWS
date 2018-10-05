@@ -1,6 +1,69 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 18.08.1
+==========================
+ -- Remove commented-out parts of man pages related to cons_tres work in 19.05,
+    as these were showing up on the web version due to a syntax error.
+ -- Prevent slurmctld performance issues in main background loop if multiple
+    backup controllers are unavailable.
+ -- Add missing user read association lock in burst_buffer/cray during init().
+ -- Fix incorrect spacing for PartitionName lines in 'scontrol write config'.
+ -- Fix creation of step hwloc xml file for after cpuset cgroup has been
+    created.
+ -- Add userspace as a valid default governor.
+ -- Add timers to group_cache_lookup so if going slow advise
+    LaunchParameters=send_gids.
+ -- Fix SLURM_STEP_GRES=none to work correctly.
+ -- Fix potential memory leak when a failure happens unpacking a ctld_multi_msg.
+ -- Fix potential double free when a faulure happens when unpacking a
+    node_registration_status_msg.
+ -- Fix sacctmgr show runaways.
+ -- Removed non-POSIX append operator from configure script for non-bash
+    support.
+ -- Fix incorrect spacing for PartitionName lines in 'scontrol write config'.
+ -- Fix sacct to not print huge reserve times when the job was never eligible.
+ -- burst_buffer/cray - Add missing locks around assoc_mgr when timing out a
+    burst buffer.
+ -- burst_buffer/cray - Update burst buffers when an association or qos
+    is removed from the system.
+ -- Remove documentation for deprecated Cray/ALPS systems. Please switch to
+    Native Cray mode instead.
+ -- Completely copy features when copying the list in the slurmctld.
+ -- PMIX - Fix issue with packing processes when using an arbitrary task
+    distribution.
+ -- Fix hostlists to be able to handle nodenames with '-' in them surrounded
+    by integers.
+ -- Fix correct job CPU count allocated.
+ -- Fix sacctmgr setting GrpJobs limit when setting GrpJobsAccrue limit.
+ -- Change the defaults to MemLimitEnforce=no and NoOverMemoryKill
+    (See RELEASE_NOTES).
+ -- Prevent abort when using Cray node features plugin on non-knl.
+ -- Add ability to reboot down nodes with scontrol reboot_nodes.
+ -- Protect against sending to the slurmdbd if the connection has gone away.
+ -- Fix invalid read when not using backup slurmctlds.
+ -- Prevent acct coordinators from changing default acct on add user.
+ -- Don't allow scontrol top do modify job priorities when priority == 1.
+ -- slurmsmwd - change parsing code to handle systems with the svid or inst
+    fields set in xtconsumer output.
+ -- Fix infinite loop in slurmctld if GRES is specified without a count.
+ -- sacct: Print error when unknown arguments are found.
+ -- Fix checking missing return codes when unpacking structures.
+ -- Fix slurm.spec-legacy including slurmsmwd
+ -- More explicit error message when cgroup oom-kill events detected.
+ -- When updating an association and are unable to find parent association
+    initialize old fairshare association pointer correctly.
+ -- Wrap slurm_cond_signal() calls with mutexes where needed.
+ -- Fix correct timeout with resends in slurm_send_only_node_msg.
+ -- Fix pam_slurm_adopt to honor action_adopt_failure.
+ -- Have the slurmd recreate the hwloc xml file for the full system on restart.
+ -- sdiag - correct the units for the gettimeofday() stat to microseconds.
+ -- Set SLURM_CLUSTER_NAME environment variable in MailProg to the ClusterName.
+ -- smail - use SLURM_CLUSTER_NAME environment variable.
+ -- job_submit/lua - expose argc/argv options through lua interface.
+ -- slurmdbd - prevent false-positive warning about innodb settings having
+    been set too low if they're actually set over 2GB.
+
 * Changes in Slurm 18.08.0
 ==========================
  -- Fix segfault on job arrays when starting controller without dbd up.
@@ -293,6 +356,25 @@ documents those changes that are of interest to users and administrators.
     when using --hint=nomultithread.
  -- Fix left over socket file when step is ending and using pmi2 with
     %n or %h in the spool dir.
+ -- Fix incorrect spacing for PartitionName lines in 'scontrol write config'.
+ -- Fix sacct to not print huge reserve times when the job was never eligible.
+ -- burst_buffer/cray - Add missing locks around assoc_mgr when timing out a
+    burst buffer.
+ -- burst_buffer/cray - Update burst buffers when an association or qos
+    is removed from the system.
+ -- If failed over to a backup controller, ensure the agent thread is launched
+    to handle deferred tasks.
+ -- Fix correct job CPU count allocated.
+ -- Protect against sending to the slurmdbd if the connection has gone away.
+ -- Fix checking missing return codes when unpacking structures.
+ -- Fix slurm.spec-legacy including slurmsmwd
+ -- More explicit error message when cgroup oom-kill events detected.
+ -- When updating an association and are unable to find parent association
+    initialize old fairshare association pointer correctly.
+ -- Wrap slurm_cond_signal() calls with mutexes where needed.
+ -- Fix correct timeout with resends in slurm_send_only_node_msg.
+ -- Fix pam_slurm_adopt to honor action_adopt_failure.
+ -- job_submit/lua - expose argc/argv options through lua interface.
 
 * Changes in Slurm 17.11.9-2
 ============================

@@ -596,7 +596,7 @@ static void _handle_node_reg_resp(slurm_msg_t *resp_msg)
 
 		assoc_mgr_lock(&locks);
 		assoc_mgr_post_tres_list(resp->tres_list);
-		debug2("%s: slurmctld sent back %u TRES.",
+		debug("%s: slurmctld sent back %u TRES.",
 		       __func__, g_tres_count);
 		assoc_mgr_unlock(&locks);
 		/* assoc_mgr_post_tres_list will destroy the list */
@@ -824,6 +824,8 @@ _read_config(void)
 #ifndef HAVE_FRONT_END
 	bool cr_flag = false, gang_flag = false;
 #endif
+	char *tok, *save_ptr = NULL;
+	bool over_memory_kill = false;
 
 	slurm_mutex_lock(&conf->config_mutex);
 	cf = slurm_conf_lock();
@@ -1070,6 +1072,28 @@ _read_config(void)
 
 	slurm_mutex_unlock(&conf->config_mutex);
 	slurm_conf_unlock();
+
+	if (check_memspec_cgroup_job_confinement()) {
+		if (conf->mem_limit_enforce) {
+			fatal("Job's memory is being constrained by TaskPlugin cgroup and at the same time MemoryLimitEnforce=yes is set in slurm.conf. This enables two incompatible memory enforcement mechanisms, one of them must be disabled.");
+		}
+
+		if (cf->job_acct_gather_params) {
+			tok = strtok_r(cf->job_acct_gather_params, ",",
+				       &save_ptr);
+			while(tok) {
+				if (xstrcasecmp(tok, "OverMemoryKill") == 0) {
+					over_memory_kill = true;
+					break;
+				}
+				tok = strtok_r(NULL, ",", &save_ptr);
+			}
+		}
+
+		if (over_memory_kill) {
+			fatal("Job's memory is being constrained by TaskPlugin cgroup and at the same time OverMemoryKill param is set in JobAcctGatherParams slurm.conf.  This enables two incompatible memory enforcement mechanisms, one of them must be disabled.");
+		}
+	}
 }
 
 static void
