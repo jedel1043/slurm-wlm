@@ -8,6 +8,7 @@ slurm-llnl (18.08.1-1) UNRELEASED; urgency=medium
   * Update html configurators
   * Fix typos in the some man pages
   * Update simple configuration files
+  * Remove unused cgroup release agent script
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 01 Oct 2018 11:04:38 +0200
 
