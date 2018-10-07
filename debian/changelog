@@ -1,4 +1,4 @@
-slurm-llnl (18.08.0-1) UNRELEASED; urgency=medium
+slurm-llnl (18.08.1-1) UNRELEASED; urgency=medium
 
   * New upstream release
   * Update libslurm{,db} symbols file to soname 33
