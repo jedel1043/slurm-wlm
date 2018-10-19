@@ -2466,6 +2466,10 @@ The interpretation of this parameter varies by \fBSchedulerType\fR.
 Multiple options may be comma separated.
 .RS
 .TP
+\fBallow_zero_lic\fR
+If set, then job submissions requesting more than configured licenses won't be
+rejected.
+.TP
 \fBassoc_limit_stop\fR
 If set and a job cannot start due to association limits, then do not attempt
 to initiate any lower priority jobs in that partition. Setting this can
@@ -3241,8 +3245,8 @@ Log errors and verbose informational messages and even more debugging messages
 The short, or long, hostname of the machine where Slurm control daemon is
 executed (i.e. the name returned by the command "hostname \-s").
 This hostname is optionally followed by the address, either the IP address or
-a name by which the address can be identifed.
-This value must be specified at least once.
+a name by which the address can be identifed, enclosed in parentheses (e.g.
+SlurmctldHost=master1(12.34.56.78)). This value must be specified at least once.
 If specified more than once, the first hostname named will be where the daemon
 runs.
 If the first specified host fails, the daemon will execute on the second host.
@@ -4979,7 +4983,9 @@ Partition\-specific resource allocation type.
 This option replaces the global \fBSelectTypeParameters\fR value.
 Supported values are \fBCR_Core\fR, \fBCR_Core_Memory\fR, \fBCR_Socket\fR and
 \fBCR_Socket_Memory\fR.
-Use requires the system\-wide \fBSelectTypeParameters\fR value be set.
+Use requires the system\-wide \fBSelectTypeParameters\fR value be set to
+any of the four supported values previously listed; otherwise, the
+partition-specific value will be ignored.
 
 .TP
 \fBShared\fR

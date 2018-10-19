@@ -164,6 +164,7 @@ static uint32_t max_array_size = NO_VAL;
 static bitstr_t *requeue_exit = NULL;
 static bitstr_t *requeue_exit_hold = NULL;
 static int	select_serial = -1;
+static bool     validate_cfgd_licenses = true;
 
 /* Local functions */
 static void _add_job_hash(struct job_record *job_ptr);
@@ -4784,6 +4785,11 @@ extern int job_allocate(job_desc_msg_t * job_specs, int immediate,
 			if (min_age > 0)
 				bf_min_age_reserve = min_age;
 		}
+
+		if ((sched_params = slurm_get_sched_params()) &&
+		    (xstrcasestr(sched_params, "allow_zero_lic")))
+			validate_cfgd_licenses = false;
+
 		xfree(sched_params);
 	}
 
@@ -6768,6 +6774,7 @@ static int _job_create(job_desc_msg_t *job_desc, int allocate, int will_run,
 					job_desc->min_nodes);
 
 	license_list = license_validate(job_desc->licenses,
+					validate_cfgd_licenses, true,
 					job_desc->tres_req_cnt, &valid);
 	if (!valid) {
 		info("Job's requested licenses are invalid: %s",
@@ -8067,7 +8074,6 @@ static bool _valid_pn_min_mem(job_desc_msg_t * job_desc_msg,
 		return true;
 
 	if ((job_mem_limit & MEM_PER_CPU) && (sys_mem_limit & MEM_PER_CPU)) {
-		uint32_t cpu_ratio;
 		uint64_t mem_ratio;
 		job_mem_limit &= (~MEM_PER_CPU);
 		sys_mem_limit &= (~MEM_PER_CPU);
@@ -8087,12 +8093,10 @@ static bool _valid_pn_min_mem(job_desc_msg_t * job_desc_msg,
 		if ((job_desc_msg->num_tasks != NO_VAL) &&
 		    (job_desc_msg->num_tasks != 0) &&
 		    (job_desc_msg->min_cpus  != NO_VAL)) {
-			cpu_ratio = job_desc_msg->min_cpus /
-				    job_desc_msg->num_tasks;
-			if (cpu_ratio < mem_ratio) {
-				job_desc_msg->min_cpus =
-					job_desc_msg->num_tasks * mem_ratio;
-			}
+			job_desc_msg->min_cpus =
+				job_desc_msg->num_tasks *
+				job_desc_msg->cpus_per_task;
+
 			if ((job_desc_msg->max_cpus != NO_VAL) &&
 			    (job_desc_msg->max_cpus < job_desc_msg->min_cpus)) {
 				job_desc_msg->max_cpus = job_desc_msg->min_cpus;
@@ -11882,7 +11886,7 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 			    job_ptr->licenses);
 	} else if (job_specs->licenses) {
 		bool valid, pending = IS_JOB_PENDING(job_ptr);
-		license_list = license_validate(job_specs->licenses,
+		license_list = license_validate(job_specs->licenses, true, true,
 						pending ?
 						job_specs->tres_req_cnt : NULL,
 						&valid);
@@ -14773,6 +14777,7 @@ extern void job_completion_logger(struct job_record *job_ptr, bool requeue)
 {
 	int base_state;
 	bool arr_finished = false, task_failed = false, task_requeued = false;
+	bool was_running = false;
 	struct job_record *master_job = NULL;
 	uint32_t max_exit_code = 0;
 
@@ -14792,8 +14797,12 @@ extern void job_completion_logger(struct job_record *job_ptr, bool requeue)
 		 */
 		(void) bb_g_job_cancel(job_ptr);
 	}
+	if (job_ptr->bit_flags & JOB_WAS_RUNNING) {
+		job_ptr->bit_flags &= ~JOB_WAS_RUNNING;
+		was_running = true;
+	}
 
-	_job_array_comp(job_ptr, true, requeue);
+	_job_array_comp(job_ptr, was_running, requeue);
 
 	if (!IS_JOB_RESIZING(job_ptr) &&
 	    !IS_JOB_PENDING(job_ptr)  &&
