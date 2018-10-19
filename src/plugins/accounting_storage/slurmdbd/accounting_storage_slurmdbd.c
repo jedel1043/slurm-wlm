@@ -6,11 +6,11 @@
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
  *  Written by Danny Auble <da@llnl.gov>
  *
- *  This file is part of SLURM, a resource management program.
+ *  This file is part of Slurm, a resource management program.
  *  For details, see <https://slurm.schedmd.com/>.
  *  Please also read the included file: DISCLAIMER.
  *
- *  SLURM is free software; you can redistribute it and/or modify it under
+ *  Slurm is free software; you can redistribute it and/or modify it under
  *  the terms of the GNU General Public License as published by the Free
  *  Software Foundation; either version 2 of the License, or (at your option)
  *  any later version.
@@ -26,13 +26,13 @@
  *  version.  If you delete this exception statement from all source files in
  *  the program, then also delete it here.
  *
- *  SLURM is distributed in the hope that it will be useful, but WITHOUT ANY
+ *  Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
  *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  *  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
  *  details.
  *
  *  You should have received a copy of the GNU General Public License along
- *  with SLURM; if not, write to the Free Software Foundation, Inc.,
+ *  with Slurm; if not, write to the Free Software Foundation, Inc.,
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
 
@@ -58,6 +58,8 @@
 #include "src/slurmctld/slurmctld.h"
 #include "src/slurmctld/locks.h"
 
+#include "slurmdbd_agent.h"
+
 #define BUFFER_SIZE 4096
 
 /* These are defined here so when we link with something other than
@@ -67,9 +69,15 @@
 #if defined(__APPLE__)
 slurm_ctl_conf_t slurmctld_conf __attribute__((weak_import));
 List job_list __attribute__((weak_import)) = NULL;
+uint16_t running_cache __attribute__((weak_import)) = 0;
+pthread_mutex_t assoc_cache_mutex __attribute__((weak_import));
+pthread_cond_t assoc_cache_cond __attribute__((weak_import));
 #else
 slurm_ctl_conf_t slurmctld_conf;
 List job_list = NULL;
+uint16_t running_cache = 0;
+pthread_mutex_t assoc_cache_mutex;
+pthread_cond_t assoc_cache_cond;
 #endif
 
 /*
@@ -83,14 +91,14 @@ List job_list = NULL;
  * plugin_type - a string suggesting the type of the plugin or its
  * applicability to a particular form of data or method of data handling.
  * If the low-level plugin API is used, the contents of this string are
- * unimportant and may be anything.  SLURM uses the higher-level plugin
+ * unimportant and may be anything.  Slurm uses the higher-level plugin
  * interface which requires this string to be of the form
  *
  *	<application>/<method>
  *
  * where <application> is a description of the intended application of
- * the plugin (e.g., "jobacct" for SLURM job completion logging) and <method>
- * is a description of how this plugin satisfies that application.  SLURM will
+ * the plugin (e.g., "jobacct" for Slurm job completion logging) and <method>
+ * is a description of how this plugin satisfies that application.  Slurm will
  * only load job completion logging plugins if the plugin_type string has a
  * prefix of "jobacct/".
  *
@@ -102,10 +110,11 @@ const char plugin_type[] = "accounting_storage/slurmdbd";
 const uint32_t plugin_version = SLURM_VERSION_NUMBER;
 
 static pthread_t db_inx_handler_thread;
-static pthread_t cleanup_handler_thread;
 static pthread_mutex_t db_inx_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t db_inx_cond = PTHREAD_COND_INITIALIZER;
 static bool running_db_inx = 0;
 static int first = 1;
+static time_t plugin_shutdown = 0;
 
 extern int jobacct_storage_p_job_start(void *db_conn,
 				       struct job_record *job_ptr);
@@ -155,16 +164,7 @@ static int _setup_job_start_msg(dbd_job_start_msg_t *req,
 	req->account       = xstrdup(job_ptr->account);
 
 	req->assoc_id      = job_ptr->assoc_id;
-#ifdef HAVE_BG
-	select_g_select_jobinfo_get(job_ptr->select_jobinfo,
-				    SELECT_JOBDATA_BLOCK_ID,
-				    &req->block_id);
-	select_g_select_jobinfo_get(job_ptr->select_jobinfo,
-				    SELECT_JOBDATA_NODE_CNT,
-				    &req->alloc_nodes);
-#else
 	req->alloc_nodes   = job_ptr->total_nodes;
-#endif
 
 	if (job_ptr->resize_time) {
 		req->eligible_time = job_ptr->resize_time;
@@ -244,6 +244,9 @@ static void *_set_db_inx_thread(void *no_data)
 {
 	struct job_record *job_ptr = NULL;
 	ListIterator itr;
+	struct timeval tvnow;
+	struct timespec abs;
+
 	/* Read lock on jobs */
 	slurmctld_lock_t job_read_lock =
 		{ NO_LOCK, READ_LOCK, NO_LOCK, NO_LOCK, NO_LOCK };
@@ -260,7 +263,7 @@ static void *_set_db_inx_thread(void *no_data)
 	(void) pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	(void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
-	while (1) {
+	while (!plugin_shutdown) {
 		List local_job_list = NULL;
 		/* START_TIMER; */
 		/* info("starting db_thread"); */
@@ -350,7 +353,7 @@ static void *_set_db_inx_thread(void *no_data)
 
 			req.msg_type = DBD_SEND_MULT_JOB_START;
 			req.data = &send_msg;
-			rc = slurm_send_recv_slurmdbd_msg(
+			rc = send_recv_slurmdbd_msg(
 				SLURM_PROTOCOL_VERSION, &req, &resp);
 			FREE_NULL_LIST(local_job_list);
 			if (rc != SLURM_SUCCESS) {
@@ -425,7 +428,7 @@ static void *_set_db_inx_thread(void *no_data)
 		}
 	end_it:
 		running_db_inx = 0;
-		slurm_mutex_unlock(&db_inx_lock);
+
 		/* END_TIMER; */
 		/* info("set all db_inx's in %s", TIME_STR); */
 
@@ -434,15 +437,16 @@ static void *_set_db_inx_thread(void *no_data)
 		   it doesn't have to find db_indexs of jobs that
 		   haven't had the start rpc come through.
 		*/
-		sleep(5);
+
+		gettimeofday(&tvnow, NULL);
+		abs.tv_sec = tvnow.tv_sec + 5;
+		abs.tv_nsec = tvnow.tv_usec * 1000;
+
+		slurm_cond_timedwait(&db_inx_cond, &db_inx_lock, &abs);
+
+		slurm_mutex_unlock(&db_inx_lock);
 	}
 
-	return NULL;
-}
-
-static void *_cleanup_thread(void *no_data)
-{
-	pthread_join(db_inx_handler_thread, NULL);
 	return NULL;
 }
 
@@ -453,7 +457,7 @@ static void *_cleanup_thread(void *no_data)
 extern int init ( void )
 {
 	if (first) {
-		char *cluster_name = NULL, *auth_info;
+		char *cluster_name = NULL;
 		/* since this can be loaded from many different places
 		   only tell us once. */
 		if (!(cluster_name = slurm_get_cluster_name()))
@@ -461,26 +465,14 @@ extern int init ( void )
 			      plugin_name);
 		xfree(cluster_name);
 
-		auth_info = slurm_get_accounting_storage_pass();
-		verbose("%s loaded with AuthInfo=%s",
-			plugin_name, auth_info);
+		verbose("%s loaded", plugin_name);
 
-		slurmdbd_defs_init(auth_info);
-		xfree(auth_info);
 		if (job_list && !(slurm_get_accounting_storage_enforce() &
 				  ACCOUNTING_ENFORCE_NO_JOBS)) {
 			/* only do this when job_list is defined
 			 * (in the slurmctld) */
 			slurm_thread_create(&db_inx_handler_thread,
 					    _set_db_inx_thread, NULL);
-
-			/* This is here to join the db inx thread so
-			   we don't core dump if in the sleep, since
-			   there is no other place to join we have to
-			   create another thread to do it.
-			*/
-			slurm_thread_create(&cleanup_handler_thread,
-					    _cleanup_thread, NULL);
 		}
 		first = 0;
 	} else {
@@ -492,32 +484,37 @@ extern int init ( void )
 
 extern int fini ( void )
 {
-	slurm_mutex_lock(&db_inx_lock);
+	plugin_shutdown = time(NULL);
+
 	if (running_db_inx)
 		debug("Waiting for db_inx thread to finish.");
 
-	/* cancel the db_inx thread and then join the cleanup thread */
+	slurm_mutex_lock(&db_inx_lock);
+
+	/* signal the db_inx thread */
 	if (db_inx_handler_thread)
-		pthread_cancel(db_inx_handler_thread);
-	if (cleanup_handler_thread)
-		pthread_join(cleanup_handler_thread, NULL);
+		slurm_cond_signal(&db_inx_cond);
 
 	slurm_mutex_unlock(&db_inx_lock);
 
+	/* Now join outside the lock */
+	if (db_inx_handler_thread)
+		pthread_join(db_inx_handler_thread, NULL);
+
 	first = 1;
-	slurmdbd_defs_fini();
 
 	return SLURM_SUCCESS;
 }
 
 extern void *acct_storage_p_get_connection(
 	const slurm_trigger_callbacks_t *callbacks,
-	int conn_num, bool rollback, char *cluster_name)
+	int conn_num, uint16_t *persist_conn_flags,
+	bool rollback, char *cluster_name)
 {
 	if (first)
 		init();
 
-	if (slurm_open_slurmdbd_conn(callbacks) == SLURM_SUCCESS)
+	if (open_slurmdbd_conn(callbacks, persist_conn_flags) == SLURM_SUCCESS)
 		errno = SLURM_SUCCESS;
 	/* send something back to make sure we don't run this again */
 	return (void *)1;
@@ -529,7 +526,7 @@ extern int acct_storage_p_close_connection(void **db_conn)
 		*db_conn = NULL;
 
 	first = 1;
-	return slurm_close_slurmdbd_conn();
+	return close_slurmdbd_conn();
 }
 
 extern int acct_storage_p_commit(void *db_conn, bool commit)
@@ -545,8 +542,8 @@ extern int acct_storage_p_commit(void *db_conn, bool commit)
 
 	req.msg_type = DBD_FINI;
 	req.data = &get_msg;
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS)
 		rc = resp_code;
@@ -566,8 +563,8 @@ extern int acct_storage_p_add_users(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_ADD_USERS;
 	req.data = &get_msg;
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS)
 		rc = resp_code;
@@ -589,8 +586,8 @@ extern int acct_storage_p_add_coord(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_ADD_ACCOUNT_COORDS;
 	req.data = &get_msg;
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS)
 		rc = resp_code;
@@ -610,8 +607,8 @@ extern int acct_storage_p_add_accts(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_ADD_ACCOUNTS;
 	req.data = &get_msg;
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS)
 		rc = resp_code;
@@ -632,8 +629,8 @@ extern int acct_storage_p_add_clusters(void *db_conn, uint32_t uid,
 	req.msg_type = DBD_ADD_CLUSTERS;
 	req.data = &get_msg;
 
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS) {
 		rc = resp_code;
@@ -654,8 +651,8 @@ extern int acct_storage_p_add_federations(void *db_conn, uint32_t uid,
 	req.msg_type = DBD_ADD_FEDERATIONS;
 	req.data = &get_msg;
 
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS) {
 		rc = resp_code;
@@ -679,8 +676,8 @@ extern int acct_storage_p_add_tres(void *db_conn,
 
 	req.msg_type = DBD_ADD_TRES;
 	req.data = &get_msg;
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS)
 		rc = resp_code;
@@ -689,7 +686,7 @@ extern int acct_storage_p_add_tres(void *db_conn,
 }
 
 extern int acct_storage_p_add_assocs(void *db_conn, uint32_t uid,
-					   List assoc_list)
+				     List assoc_list)
 {
 	slurmdbd_msg_t req;
 	dbd_list_msg_t get_msg;
@@ -700,8 +697,8 @@ extern int acct_storage_p_add_assocs(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_ADD_ASSOCS;
 	req.data = &get_msg;
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS)
 		rc = resp_code;
@@ -721,8 +718,8 @@ extern int acct_storage_p_add_qos(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_ADD_QOS;
 	req.data = &get_msg;
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS)
 		rc = resp_code;
@@ -731,7 +728,7 @@ extern int acct_storage_p_add_qos(void *db_conn, uint32_t uid,
 }
 
 extern int acct_storage_p_add_res(void *db_conn, uint32_t uid,
-				      List res_list)
+				  List res_list)
 {
 	slurmdbd_msg_t req;
 	dbd_list_msg_t get_msg;
@@ -742,8 +739,8 @@ extern int acct_storage_p_add_res(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_ADD_RES;
 	req.data = &get_msg;
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS)
 		rc = resp_code;
@@ -763,8 +760,8 @@ extern int acct_storage_p_add_wckeys(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_ADD_WCKEYS;
 	req.data = &get_msg;
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS)
 		rc = resp_code;
@@ -803,7 +800,7 @@ extern int acct_storage_p_add_reservation(void *db_conn,
 	req.msg_type = DBD_ADD_RESV;
 	req.data = &get_msg;
 
-	rc = slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req);
+	rc = send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req);
 
 	return rc;
 }
@@ -824,7 +821,7 @@ extern List acct_storage_p_modify_users(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_MODIFY_USERS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_MODIFY_USERS failure: %m");
@@ -867,7 +864,7 @@ extern List acct_storage_p_modify_accts(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_MODIFY_ACCOUNTS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_MODIFY_ACCOUNTS failure: %m");
@@ -912,7 +909,7 @@ extern List acct_storage_p_modify_clusters(void *db_conn, uint32_t uid,
 	req.msg_type = DBD_MODIFY_CLUSTERS;
 	req.data = &get_msg;
 
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_MODIFY_CLUSTERS failure: %m");
@@ -958,7 +955,7 @@ extern List acct_storage_p_modify_assocs(
 
 	req.msg_type = DBD_MODIFY_ASSOCS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_MODIFY_ASSOCS failure: %m");
@@ -986,9 +983,9 @@ extern List acct_storage_p_modify_assocs(
 }
 
 extern List acct_storage_p_modify_federations(
-				void *db_conn, uint32_t uid,
-				slurmdb_federation_cond_t *fed_cond,
-				slurmdb_federation_rec_t *fed)
+	void *db_conn, uint32_t uid,
+	slurmdb_federation_cond_t *fed_cond,
+	slurmdb_federation_rec_t *fed)
 {
 	slurmdbd_msg_t req;
 	dbd_modify_msg_t get_msg;
@@ -1004,7 +1001,7 @@ extern List acct_storage_p_modify_federations(
 
 	req.msg_type = DBD_MODIFY_FEDERATIONS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_MODIFY_FEDERATIONS failure: %m");
@@ -1047,7 +1044,17 @@ extern List acct_storage_p_modify_job(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_MODIFY_JOB;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+
+	/*
+	 * Just put it on the list and go, usually means we are coming from the
+	 * slurmctld.
+	 */
+	if (job_cond && (job_cond->flags & SLURMDB_MODIFY_NO_WAIT)) {
+		send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req);
+		goto end_it;
+	}
+
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_MODIFY_JOB failure: %m");
@@ -1070,7 +1077,7 @@ extern List acct_storage_p_modify_job(void *db_conn, uint32_t uid,
 		got_msg->my_list = NULL;
 		slurmdbd_free_list_msg(got_msg);
 	}
-
+end_it:
 	return ret_list;
 }
 
@@ -1090,7 +1097,7 @@ extern List acct_storage_p_modify_qos(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_MODIFY_QOS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_MODIFY_QOS failure: %m");
@@ -1118,8 +1125,8 @@ extern List acct_storage_p_modify_qos(void *db_conn, uint32_t uid,
 }
 
 extern List acct_storage_p_modify_res(void *db_conn, uint32_t uid,
-					 slurmdb_res_cond_t *res_cond,
-					 slurmdb_res_rec_t *res)
+				      slurmdb_res_cond_t *res_cond,
+				      slurmdb_res_rec_t *res)
 {
 	slurmdbd_msg_t req, resp;
 	dbd_modify_msg_t get_msg;
@@ -1133,7 +1140,7 @@ extern List acct_storage_p_modify_res(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_MODIFY_RES;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_MODIFY_RES failure: %m");
@@ -1176,7 +1183,7 @@ extern List acct_storage_p_modify_wckeys(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_MODIFY_WCKEYS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_MODIFY_WCKEYS failure: %m");
@@ -1239,7 +1246,7 @@ extern int acct_storage_p_modify_reservation(void *db_conn,
 	req.msg_type = DBD_MODIFY_RESV;
 	req.data = &get_msg;
 
-	rc = slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req);
+	rc = send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req);
 
 	return rc;
 }
@@ -1259,7 +1266,7 @@ extern List acct_storage_p_remove_users(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_REMOVE_USERS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_REMOVE_USERS failure: %m");
@@ -1305,7 +1312,7 @@ extern List acct_storage_p_remove_coord(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_REMOVE_ACCOUNT_COORDS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_REMOVE_ACCOUNT_COORDS failure: %m");
@@ -1347,7 +1354,7 @@ extern List acct_storage_p_remove_accts(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_REMOVE_ACCOUNTS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_REMOVE_ACCTS failure: %m");
@@ -1391,7 +1398,7 @@ extern List acct_storage_p_remove_clusters(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_REMOVE_CLUSTERS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_REMOVE_CLUSTERS failure: %m");
@@ -1437,7 +1444,7 @@ extern List acct_storage_p_remove_assocs(
 
 	req.msg_type = DBD_REMOVE_ASSOCS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_REMOVE_ASSOCS failure: %m");
@@ -1467,8 +1474,8 @@ extern List acct_storage_p_remove_assocs(
 }
 
 extern List acct_storage_p_remove_federations(
-					void *db_conn, uint32_t uid,
-					slurmdb_federation_cond_t *fed_cond)
+	void *db_conn, uint32_t uid,
+	slurmdb_federation_cond_t *fed_cond)
 {
 	slurmdbd_msg_t req;
 	dbd_cond_msg_t get_msg;
@@ -1482,7 +1489,7 @@ extern List acct_storage_p_remove_federations(
 
 	req.msg_type = DBD_REMOVE_FEDERATIONS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_REMOVE_FEDERATIONS failure: %m");
@@ -1528,7 +1535,7 @@ extern List acct_storage_p_remove_qos(
 
 	req.msg_type = DBD_REMOVE_QOS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_REMOVE_QOS failure: %m");
@@ -1571,7 +1578,7 @@ extern List acct_storage_p_remove_res(
 
 	req.msg_type = DBD_REMOVE_RES;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_REMOVE_RES failure: %m");
 	else if (resp.msg_type == PERSIST_RC) {
@@ -1613,7 +1620,7 @@ extern List acct_storage_p_remove_wckeys(
 
 	req.msg_type = DBD_REMOVE_WCKEYS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_REMOVE_WCKEYS failure: %m");
@@ -1673,7 +1680,7 @@ extern int acct_storage_p_remove_reservation(void *db_conn,
 	req.msg_type = DBD_REMOVE_RESV;
 	req.data = &get_msg;
 
-	rc = slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req);
+	rc = send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req);
 
 	return rc;
 }
@@ -1692,7 +1699,7 @@ extern List acct_storage_p_get_users(void *db_conn, uid_t uid,
 
 	req.msg_type = DBD_GET_USERS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_USERS failure: %m");
@@ -1733,7 +1740,7 @@ extern List acct_storage_p_get_accts(void *db_conn, uid_t uid,
 
 	req.msg_type = DBD_GET_ACCOUNTS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_ACCOUNTS failure: %m");
@@ -1775,7 +1782,7 @@ extern List acct_storage_p_get_clusters(void *db_conn, uid_t uid,
 
 	req.msg_type = DBD_GET_CLUSTERS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_CLUSTERS failure: %m");
@@ -1817,7 +1824,7 @@ extern List acct_storage_p_get_federations(void *db_conn, uid_t uid,
 
 	req.msg_type = DBD_GET_FEDERATIONS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_FEDERATIONS failure: %m");
@@ -1856,7 +1863,7 @@ extern List acct_storage_p_get_config(void *db_conn, char *config_name)
 
 	req.msg_type = DBD_GET_CONFIG;
 	req.data = config_name;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_CONFIG failure: %m");
@@ -1897,7 +1904,7 @@ extern List acct_storage_p_get_tres(void *db_conn, uid_t uid,
 
 	req.msg_type = DBD_GET_TRES;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_TRES failure: %m");
@@ -1938,7 +1945,7 @@ extern List acct_storage_p_get_assocs(
 
 	req.msg_type = DBD_GET_ASSOCS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_ASSOCS failure: %m");
@@ -1979,7 +1986,7 @@ extern List acct_storage_p_get_events(void *db_conn, uint32_t uid,
 
 	req.msg_type = DBD_GET_EVENTS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_EVENTS failure: %m");
@@ -2020,7 +2027,7 @@ extern List acct_storage_p_get_problems(void *db_conn, uid_t uid,
 
 	req.msg_type = DBD_GET_PROBS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_PROBS failure: %m");
@@ -2061,7 +2068,7 @@ extern List acct_storage_p_get_qos(void *db_conn, uid_t uid,
 
 	req.msg_type = DBD_GET_QOS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_QOS failure: %m");
@@ -2096,7 +2103,7 @@ extern List acct_storage_p_get_qos(void *db_conn, uid_t uid,
 }
 
 extern List acct_storage_p_get_res(void *db_conn, uid_t uid,
-				       slurmdb_res_cond_t *res_cond)
+				   slurmdb_res_cond_t *res_cond)
 {
 	slurmdbd_msg_t req, resp;
 	dbd_cond_msg_t get_msg;
@@ -2109,7 +2116,7 @@ extern List acct_storage_p_get_res(void *db_conn, uid_t uid,
 
 	req.msg_type = DBD_GET_RES;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_RES failure: %m");
@@ -2157,7 +2164,7 @@ extern List acct_storage_p_get_wckeys(void *db_conn, uid_t uid,
 
 	req.msg_type = DBD_GET_WCKEYS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_WCKEYS failure: %m");
@@ -2206,7 +2213,7 @@ extern List acct_storage_p_get_reservations(
 
 	req.msg_type = DBD_GET_RESVS;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_RESVS failure: %m");
@@ -2254,7 +2261,7 @@ extern List acct_storage_p_get_txn(void *db_conn, uid_t uid,
 
 	req.msg_type = DBD_GET_TXN;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_TXN failure: %m");
@@ -2317,7 +2324,7 @@ extern int acct_storage_p_get_usage(void *db_conn, uid_t uid,
 	}
 
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: %s failure: %m",
@@ -2385,8 +2392,8 @@ extern int acct_storage_p_roll_usage(void *db_conn,
 
 	req.data = &get_msg;
 
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS)
 		rc = resp_code;
@@ -2408,8 +2415,8 @@ extern int acct_storage_p_fix_runaway_jobs(void *db_conn, uint32_t uid,
 	req.msg_type = DBD_FIX_RUNAWAY_JOB;
 	req.data = &get_msg;
 
-	rc = slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
-					     &req, &resp_code);
+	rc = send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION,
+				       &req, &resp_code);
 
 	if (resp_code != SLURM_SUCCESS)
 		rc = resp_code;
@@ -2444,7 +2451,7 @@ extern int clusteracct_storage_p_node_down(void *db_conn,
 	msg.data       = &req;
 
 	//info("sending a down message here");
-	if (slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
+	if (send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
 		return SLURM_ERROR;
 
 	return SLURM_SUCCESS;
@@ -2466,7 +2473,7 @@ extern int clusteracct_storage_p_node_up(void *db_conn,
 	msg.data       = &req;
 
 	// info("sending an up message here");
-	if (slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
+	if (send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
 		return SLURM_ERROR;
 
 	return SLURM_SUCCESS;
@@ -2494,7 +2501,7 @@ extern int clusteracct_storage_p_cluster_tres(void *db_conn,
 	msg.msg_type      = DBD_CLUSTER_TRES;
 	msg.data          = &req;
 
-	slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION, &msg, &rc);
+	send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION, &msg, &rc);
 
 	return rc;
 }
@@ -2516,7 +2523,7 @@ extern int clusteracct_storage_p_register_ctld(void *db_conn, uint16_t port)
 	msg.msg_type     = DBD_REGISTER_CTLD;
 	msg.data         = &req;
 
-	slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION, &msg, &rc);
+	send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION, &msg, &rc);
 
 	return rc;
 }
@@ -2567,7 +2574,7 @@ extern int jobacct_storage_p_job_start(void *db_conn,
 		if (!req.db_index)
 			job_ptr->db_index = NO_VAL64;
 
-		if (slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0) {
+		if (send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0) {
 			_partial_free_dbd_job_start(&req);
 			return SLURM_ERROR;
 		}
@@ -2577,9 +2584,9 @@ extern int jobacct_storage_p_job_start(void *db_conn,
 	/* If we don't have the db_index we need to wait for it to be
 	 * used in the other submissions for this job.
 	 */
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg, &msg_rc);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg, &msg_rc);
 	if (rc != SLURM_SUCCESS) {
-		if (slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0) {
+		if (send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0) {
 			_partial_free_dbd_job_start(&req);
 			return SLURM_ERROR;
 		}
@@ -2657,7 +2664,7 @@ extern int jobacct_storage_p_job_complete(void *db_conn,
 	msg.msg_type    = DBD_JOB_COMPLETE;
 	msg.data        = &req;
 
-	if (slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
+	if (send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
 		return SLURM_ERROR;
 
 	return SLURM_SUCCESS;
@@ -2675,7 +2682,6 @@ extern int jobacct_storage_p_step_start(void *db_conn,
 	dbd_step_start_msg_t req;
 	char temp_bit[BUF_SIZE];
 	char *temp_nodes = NULL;
-	char *ionodes = NULL;
 
 	if (!step_ptr->step_layout || !step_ptr->step_layout->task_cnt) {
 		tasks = step_ptr->job_ptr->total_cpus;
@@ -2683,31 +2689,19 @@ extern int jobacct_storage_p_step_start(void *db_conn,
 		temp_nodes = step_ptr->job_ptr->nodes;
 	} else {
 		tasks = step_ptr->step_layout->task_cnt;
-#ifdef HAVE_BGQ
-		select_g_select_jobinfo_get(step_ptr->select_jobinfo,
-					    SELECT_JOBDATA_NODE_CNT,
-					    &nodes);
-#else
 		nodes = step_ptr->step_layout->node_cnt;
-#endif
 		task_dist = step_ptr->step_layout->task_dist;
 		temp_nodes = step_ptr->step_layout->node_list;
 	}
 
-	select_g_select_jobinfo_get(step_ptr->select_jobinfo,
-				    SELECT_JOBDATA_IONODES,
-				    &ionodes);
-	if (ionodes) {
-		snprintf(node_list, BUFFER_SIZE, "%s[%s]", temp_nodes, ionodes);
-		xfree(ionodes);
-	} else
-		snprintf(node_list, BUFFER_SIZE, "%s", temp_nodes);
+	snprintf(node_list, BUFFER_SIZE, "%s", temp_nodes);
 
 	if (step_ptr->step_id == SLURM_BATCH_SCRIPT) {
-		/* We overload gres with the node name of where the
-		   script was running.
-		*/
-		snprintf(node_list, BUFFER_SIZE, "%s", step_ptr->gres);
+		/*
+		 * We overload tres_per_node with the node name of where the
+		 * script was running.
+		 */
+		snprintf(node_list, BUFFER_SIZE, "%s", step_ptr->tres_per_node);
 		nodes = tasks = 1;
 	}
 
@@ -2755,7 +2749,7 @@ extern int jobacct_storage_p_step_start(void *db_conn,
 	msg.msg_type    = DBD_STEP_START;
 	msg.data        = &req;
 
-	if (slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
+	if (send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
 		return SLURM_ERROR;
 
 	return SLURM_SUCCESS;
@@ -2828,14 +2822,14 @@ extern int jobacct_storage_p_step_complete(void *db_conn,
 	msg.msg_type    = DBD_STEP_COMPLETE;
 	msg.data        = &req;
 
-	if (slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
+	if (send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
 		return SLURM_ERROR;
 
 	return SLURM_SUCCESS;
 }
 
 /*
- * load into the storage a suspention of a job
+ * load into the storage a suspension of a job
  */
 extern int jobacct_storage_p_suspend(void *db_conn,
 				     struct job_record *job_ptr)
@@ -2859,7 +2853,7 @@ extern int jobacct_storage_p_suspend(void *db_conn,
 	msg.msg_type     = DBD_JOB_SUSPEND;
 	msg.data         = &req;
 
-	if (slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
+	if (send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
 		return SLURM_ERROR;
 
 	return SLURM_SUCCESS;
@@ -2885,7 +2879,7 @@ extern List jobacct_storage_p_get_jobs_cond(void *db_conn, uid_t uid,
 
 	req.msg_type = DBD_GET_JOBS_COND;
 	req.data = &get_msg;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_JOBS_COND failure: %s", slurm_strerror(rc));
@@ -2934,7 +2928,7 @@ extern int jobacct_storage_p_archive(void *db_conn,
 	req.msg_type = DBD_ARCHIVE_DUMP;
 	req.data     = &msg;
 
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_ARCHIVE_DUMP failure: %m");
@@ -2969,7 +2963,7 @@ extern int jobacct_storage_p_archive_load(void *db_conn,
 	req.msg_type = DBD_ARCHIVE_LOAD;
 	req.data     = arch_rec;
 
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_ARCHIVE_LOAD failure: %m");
@@ -3015,7 +3009,7 @@ extern int acct_storage_p_flush_jobs_on_cluster(void *db_conn,
 	msg.msg_type     = DBD_FLUSH_JOBS;
 	msg.data         = &req;
 
-	if (slurm_send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
+	if (send_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &msg) < 0)
 		return SLURM_ERROR;
 
 	return SLURM_SUCCESS;
@@ -3032,7 +3026,7 @@ extern int acct_storage_p_reconfig(void *db_conn, bool dbd)
 	memset(&msg, 0, sizeof(slurmdbd_msg_t));
 
 	msg.msg_type = DBD_RECONFIG;
-	slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION, &msg, &rc);
+	send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION, &msg, &rc);
 
 	return rc;
 }
@@ -3052,7 +3046,7 @@ extern int acct_storage_p_get_stats(void *db_conn, slurmdb_stats_rec_t **stats)
 	memset(&req, 0, sizeof(slurmdbd_msg_t));
 
 	req.msg_type = DBD_GET_STATS;
-	rc = slurm_send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
+	rc = send_recv_slurmdbd_msg(SLURM_PROTOCOL_VERSION, &req, &resp);
 
 	if (rc != SLURM_SUCCESS)
 		error("slurmdbd: DBD_GET_STATS failure: %m");
@@ -3085,8 +3079,29 @@ extern int acct_storage_p_clear_stats(void *db_conn)
 	memset(&msg, 0, sizeof(slurmdbd_msg_t));
 
 	msg.msg_type = DBD_CLEAR_STATS;
-	slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION, &msg, &rc);
+	send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION, &msg, &rc);
 
+	return rc;
+}
+
+extern int acct_storage_p_get_data(void *db_conn, acct_storage_info_t dinfo,
+				   void *data)
+{
+	int *int_data = (int *) data;
+	int rc = SLURM_SUCCESS;
+
+	switch (dinfo) {
+	case ACCT_STORAGE_INFO_CONN_ACTIVE:
+		*int_data = slurmdbd_conn_active();
+		break;
+	case ACCT_STORAGE_INFO_AGENT_COUNT:
+		*int_data = slurmdbd_agent_queue_count();
+		break;
+	default:
+		error("%s: data request %d invalid", __func__, dinfo);
+		rc = SLURM_ERROR;
+		break;
+	}
 	return rc;
 }
 
@@ -3098,7 +3113,7 @@ extern int acct_storage_p_shutdown(void *db_conn)
 	memset(&msg, 0, sizeof(slurmdbd_msg_t));
 
 	msg.msg_type = DBD_SHUTDOWN;
-	slurm_send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION, &msg, &rc);
+	send_slurmdbd_recv_rc_msg(SLURM_PROTOCOL_VERSION, &msg, &rc);
 
 	return rc;
 }
