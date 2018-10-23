@@ -1,3 +1,9 @@
+slurm-llnl (18.08.2-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 19 Oct 2018 09:14:47 +0200
+
 slurm-llnl (18.08.1-1) unstable; urgency=medium
 
   * New upstream release (Closes: #909653)
