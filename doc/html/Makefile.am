@@ -11,7 +11,6 @@ generated_html = \
 	authplugins.html \
 	bb_plugins.html \
 	big_sys.html \
-	bluegene.html \
 	burst_buffer.html \
 	cgroups.html \
 	checkpoint_blcr.html \
@@ -23,7 +22,6 @@ generated_html = \
 	core_spec_plugins.html \
 	cpu_management.html \
 	cray.html \
-	cray_alps.html \
 	crypto_plugins.html \
 	disclaimer.html \
 	dist_plane.html \
@@ -84,6 +82,7 @@ generated_html = \
 	quickstart_admin.html \
 	quickstart.html \
 	reservations.html \
+	resource_binding.html \
 	resource_limits.html \
 	rosetta.html \
 	route_plugin.html \
