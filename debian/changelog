@@ -1,9 +1,9 @@
-slurm-llnl (18.08.3-1) UNRELEASED; urgency=medium
+slurm-llnl (18.08.3-1) unstable; urgency=medium
 
   * New upstream release
   * Update libslurm33.symbols
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 24 Oct 2018 22:34:17 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 24 Oct 2018 23:51:22 +0200
 
 slurm-llnl (18.08.2-1) unstable; urgency=medium
 
