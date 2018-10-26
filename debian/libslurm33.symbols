@@ -771,6 +771,7 @@ libslurm.so.33 libslurm33 #MINVER#
  slurm_pack_slurm_addr@Base 1.3.8
  slurm_pack_slurm_addr_array@Base 1.3.8
  slurm_pack_slurm_step_layout@Base 14.03.0
+ slurm_pack_slurmdbd_msg@Base 18.08.3
  slurm_pack_time@Base 1.3.8
  slurm_packdouble@Base 2.3.1
  slurm_packlongdouble@Base 15.08.0
@@ -958,6 +959,7 @@ libslurm.so.33 libslurm33 #MINVER#
 #MISSING: 18.08.0# slurm_shutdown_msg_engine@Base 1.3.8
  slurm_signal_job@Base 1.3.8
  slurm_signal_job_step@Base 1.3.8
+ slurm_slurmdbd_free_buffer@Base 18.08.3
 #MISSING: 18.08.0# slurm_slurmdbd_defs_fini@Base 17.02.2
 #MISSING: 18.08.0# slurm_slurmdbd_defs_init@Base 17.02.2
  slurm_slurmdbd_free_id_rc_msg@Base 17.02.2
@@ -1035,6 +1037,7 @@ libslurm.so.33 libslurm33 #MINVER#
  slurm_unpack_slurm_addr_array@Base 1.3.8
  slurm_unpack_slurm_addr_no_alloc@Base 1.3.8
  slurm_unpack_slurm_step_layout@Base 14.03.0
+ slurm_unpack_slurmdbd_msg@Base 18.08.3
  slurm_unpack_time@Base 1.3.8
  slurm_unpackdouble@Base 2.3.1
  slurm_unpacklongdouble@Base 15.08.0
