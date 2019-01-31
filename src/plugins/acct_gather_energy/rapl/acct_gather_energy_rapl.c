@@ -5,11 +5,11 @@
  *  Written by Bull- Yiannis Georgiou
  *  CODE-OCEC-09-009. All rights reserved.
  *
- *  This file is part of SLURM, a resource management program.
+ *  This file is part of Slurm, a resource management program.
  *  For details, see <https://slurm.schedmd.com/>.
  *  Please also read the included file: DISCLAIMER.
  *
- *  SLURM is free software; you can redistribute it and/or modify it under
+ *  Slurm is free software; you can redistribute it and/or modify it under
  *  the terms of the GNU General Public License as published by the Free
  *  Software Foundation; either version 2 of the License, or (at your option)
  *  any later version.
@@ -25,13 +25,13 @@
  *  version.  If you delete this exception statement from all source files in
  *  the program, then also delete it here.
  *
- *  SLURM is distributed in the hope that it will be useful, but WITHOUT ANY
+ *  Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
  *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  *  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
  *  details.
  *
  *  You should have received a copy of the GNU General Public License along
- *  with SLURM; if not, write to the Free Software Foundation, Inc.,
+ *  with Slurm; if not, write to the Free Software Foundation, Inc.,
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
  *
  *  This file is patterned after jobcomp_linux.c, written by Morris Jette and
@@ -109,14 +109,14 @@ union {
  * plugin_type - a string suggesting the type of the plugin or its
  * applicability to a particular form of data or method of data handling.
  * If the low-level plugin API is used, the contents of this string are
- * unimportant and may be anything.  SLURM uses the higher-level plugin
+ * unimportant and may be anything.  Slurm uses the higher-level plugin
  * interface which requires this string to be of the form
  *
  *	<application>/<method>
  *
  * where <application> is a description of the intended application of
- * the plugin (e.g., "jobacct" for SLURM job completion logging) and <method>
- * is a description of how this plugin satisfies that application.  SLURM will
+ * the plugin (e.g., "jobacct" for Slurm job completion logging) and <method>
+ * is a description of how this plugin satisfies that application.  Slurm will
  * only load job completion logging plugins if the plugin_type string has a
  * prefix of "jobacct/".
  *
@@ -311,6 +311,7 @@ static void _get_joules_task(acct_gather_energy_t *energy)
 	double energy_units;
 	uint64_t result;
 	double ret;
+	static uint32_t readings = 0;
 
 	if (pkg_fd[0] < 0) {
 		error("%s: device /dev/cpu/#/msr not opened "
@@ -362,13 +363,18 @@ static void _get_joules_task(acct_gather_energy_t *energy)
 			(uint64_t)ret - energy->base_consumed_energy;
 		energy->current_watts =
 			(uint32_t)ret - energy->previous_consumed_energy;
+		energy->base_watts =  ((energy->base_watts * readings) +
+				       energy->current_watts) / (readings + 1);
+
 		interval = time(NULL) - energy->poll_time;
 		if (interval)	/* Prevent divide by zero */
 			energy->current_watts /= (float)interval;
 	} else {
 		energy->consumed_energy = 1;
 		energy->base_consumed_energy = (uint64_t)ret;
+		energy->base_watts = 0;
 	}
+	readings++;
 	energy->previous_consumed_energy = (uint64_t)ret;
 	energy->poll_time = time(NULL);
 
