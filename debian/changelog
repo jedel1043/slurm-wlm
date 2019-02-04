@@ -5,6 +5,7 @@ slurm-llnl (18.08.5-1) UNRELEASED; urgency=medium
     Karl Kornel (Closes: #850891)
   * Allow using a slurm user with a different UID if created before
     installation (Closes: #851103)
+  * Add Build-Depends-Package field to symbol files
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 31 Jan 2019 14:43:48 +0100
 

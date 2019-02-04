@@ -1,4 +1,5 @@
 libslurmdb.so.33 libslurmdb33 #MINVER#
+* Build-Depends-Package: libslurmdb-dev
 #MISSING: 17.11.2~# slurm_accept_msg_conn@Base 2.2.0
 #MISSING: 14.11.0# slurm_accept_stream@Base 2.2.0
 #MISSING: 17.11.2~# slurm_accounting_enforce_string@Base 2.2.0
