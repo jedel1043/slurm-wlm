@@ -1,6 +1,8 @@
 slurm-llnl (18.08.5-1) UNRELEASED; urgency=medium
 
   * New upstream release fixes CVE-2019-6438
+  * Handling slurm user inside the plugin package as suggested by
+    Karl Kornel (Closes: #850891)
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 31 Jan 2019 14:43:48 +0100
 

@@ -46,10 +46,6 @@ case "$1" in
               -a ! -e /usr/sbin/slurmdbd \
               -a ! -e /usr/sbin/slurmd ] ; then
 
-           # Deleting slurm user
-           if [ -n "$(id -u slurm 2>/dev/null)" ] ; then
-             deluser --quiet slurm || true
-           fi
            rm -rf /var/run/slurm-llnl
            if which ucf >/dev/null; then
              ucf --purge /etc/slurm-llnl/slurm.conf
