@@ -2,6 +2,7 @@ slurm-llnl (18.08.5.2-1) UNRELEASED; urgency=medium
 
   * New upstream release fixes CVE-2019-6438 (Closes: #920997)
   * debian/patches/man-pages-typos: removed, applied upstream
+  * Add Build-Depends-Package field to symbol files
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 14 Feb 2019 13:25:36 +0100
 
