@@ -57,7 +57,6 @@ Depends:
  ${misc:Depends},
  slurm-wlm-basic-plugins (= ${binary:Version}),
  munge,
- adduser,
  ucf
 Conflicts: sinfo (<< 0.0.47-4)
 Description: SLURM client side commands
@@ -74,7 +73,6 @@ Depends:
  ${misc:Depends},
  openssl,
  slurm-wlm-basic-plugins (= ${binary:Version}),
- adduser,
  ucf,
  munge,
  openssl (>= 0.9.8g-9),
@@ -94,7 +92,6 @@ Depends:
  slurm-client (= ${binary:Version}),
  openssl,
  slurm-wlm-basic-plugins (= ${binary:Version}),
- adduser,
  ucf,
  munge,
  openssl (>= 0.9.8g-9),
@@ -216,7 +213,8 @@ Package: slurm-wlm-basic-plugins
 Architecture: any
 Depends:
  ${shlibs:Depends},
- ${misc:Depends}
+ ${misc:Depends},
+ adduser
 Description: SLURM basic plugins
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
@@ -253,7 +251,6 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  slurm-wlm-basic-plugins (= ${binary:Version}),
- adduser,
  munge,
  lsb-base (>= 3.2-12),
  ucf
