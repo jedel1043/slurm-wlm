@@ -20,6 +20,45 @@ set -e
 
 case "$1" in
        purge)
+
+         # Delete slurm host key and cert
+         SCONF=/etc/slurm/slurm.conf
+         if [ -e $SCONF ] ; then
+           CRYPTOTYPE=$(grep CryptoType $SCONF | grep -v "^ *#" || true)
+           CRYPTOTYPE=${CRYPTOTYPE##*=}
+           CRYPTOTYPE=${CRYPTOTYPE%#*}
+           if [ "$CRYPTOTYPE" = "crypto/openssl" ] || \
+              [ "$CRYPTOTYPE" = "" ] ; then
+              CERTFILE=$(grep JobCredentialPublicCertificate $SCONF \
+                              | grep -v "^ *#" || true )
+              CERTFILE=${CERTFILE##*=}
+              CERTFILE=${CERTFILE%#*}
+              KEYFILE=$(grep JobCredentialPrivateKey $SCONF \
+                             | grep -v "^ *#" || true)
+              KEYFILE=${KEYFILE##*=}
+              KEYFILE=${KEYFILE%#*}
+              if [ -n "${KEYFILE}${CERTFILE}" ] ; then
+                rm -f ${KEYFILE} ${CERTFILE}
+              fi
+           fi
+         fi
+
+         if which ucf >/dev/null; then
+           ucf --purge /etc/slurm/slurm.conf
+         fi
+
+	 # Delete slurm configuration files
+         rm -f /etc/slurm/acct_gather.conf \
+               /etc/slurm/burst_buffer.conf \
+               /etc/slurm/cgroup.conf \
+               /etc/slurm/ext_sensors.conf \
+               /etc/slurm/gres.conf \
+               /etc/slurm/knl.conf \
+               /etc/slurm/nonstop.conf \
+               /etc/slurm/slurm.conf \
+               /etc/slurm/topology.conf \
+               /etc/slurm/plugstack.conf.d/*.conf
+
          # Deleting slurm user only if has the reserved ids
          if [ -n "$(id -u slurm 2>/dev/null)" ] ; then
 

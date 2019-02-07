@@ -6,6 +6,8 @@ slurm-llnl (18.08.5-1) UNRELEASED; urgency=medium
   * Allow using a slurm user with a different UID if created before
     installation (Closes: #851103)
   * Add Build-Depends-Package field to symbol files
+  * Move configuration in /etc/slurm
+  * Handling configuration files in the plugin package
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 31 Jan 2019 14:43:48 +0100
 

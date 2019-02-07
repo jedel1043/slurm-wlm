@@ -22,6 +22,18 @@ case "$1" in
     ;;
 
     upgrade)
+      # Moving plugstack.conf to /etc/slurm hence checking if old
+      # configuration file has been modified
+      if [ -n "$2" ] && dpkg --compare-versions $2 lt 18.08.5-1 ; then
+         if [ -e /etc/slurm-llnl/plugstack.conf ] ; then
+            old_package_md5=$(dpkg-query -W -f='${Conffiles}' slurm-wlm-basic-plugins | awk '$1 == "/etc/slurm-llnl/plugstack.conf" {print $2}')
+            local_md5=$(md5sum < "/etc/slurm-llnl/plugstack.conf" | sed 's/[[:space:]].*//')
+            if [ "$old_package_md5" != "$local_md5" ] ; then
+              echo The configuration file /etc/slurm-llnl/plugstack.conf was modified
+              echo Please update /etc/slurm/plugstack.conf accordingly
+            fi
+         fi
+      fi
     ;;
 
     abort-upgrade)

@@ -28,10 +28,6 @@ case "$1" in
               -a ! -e /usr/sbin/slurmdbd \
               -a ! -e /usr/bin/squeue ] ; then
             rm -rf /var/run/slurm-llnl
-            if which ucf >/dev/null; then
-              ucf --purge /etc/slurm-llnl/slurm.conf
-            fi
-            rm -f /etc/slurm-llnl/slurm.conf
          fi
          ;;
 
