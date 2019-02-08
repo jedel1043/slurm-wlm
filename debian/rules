@@ -30,7 +30,7 @@ override_dh_auto_build:
 	dh_auto_build --builddirectory build-emulator
 
 override_dh_shlibdeps:
-	dh_shlibdeps -O--builddirectory -O--parallel -l$(CURDIR)/debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/slurm-wlm/
+	dh_shlibdeps -O--builddirectory -l$(CURDIR)/debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/slurm-wlm/
 
 override_dh_auto_install:
 	dh_auto_install
