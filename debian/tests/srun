@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-cat > /etc/slurm-llnl/slurm.conf <<EOF 
+cat > /etc/slurm/slurm.conf <<EOF
 ControlMachine=localhost
 AuthType=auth/munge
 CacheGroups=0
@@ -10,9 +10,9 @@ JobCheckpointDir=/var/lib/slurm-llnl/checkpoint
 MpiDefault=none
 ProctrackType=proctrack/pgid
 ReturnToService=1
-SlurmctldPidFile=/var/run/slurm-llnl/slurmctld.pid
+SlurmctldPidFile=/run/slurmctld.pid
 SlurmctldPort=6817
-SlurmdPidFile=/var/run/slurm-llnl/slurmd.pid
+SlurmdPidFile=/run/slurmd.pid
 SlurmdPort=6818
 SlurmdSpoolDir=/var/lib/slurm-llnl/slurmd
 SlurmUser=slurm
