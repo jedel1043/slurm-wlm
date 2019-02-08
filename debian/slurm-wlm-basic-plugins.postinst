@@ -24,13 +24,13 @@ case "$1" in
 	 slurm.conf topology.conf"
 	 for conf_file in $slurm_configuration ; do
 	    if [ -e /etc/slurm-llnl/$conf_file ] && [ ! -e /etc/slurm/$conf_file ] ; then
-	       cp /etc/slurm-llnl/$conf_file /etc/slurm/
+	       cp --preserve=mode,ownership /etc/slurm-llnl/$conf_file /etc/slurm/
 	    fi
 	 done
          if [ -d /etc/slurm-llnl/plugstack.conf.d ] && \
             [ -n "$(ls /etc/slurm-llnl/plugstack.conf.d/*.conf 2> /dev/null || true)" ] ; then
             for file in /etc/slurm-llnl/plugstack.conf.d/*.conf ; do
-               cp $file /etc/slurm/plugstack.conf.d/
+               cp --preserve=mode,ownership $file /etc/slurm/plugstack.conf.d/
             done
          fi
 
