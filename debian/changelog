@@ -4,6 +4,8 @@ slurm-llnl (18.08.5.2-1) UNRELEASED; urgency=medium
   * New upstream version, fixes CVE-2019-6438 (Closes: #920997)
   * debhelper 11
   * debian/patches/man-pages-typos: removed, applied upstream
+  * debian/control: reformated using cme fix dpkg-control
+  * Standards-Version: 4.3.0; no changes needed
 
  -- Michael R. Crusoe <michael.crusoe@gmail.com>  Fri, 08 Feb 2019 00:48:00 -0800
 
