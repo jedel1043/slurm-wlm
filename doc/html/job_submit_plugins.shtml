@@ -51,7 +51,6 @@ however the lua plugin will only execute one lua script named "job_submit.lua"
 located in the default script directory (typically the subdirectory "etc" of
 the installation directory).</p>
 
-<p class="footer"><a href="#top">top</a>
 
 <h2>API Functions</h2>
 <p>All of the following functions are required. Functions which are not
@@ -174,12 +173,12 @@ be modified.<br>
 (input) List of pointer to partitions which this user is authorized to use.<br>
 <span class="commandline">modify_uid</span>
 (input) user ID initiating the request.<br>
+<p style="margin-left:.2in"><b>Returns</b>: <br>
 <span class="commandline">0</span> on success, or an
 errno on failure. Slurm specific error numbers from <i>slurm/slurm_errno.h</i>
 may be used. On failure, the request will be rejected and the user will have an
 appropriate error message printed for that errno. 
 
-<p class="footer"><a href="#top">top</a>
 
 <h2>Building</h2>
 <p>Generally using a LUA interface for a job submit plugin is best:

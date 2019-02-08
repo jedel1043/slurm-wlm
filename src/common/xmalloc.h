@@ -10,11 +10,11 @@
  *	Mark Grondona <mgrondona@llnl.gov>
  *  CODE-OCEC-09-009. All rights reserved.
  *
- *  This file is part of SLURM, a resource management program.
+ *  This file is part of Slurm, a resource management program.
  *  For details, see <https://slurm.schedmd.com/>.
  *  Please also read the included file: DISCLAIMER.
  *
- *  SLURM is free software; you can redistribute it and/or modify it under
+ *  Slurm is free software; you can redistribute it and/or modify it under
  *  the terms of the GNU General Public License as published by the Free
  *  Software Foundation; either version 2 of the License, or (at your option)
  *  any later version.
@@ -30,13 +30,13 @@
  *  version.  If you delete this exception statement from all source files in
  *  the program, then also delete it here.
  *
- *  SLURM is distributed in the hope that it will be useful, but WITHOUT ANY
+ *  Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
  *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  *  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
  *  details.
  *
  *  You should have received a copy of the GNU General Public License along
- *  with SLURM; if not, write to the Free Software Foundation, Inc.,
+ *  with Slurm; if not, write to the Free Software Foundation, Inc.,
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
  *****************************************************************************
  * Description:
@@ -76,18 +76,19 @@
 #ifndef _XMALLOC_H
 #define _XMALLOC_H
 
+#include <stdint.h>
 #include <sys/types.h>
 
 #include "macros.h"
 
 #define xmalloc(__sz) \
-	slurm_xmalloc (__sz, true, __FILE__, __LINE__, __func__)
+	slurm_xmalloc ((uint64_t) __sz, true, __FILE__, __LINE__, __func__)
 
 #define xmalloc_nz(__sz) \
-	slurm_xmalloc (__sz, false, __FILE__, __LINE__, __func__)
+	slurm_xmalloc ((uint64_t) __sz, false, __FILE__, __LINE__, __func__)
 
 #define try_xmalloc(__sz) \
-	slurm_try_xmalloc(__sz, __FILE__, __LINE__, __func__)
+	slurm_try_xmalloc((uint64_t) __sz, __FILE__, __LINE__, __func__)
 
 #define xfree(__p) \
 	slurm_xfree((void **)&(__p), __FILE__, __LINE__, __func__)
@@ -107,7 +108,7 @@
 #define xsize(__p) \
 	slurm_xsize((void *)__p, __FILE__, __LINE__, __func__)
 
-void *slurm_xmalloc(size_t, bool, const char *, int, const char *);
+void *slurm_xmalloc(uint64_t, bool, const char *, int, const char *);
 void *slurm_try_xmalloc(size_t , const char *, int , const char *);
 void slurm_xfree(void **, const char *, int, const char *);
 void *slurm_xrealloc(void **, size_t, bool, const char *, int, const char *);
