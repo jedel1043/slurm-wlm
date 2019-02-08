@@ -6,7 +6,7 @@
 #              resources and distributes work to those resources.
 #
 # processname: /usr/sbin/slurmctld
-# pidfile: /var/run/slurm-llnl/slurmctld.pid
+# pidfile: /run/slurmctld.pid
 #
 # config: /etc/default/slurmctld
 #
@@ -23,7 +23,7 @@
 ### END INIT INFO
 
 BINDIR=/usr/bin
-CONFDIR=/etc/slurm-llnl
+CONFDIR=/etc/slurm
 LIBDIR=/usr/lib
 SBINDIR=/usr/sbin
 
@@ -106,13 +106,9 @@ start() {
     checkcertkey $1
   fi
 
-  # Create run-time variable data
-  mkdir -p /var/run/slurm-llnl
-  chown slurm:slurm /var/run/slurm-llnl
-
   # Checking if StateSaveLocation is under run
   if [ "$1" = "slurmctld" ] ; then
-    SDIRLOCATION=$(grep StateSaveLocation /etc/slurm-llnl/slurm.conf \
+    SDIRLOCATION=$(grep StateSaveLocation /etc/slurm/slurm.conf \
                        | grep -v "^ *#")
     SDIRLOCATION=${SDIRLOCATION##*=}
     SDIRLOCATION=${SDIRLOCATION%#*}

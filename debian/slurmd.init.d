@@ -6,7 +6,7 @@
 #              resources and distributes work to those resources.
 #
 # processname: /usr/sbin/slurmd
-# pidfile: /var/run/slurm-llnl/slurmd.pid
+# pidfile: /run/slurmd.pid
 #
 # config: /etc/default/slurmd
 #
@@ -23,7 +23,7 @@
 ### END INIT INFO
 
 BINDIR=/usr/bin
-CONFDIR=/etc/slurm-llnl
+CONFDIR=/etc/slurm
 LIBDIR=/usr/lib
 SBINDIR=/usr/sbin
 
@@ -107,13 +107,9 @@ start() {
     checkcertkey $1
   fi
 
-  # Create run-time variable data
-  mkdir -p /var/run/slurm-llnl
-  chown slurm:slurm /var/run/slurm-llnl
-
   # Checking if SlurmdSpoolDir is under run
   if [ "$1" = "slurmd" ] ; then
-    SDIRLOCATION=$(grep SlurmdSpoolDir /etc/slurm-llnl/slurm.conf \
+    SDIRLOCATION=$(grep SlurmdSpoolDir /etc/slurm/slurm.conf \
                        | grep -v "^ *#")
     SDIRLOCATION=${SDIRLOCATION##*=}
     SDIRLOCATION=${SDIRLOCATION%#*}
@@ -157,7 +153,7 @@ getpidfile() {
         dpidfile=${dpidfile##*=}
         dpidfile=${dpidfile%#*}
     else
-        dpidfile=/var/run/${1}.pid
+        dpidfile=/run/${1}.pid
     fi
 
     echo $dpidfile
