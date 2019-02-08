@@ -198,7 +198,7 @@ static void _job_array_comp(struct job_record *job_ptr, bool was_running,
 static int  _job_create(job_desc_msg_t * job_specs, int allocate, int will_run,
 			struct job_record **job_rec_ptr, uid_t submit_uid,
 			char **err_msg, uint16_t protocol_version);
-static void _job_timed_out(struct job_record *job_ptr);
+static void _job_timed_out(struct job_record *job_ptr, bool preempted);
 static void _kill_dependent(struct job_record *job_ptr);
 static void _list_delete_job(void *job_entry);
 static int  _list_find_job_old(void *job_entry, void *key);
@@ -1468,6 +1468,8 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 			part_ptr_list = get_part_list(partition, &err_part);
 			if (part_ptr_list) {
 				part_ptr = list_peek(part_ptr_list);
+				if (list_count(part_ptr_list) == 1)
+					FREE_NULL_LIST(part_ptr_list);
 			} else {
 				verbose("Invalid partition (%s) for JobId=%u",
 					err_part, job_id);
@@ -1692,6 +1694,8 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 			part_ptr_list = get_part_list(partition, &err_part);
 			if (part_ptr_list) {
 				part_ptr = list_peek(part_ptr_list);
+				if (list_count(part_ptr_list) == 1)
+					FREE_NULL_LIST(part_ptr_list);
 			} else {
 				verbose("Invalid partition (%s) for JobId=%u",
 					err_part, job_id);
@@ -1895,6 +1899,8 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 			part_ptr_list = get_part_list(partition, &err_part);
 			if (part_ptr_list) {
 				part_ptr = list_peek(part_ptr_list);
+				if (list_count(part_ptr_list) == 1)
+					FREE_NULL_LIST(part_ptr_list);
 			} else {
 				verbose("Invalid partition (%s) for JobId=%u",
 					err_part, job_id);
@@ -3196,9 +3202,15 @@ static void _rebuild_part_name_list(struct job_record  *job_ptr)
 	ListIterator part_iterator;
 
 	xfree(job_ptr->partition);
+
+	if (!job_ptr->part_ptr_list) {
+		job_ptr->partition = xstrdup(job_ptr->part_ptr->name);
+		last_job_update = time(NULL);
+		return;
+	}
+
 	if (IS_JOB_RUNNING(job_ptr) || IS_JOB_SUSPENDED(job_ptr)) {
 		job_active = true;
-		xfree(job_ptr->partition);
 		job_ptr->partition = xstrdup(job_ptr->part_ptr->name);
 	} else if (IS_JOB_PENDING(job_ptr))
 		job_pending = true;
@@ -4508,6 +4520,7 @@ extern struct job_record *job_array_split(struct job_record *job_ptr)
 	details_new->std_in = xstrdup(job_details->std_in);
 	details_new->std_out = xstrdup(job_details->std_out);
 	details_new->work_dir = xstrdup(job_details->work_dir);
+	details_new->x11_magic_cookie = xstrdup(job_details->x11_magic_cookie);
 
 	if (job_ptr->fed_details)
 		add_fed_job_info(job_ptr);
@@ -4786,7 +4799,7 @@ extern int job_allocate(job_desc_msg_t * job_specs, int immediate,
 				bf_min_age_reserve = min_age;
 		}
 
-		if ((sched_params = slurm_get_sched_params()) &&
+		if (sched_params &&
 		    (xstrcasestr(sched_params, "allow_zero_lic")))
 			validate_cfgd_licenses = false;
 
@@ -5561,6 +5574,7 @@ extern int job_str_signal(char *job_id_str, uint16_t signal, uint16_t flags,
 			/* task_id_bitmap changes, so we need a copy of it */
 			bitstr_t *task_id_bitmap_orig =
 				bit_copy(job_ptr->array_recs->task_id_bitmap);
+
 			bit_and_not(job_ptr->array_recs->task_id_bitmap,
 				array_bitmap);
 			xfree(job_ptr->array_recs->task_id_str);
@@ -5583,6 +5597,23 @@ extern int job_str_signal(char *job_id_str, uint16_t signal, uint16_t flags,
 			} else {
 				_job_array_comp(job_ptr, false, false);
 				job_count -= (orig_task_cnt - new_task_count);
+				/*
+				 * Since we are altering the job array's
+				 * task_cnt we must go alter this count in the
+				 * acct_policy code as if they are finishing
+				 * (accrue_cnt/job_submit etc...).
+				 */
+				if (job_ptr->array_recs->task_cnt >
+				    new_task_count) {
+					uint32_t tmp_state = job_ptr->job_state;
+					job_ptr->job_state = JOB_CANCELLED;
+
+					job_ptr->array_recs->task_cnt -=
+						new_task_count;
+					acct_policy_remove_job_submit(job_ptr);
+					job_ptr->bit_flags &= ~JOB_ACCRUE_OVER;
+					job_ptr->job_state = tmp_state;
+				}
 			}
 
 			/*
@@ -6142,8 +6173,11 @@ static int _get_job_parts(job_desc_msg_t * job_desc,
 		if (part_ptr == NULL) {
 			part_ptr_list = get_part_list(job_desc->partition,
 						      &err_part);
-			if (part_ptr_list)
+			if (part_ptr_list) {
 				part_ptr = list_peek(part_ptr_list);
+				if (list_count(part_ptr_list) == 1)
+					FREE_NULL_LIST(part_ptr_list);
+			}
 		}
 		if (part_ptr == NULL) {
 			info("%s: invalid partition specified: %s",
@@ -7637,6 +7671,17 @@ _read_data_array_from_file(int fd, char *file_name, char ***data,
 					     name_len)) {
 					continue;
 				}
+
+				/*
+				 * If we are are the front we can not overwrite
+				 * that spot, we can clear it an then add to the
+				 * end of the array.
+				 */
+				if (i == 0) {
+					array_ptr[0][0] = '\0';
+					i = rec_cnt;
+					break;
+				}
 				/* over-write duplicate */
 				memcpy(&buffer[pos],
 				       job_ptr->details->env_sup[j], env_len);
@@ -8219,9 +8264,30 @@ extern bool valid_tres_cnt(char *tres)
 			}
 
 			val = strtoll(sep, &end_ptr, 10);
-			if (((end_ptr[0] != '\0') || (val < 0) ||
+			/* First only check numeric component for validity */
+			if (((val < 0) ||
 			    (val == LLONG_MAX)) ||
 			    (!valid_name && (val != 0))) {
+				rc = false;
+				break;
+			}
+
+			/*
+			 * Now check that any count modifier is valid.
+			 * First check that modifier is not more than 1 char
+			 */
+			if ((end_ptr[0] != '\0') && (end_ptr[1] != '\0')) {
+				rc = false;
+				break;
+			}
+
+			/* Test for valid char: [null|k|K|m|M|g|G|t|T|p|P] */
+			if ((end_ptr[0] != '\0') &&
+			    (end_ptr[0] != 'k') && (end_ptr[0] != 'K') &&
+			    (end_ptr[0] != 'm') && (end_ptr[0] != 'M') &&
+			    (end_ptr[0] != 'g') && (end_ptr[0] != 'G') &&
+			    (end_ptr[0] != 't') && (end_ptr[0] != 'T') &&
+			    (end_ptr[0] != 'p') && (end_ptr[0] != 'P')) {
 				rc = false;
 				break;
 			}
@@ -8520,7 +8586,7 @@ void job_time_limit(void)
 				     __func__, job_ptr);
 				job_ptr->job_state = JOB_PREEMPTED |
 						     JOB_COMPLETING;
-				_job_timed_out(job_ptr);
+				_job_timed_out(job_ptr, true);
 				xfree(job_ptr->state_desc);
 			}
 			goto time_check;
@@ -8535,7 +8601,7 @@ void job_time_limit(void)
 			/* job inactive, kill it */
 			info("%s: inactivity time limit reached for %pJ",
 			     __func__, job_ptr);
-			_job_timed_out(job_ptr);
+			_job_timed_out(job_ptr, false);
 			job_ptr->state_reason = FAIL_INACTIVE_LIMIT;
 			xfree(job_ptr->state_desc);
 			goto time_check;
@@ -8600,7 +8666,7 @@ void job_time_limit(void)
 			if (job_ptr->end_time <= over_run) {
 				last_job_update = now;
 				info("Time limit exhausted for %pJ", job_ptr);
-				_job_timed_out(job_ptr);
+				_job_timed_out(job_ptr, false);
 				job_ptr->state_reason = FAIL_TIMEOUT;
 				xfree(job_ptr->state_desc);
 				goto time_check;
@@ -8612,7 +8678,7 @@ void job_time_limit(void)
 		    (job_ptr->resv_ptr->end_time + resv_over_run) < time(NULL)){
 			last_job_update = now;
 			info("Reservation ended for %pJ", job_ptr);
-			_job_timed_out(job_ptr);
+			_job_timed_out(job_ptr, false);
 			job_ptr->state_reason = FAIL_TIMEOUT;
 			xfree(job_ptr->state_desc);
 			goto time_check;
@@ -8630,7 +8696,7 @@ void job_time_limit(void)
 
 		if (job_ptr->state_reason == FAIL_TIMEOUT) {
 			last_job_update = now;
-			_job_timed_out(job_ptr);
+			_job_timed_out(job_ptr, false);
 			xfree(job_ptr->state_desc);
 			goto time_check;
 		}
@@ -8857,7 +8923,7 @@ extern int job_update_tres_cnt(struct job_record *job_ptr, int node_inx)
 }
 
 /* Terminate a job that has exhausted its time limit */
-static void _job_timed_out(struct job_record *job_ptr)
+static void _job_timed_out(struct job_record *job_ptr, bool preempted)
 {
 	xassert(job_ptr);
 
@@ -8870,7 +8936,7 @@ static void _job_timed_out(struct job_record *job_ptr)
 			job_ptr->job_state = JOB_TIMEOUT | JOB_COMPLETING;
 		build_cg_bitmap(job_ptr);
 		job_completion_logger(job_ptr, false);
-		deallocate_nodes(job_ptr, true, false, false);
+		deallocate_nodes(job_ptr, !preempted, false, preempted);
 	} else
 		job_signal(job_ptr, SIGKILL, 0, 0, false);
 	return;
@@ -9121,6 +9187,13 @@ static void _list_delete_job(void *job_entry)
 	xfree(job_ptr->nodes);
 	xfree(job_ptr->nodes_completing);
 	xfree(job_ptr->origin_cluster);
+	if (job_ptr->pack_details && job_ptr->pack_job_id) {
+		/* xfree struct if hetjob leader and NULL ptr otherwise. */
+		if (job_ptr->pack_job_offset == 0)
+			xfree(job_ptr->pack_details);
+		else
+			job_ptr->pack_details = NULL;
+	}
 	xfree(job_ptr->pack_job_id_set);
 	FREE_NULL_LIST(job_ptr->pack_job_list);
 	xfree(job_ptr->partition);
@@ -10830,8 +10903,11 @@ void reset_job_bitmaps(void)
 				part_ptr_list = get_part_list(
 						job_ptr->partition,
 						&err_part);
-				if (part_ptr_list)
+				if (part_ptr_list) {
 					part_ptr = list_peek(part_ptr_list);
+					if (list_count(part_ptr_list) == 1)
+						FREE_NULL_LIST(part_ptr_list);
+				}
 			}
 			if (part_ptr == NULL) {
 				error("Invalid partition (%s) for %pJ",
@@ -11255,6 +11331,10 @@ static void _hold_job_rec(struct job_record *job_ptr, uid_t uid)
 
 	job_ptr->direct_set_prio = 1;
 	job_ptr->priority = 0;
+
+	if (IS_JOB_PENDING(job_ptr))
+		acct_policy_remove_accrue_time(job_ptr, false);
+
 	if (job_ptr->part_ptr_list && job_ptr->priority_array) {
 		j = list_count(job_ptr->part_ptr_list);
 		for (i = 0; i < j; i++) {
@@ -11545,6 +11625,7 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 	    !xstrcmp(job_specs->partition, job_ptr->partition)) {
 		sched_debug("update_job: new partition identical to old partition %pJ",
 			    job_ptr);
+		xfree(job_specs->partition);
 	} else if (job_specs->partition) {
 		if (!IS_JOB_PENDING(job_ptr)) {
 			error_code = ESLURM_JOB_NOT_PENDING;
@@ -11559,9 +11640,13 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 			;
 		else if ((new_part_ptr->state_up & PARTITION_SUBMIT) == 0)
 			error_code = ESLURM_PARTITION_NOT_AVAIL;
-		else if (new_part_ptr == job_ptr->part_ptr)
+		else if (!part_ptr_list &&
+			 !xstrcmp(new_part_ptr->name, job_ptr->partition)) {
+			sched_debug("update_job: 2 new partition identical to old partition %pJ",
+				    job_ptr);
+			xfree(job_specs->partition);
 			new_part_ptr = NULL;
-
+		}
 		if (error_code != SLURM_SUCCESS)
 			goto fini;
 	}
@@ -11632,6 +11717,14 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 
 	use_qos_ptr = new_qos_ptr ? new_qos_ptr : job_ptr->qos_ptr;
 
+	if (job_specs->bitflags & RESET_ACCRUE_TIME) {
+		if (!IS_JOB_PENDING(job_ptr) || !detail_ptr) {
+			error_code = ESLURM_JOB_NOT_PENDING;
+			goto fini;
+		} else
+			acct_policy_remove_accrue_time(job_ptr, false);
+	}
+
 	/*
 	 * Must check req_nodes to set the job_ptr->details->req_node_bitmap
 	 * before we validate it later.
@@ -11699,7 +11792,8 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 
 	/* this needs to be after partition and QOS checks */
 	if (job_specs->reservation
-	    && !xstrcmp(job_specs->reservation, job_ptr->resv_name)) {
+	    && (!xstrcmp(job_specs->reservation, job_ptr->resv_name) ||
+		(!job_ptr->resv_name && job_specs->reservation[0] == '\0'))) {
 		sched_debug("update_job: new reservation identical to old reservation %pJ",
 			    job_ptr);
 	} else if (job_specs->reservation) {
@@ -11884,6 +11978,7 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 					    job_ptr->licenses)) {
 		sched_debug("update_job: new licenses identical to old licenses \"%s\"",
 			    job_ptr->licenses);
+		xfree(job_specs->licenses);
 	} else if (job_specs->licenses) {
 		bool valid, pending = IS_JOB_PENDING(job_ptr);
 		license_list = license_validate(job_specs->licenses, true, true,
@@ -12047,7 +12142,7 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 			     new_req_bitmap_given ?
 			     new_req_bitmap : job_ptr->details->req_node_bitmap,
 			     use_part_ptr,
-			     part_ptr_list ?
+			     job_specs->partition ?
 			     part_ptr_list : job_ptr->part_ptr_list,
 			     use_assoc_ptr, use_qos_ptr)))
 			goto fini;
@@ -12093,15 +12188,15 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 
 	if (new_part_ptr) {
 		/* Change partition */
-		xfree(job_ptr->partition);
-		job_ptr->partition = xstrdup(new_part_ptr->name);
 		job_ptr->part_ptr = new_part_ptr;
-
-		xfree(job_ptr->priority_array);	/* Rebuilt in plugin */
-
 		FREE_NULL_LIST(job_ptr->part_ptr_list);
 		job_ptr->part_ptr_list = part_ptr_list;
 		part_ptr_list = NULL;	/* nothing to free */
+
+		_rebuild_part_name_list(job_ptr);
+
+		/* Rebuilt in priority/multifactor plugin */
+		xfree(job_ptr->priority_array);
 
 		info("%s: setting partition to %s for %pJ",
 		     __func__, job_specs->partition, job_ptr);
@@ -12129,6 +12224,15 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 		job_ptr->resv_ptr = new_resv_ptr;
 		sched_info("update_job: setting reservation to %s for %pJ",
 			   job_ptr->resv_name, job_ptr);
+		update_accounting = true;
+	} else if (job_specs->reservation &&
+		   job_specs->reservation[0] == '\0' &&
+		   job_ptr->resv_name) {
+		xfree(job_ptr->resv_name);
+		job_ptr->resv_id    = 0;
+		job_ptr->resv_ptr   = NULL;
+		sched_info("update_job: setting reservation to '' for %pJ",
+			   job_ptr);
 		update_accounting = true;
 	}
 
@@ -14002,15 +14106,15 @@ static void _purge_missing_jobs(int node_inx, time_t now)
 		    (job_ptr->pack_job_offset == 0)		&&
 		    (job_ptr->time_last_active < startup_time)	&&
 		    (job_ptr->start_time       < startup_time)	&&
-		    (node_inx == bit_ffs(job_ptr->node_bitmap))) {
+		    (node_ptr == find_node_record(job_ptr->batch_host))) {
 			bool requeue = false;
 			char *requeue_msg = "";
 			if (job_ptr->details && job_ptr->details->requeue) {
 				requeue = true;
 				requeue_msg = ", Requeuing job";
 			}
-			info("Batch %pJ missing from node 0 (not found BatchStartTime after startup)%s",
-			     job_ptr, requeue_msg);
+			info("Batch %pJ missing from batch node %s (not found BatchStartTime after startup)%s",
+			     job_ptr, job_ptr->batch_host, requeue_msg);
 			job_ptr->exit_code = 1;
 			job_complete(job_ptr->job_id,
 				     slurmctld_conf.slurm_user_id,
