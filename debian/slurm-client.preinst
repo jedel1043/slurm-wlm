@@ -26,8 +26,8 @@ case "$1" in
                   --home /nonexistent slurm
         fi
         if [ "$SLURMHOME" != "/nonexistent" ] && [ ! -e $SLURMHOME ] && \
-           [ ! -e /var/run/slurm-llnl/slurmctld.pid ] && \
-           [ ! -e /var/run/slurm-llnl/slurmdbd.pid ] ; then
+           [ ! -e /run/slurm-llnl/slurmctld.pid ] && \
+           [ ! -e /run/slurm-llnl/slurmdbd.pid ] ; then
              usermod --home /nonexistent slurm
         fi
       else
@@ -47,8 +47,8 @@ case "$1" in
                   --home /nonexistent slurm
         fi
         if [ "$SLURMHOME" != "/nonexistent" ] && [ ! -e $SLURMHOME ] && \
-           [ ! -e /var/run/slurm-llnl/slurmctld.pid ] && \
-           [ ! -e /var/run/slurm-llnl/slurmdbd.pid ] ; then
+           [ ! -e /run/slurm-llnl/slurmctld.pid ] && \
+           [ ! -e /run/slurm-llnl/slurmdbd.pid ] ; then
             usermod --home /nonexistent slurm
         fi
       else

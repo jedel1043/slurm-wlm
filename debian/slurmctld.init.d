@@ -6,7 +6,7 @@
 #              resources and distributes work to those resources.
 #
 # processname: /usr/sbin/slurmctld
-# pidfile: /var/run/slurm-llnl/slurmctld.pid
+# pidfile: /run/slurm-llnl/slurmctld.pid
 #
 # config: /etc/default/slurmctld
 #
@@ -107,8 +107,8 @@ start() {
   fi
 
   # Create run-time variable data
-  mkdir -p /var/run/slurm-llnl
-  chown slurm:slurm /var/run/slurm-llnl
+  mkdir -p /run/slurm-llnl
+  chown slurm:slurm /run/slurm-llnl
 
   # Checking if StateSaveLocation is under run
   if [ "$1" = "slurmctld" ] ; then
@@ -116,9 +116,9 @@ start() {
                        | grep -v "^ *#")
     SDIRLOCATION=${SDIRLOCATION##*=}
     SDIRLOCATION=${SDIRLOCATION%#*}
-    if [ "${SDIRLOCATION}" = "/var/run/slurm-llnl/slurmctld" ] ; then
-      if ! [ -e /var/run/slurm-llnl/slurmctld ] ; then
-        ln -s /var/lib/slurm-llnl/slurmctld /var/run/slurm-llnl/slurmctld
+    if [ "${SDIRLOCATION}" = "/run/slurm-llnl/slurmctld" ] ; then
+      if ! [ -e /run/slurm-llnl/slurmctld ] ; then
+        ln -s /var/lib/slurm-llnl/slurmctld /run/slurm-llnl/slurmctld
       fi
     fi
   fi
@@ -156,7 +156,7 @@ getpidfile() {
         dpidfile=${dpidfile##*=}
         dpidfile=${dpidfile%#*}
     else
-        dpidfile=/var/run/${1}.pid
+        dpidfile=/run/${1}.pid
     fi
 
     echo $dpidfile

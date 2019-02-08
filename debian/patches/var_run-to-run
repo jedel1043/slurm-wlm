@@ -1,0 +1,292 @@
+Author: Michael R. Crusoe <michael.crusoe@gmail.com>
+Description: run-transition: /var/run to /run
+--- slurm-llnl.orig/contribs/cray/csm/slurm.conf.j2
++++ slurm-llnl/contribs/cray/csm/slurm.conf.j2
+@@ -19,8 +19,8 @@
+ PropagateResourceLimitsExcept=AS
+ # ReturnToService 2 will let rebooted nodes come back up immediately
+ ReturnToService=2
+-SlurmctldPidFile=/var/run/slurmctld.pid
+-SlurmdPidFile=/var/run/slurmd.pid
++SlurmctldPidFile=/run/slurmctld.pid
++SlurmdPidFile=/run/slurmd.pid
+ SlurmdSpoolDir=/var/spool/slurmd
+ SlurmUser=root
+ StateSaveLocation=/var/spool/slurm
+--- slurm-llnl.orig/contribs/cray/slurmsmwd/main.c
++++ slurm-llnl/contribs/cray/slurmsmwd/main.c
+@@ -549,8 +549,8 @@
+ 		if (xdaemon())
+ 			error("daemon(): %m");
+ 	}
+-	if (create_pidfile("/var/run/slurmsmwd.pid", 0) < 0)
+-		fatal("Unable to create pidfile /var/run/slurmswmd.pid");
++	if (create_pidfile("/run/slurmsmwd.pid", 0) < 0)
++		fatal("Unable to create pidfile /run/slurmswmd.pid");
+ 
+ 	slurm_mutex_init(&down_node_lock);
+ 
+--- slurm-llnl.orig/contribs/cray/slurmsmwd/slurmsmwd.service.in
++++ slurm-llnl/contribs/cray/slurmsmwd/slurmsmwd.service.in
+@@ -7,7 +7,7 @@
+ Type=forking
+ ExecStart=@sbindir@/slurmsmwd
+ ExecReload=/bin/kill -HUP $MAINPID
+-PIDFile=/var/run/slurmsmwd.pid
++PIDFile=/run/slurmsmwd.pid
+ 
+ [Install]
+ WantedBy=multi-user.target
+--- slurm-llnl.orig/doc/html/accounting.shtml
++++ slurm-llnl/doc/html/accounting.shtml
+@@ -345,7 +345,7 @@
+ 
+ <li><b>AccountingStoragePass</b>: If using SlurmDBD with a second MUNGE
+ daemon, store the pathname of the named socket used by MUNGE to provide
+-enterprise-wide authentication (i.e. /var/run/munge/moab.socket.2). Otherwise
++enterprise-wide authentication (i.e. /run/munge/moab.socket.2). Otherwise
+ the default MUNGE daemon will be used. </li>
+ 
+ <li><b>AccountingStoragePort</b>:
+--- slurm-llnl.orig/doc/html/configurator.easy.html.in
++++ slurm-llnl/doc/html/configurator.easy.html.in
+@@ -484,10 +484,10 @@
+ This is used for locate the appropriate daemon for signaling.
+ Specify a specify the fully qualified pathname for the file.
+ <P>
+-<input type="text" name="slurmctld_pid_file" value="/var/run/slurmctld.pid">
++<input type="text" name="slurmctld_pid_file" value="/run/slurmctld.pid">
+ <B>SlurmctldPidFile</B>
+ <P>
+-<input type="text" name="slurmd_pid_file" value="/var/run/slurmd.pid">
++<input type="text" name="slurmd_pid_file" value="/run/slurmd.pid">
+ <B>SlurmdPidFile</B>
+ <P>
+ 
+--- slurm-llnl.orig/doc/html/configurator.html.in
++++ slurm-llnl/doc/html/configurator.html.in
+@@ -695,10 +695,10 @@
+ This is used for locate the appropriate daemon for signaling.
+ Specify a specify the fully qualified pathname for the file.
+ <P>
+-<input type="text" name="slurmctld_pid_file" value="/var/run/slurmctld.pid">
++<input type="text" name="slurmctld_pid_file" value="/run/slurmctld.pid">
+ <B>SlurmctldPidFile</B>
+ <P>
+-<input type="text" name="slurmd_pid_file" value="/var/run/slurmd.pid">
++<input type="text" name="slurmd_pid_file" value="/run/slurmd.pid">
+ <B>SlurmdPidFile</B>
+ <P>
+ 
+--- slurm-llnl.orig/doc/html/programmer_guide.shtml
++++ slurm-llnl/doc/html/programmer_guide.shtml
+@@ -272,7 +272,7 @@
+ 
+ <pre>
+ SlurmdLogFile=/var/log/slurm/slurmd.%n.log
+-SlurmdPidFile=/var/run/slurmd.%n.pid
++SlurmdPidFile=/run/slurmd.%n.pid
+ SlurmdSpoolDir=/var/spool/slurmd.%n
+ </pre>
+ 
+@@ -305,7 +305,7 @@
+ EnvironmentFile=-/etc/sysconfig/slurmd
+ ExecStart=/usr/sbin/slurmd -N%i $SLURMD_OPTIONS
+ ExecReload=/bin/kill -HUP $MAINPID
+-PIDFile=/var/run/slurmd-%i.pid
++PIDFile=/run/slurmd-%i.pid
+ KillMode=process
+ LimitNOFILE=51200
+ LimitMEMLOCK=infinity
+--- slurm-llnl.orig/doc/man/man5/slurm.conf.5
++++ slurm-llnl/doc/man/man5/slurm.conf.5
+@@ -108,7 +108,7 @@
+ while the default MUNGE daemon provides authentication within a
+ cluster.  In that case, \fBAccountingStoragePass\fR should specify the
+ named port to be used for communications with the alternate MUNGE
+-daemon (e.g.  "/var/run/munge/global.socket.2"). The default value is
++daemon (e.g.  "/run/munge/global.socket.2"). The default value is
+ NULL.  Also see \fBDefaultStoragePass\fR.
+ 
+ .TP
+@@ -302,8 +302,8 @@
+ .TP
+ \fBsocket\fR
+ Path name to a MUNGE daemon socket to use
+-(e.g. "socket=/var/run/munge/munge.socket.2").
+-The default value is "/var/run/munge/munge.socket.2".
++(e.g. "socket=/run/munge/munge.socket.2").
++The default value is "/run/munge/munge.socket.2".
+ Used by \fIauth/munge\fR and \fIcrypto/munge\fR.
+ .TP
+ \fBttl\fR
+@@ -3316,7 +3316,7 @@
+ \fBSlurmctldPidFile\fR
+ Fully qualified pathname of a file into which the  \fBslurmctld\fR daemon
+ may write its process id. This may be used for automated signal processing.
+-The default value is "/var/run/slurmctld.pid".
++The default value is "/run/slurmctld.pid".
+ 
+ .TP
+ \fBSlurmctldPlugstack\fR
+@@ -3464,7 +3464,7 @@
+ \fBslurmd\fR is running.
+ Any "%n" within the name is replaced with the Slurm node name on which the
+ \fBslurmd\fR is running.
+-The default value is "/var/run/slurmd.pid".
++The default value is "/run/slurmd.pid".
+ 
+ .TP
+ \fBSlurmdPort\fR
+--- slurm-llnl.orig/doc/man/man5/slurmdbd.conf.5
++++ slurm-llnl/doc/man/man5/slurmdbd.conf.5
+@@ -365,7 +365,7 @@
+ \fBPidFile\fR
+ Fully qualified pathname of a file into which the Slurm Database Daemon
+ may write its process ID. This may be used for automated signal processing.
+-The default value is "/var/run/slurmdbd.pid".
++The default value is "/run/slurmdbd.pid".
+ 
+ .TP
+ \fBPluginDir\fR
+@@ -598,7 +598,7 @@
+ .br
+ #ArchiveScript=/usr/sbin/slurm.dbd.archive
+ .br
+-AuthInfo=/var/run/munge/munge.socket.2
++AuthInfo=/run/munge/munge.socket.2
+ .br
+ AuthType=auth/munge
+ .br
+--- slurm-llnl.orig/etc/init.d.slurm.in
++++ slurm-llnl/etc/init.d.slurm.in
+@@ -6,10 +6,10 @@
+ #              resources and distributes work to those resources.
+ #
+ # processname: @sbindir@/slurmd
+-# pidfile: /var/run/slurmd.pid
++# pidfile: /run/slurmd.pid
+ #
+ # processname: @sbindir@/slurmctld
+-# pidfile: /var/run/slurmctld.pid
++# pidfile: /run/slurmctld.pid
+ #
+ # config: /etc/sysconfig/slurm
+ #
+@@ -142,7 +142,7 @@
+ 	pidfile=${pidfile%#*}
+ 	pidfile=${pidfile//\"/}
+     else
+-	pidfile=/var/run/${base}.pid
++	pidfile=/run/${base}.pid
+     fi
+ 
+     pid=`pidof -o $$ -o $$PPID -o %PPID -x $1 || \
+--- slurm-llnl.orig/etc/init.d.slurmdbd.in
++++ slurm-llnl/etc/init.d.slurmdbd.in
+@@ -5,7 +5,7 @@
+ #              SLURM (Simple Linux Utility for Resource Management).
+ #
+ # processname: @sbindir@/slurmdbd
+-# pidfile: /var/run/slurmdbd.pid
++# pidfile: /run/slurmdbd.pid
+ #
+ # config: /etc/sysconfig/slurm
+ #
+@@ -103,7 +103,7 @@
+ 	pidfile=${pidfile%#*}
+ 	pidfile=${pidfile//\"/}
+     else
+-	pidfile=/var/run/slurmdbd.pid
++	pidfile=/run/slurmdbd.pid
+     fi
+ 
+    pid=`pidof -o $$ -o $$PPID -o %PPID -x $1 || \
+--- slurm-llnl.orig/etc/slurm.conf.example
++++ slurm-llnl/etc/slurm.conf.example
+@@ -25,8 +25,8 @@
+ SlurmdSpoolDir=/var/spool/slurm/d
+ SwitchType=switch/none
+ MpiDefault=none
+-SlurmctldPidFile=/var/run/slurmctld.pid
+-SlurmdPidFile=/var/run/slurmd.pid
++SlurmctldPidFile=/run/slurmctld.pid
++SlurmdPidFile=/run/slurmd.pid
+ ProctrackType=proctrack/pgid
+ #PluginDir=
+ #FirstJobId=
+--- slurm-llnl.orig/etc/slurmctld.service.in
++++ slurm-llnl/etc/slurmctld.service.in
+@@ -8,7 +8,7 @@
+ EnvironmentFile=-/etc/sysconfig/slurmctld
+ ExecStart=@sbindir@/slurmctld $SLURMCTLD_OPTIONS
+ ExecReload=/bin/kill -HUP $MAINPID
+-PIDFile=/var/run/slurmctld.pid
++PIDFile=/run/slurmctld.pid
+ LimitNOFILE=65536
+ @SYSTEMD_TASKSMAX_OPTION@
+ 
+--- slurm-llnl.orig/etc/slurmd.service.in
++++ slurm-llnl/etc/slurmd.service.in
+@@ -8,7 +8,7 @@
+ EnvironmentFile=-/etc/sysconfig/slurmd
+ ExecStart=@sbindir@/slurmd $SLURMD_OPTIONS
+ ExecReload=/bin/kill -HUP $MAINPID
+-PIDFile=/var/run/slurmd.pid
++PIDFile=/run/slurmd.pid
+ KillMode=process
+ LimitNOFILE=131072
+ LimitMEMLOCK=infinity
+--- slurm-llnl.orig/etc/slurmdbd.conf.example
++++ slurm-llnl/etc/slurmdbd.conf.example
+@@ -13,7 +13,7 @@
+ #
+ # Authentication info
+ AuthType=auth/munge
+-#AuthInfo=/var/run/munge/munge.socket.2
++#AuthInfo=/run/munge/munge.socket.2
+ #
+ # slurmDBD info
+ DbdAddr=localhost
+@@ -24,7 +24,7 @@
+ DebugLevel=4
+ #DefaultQOS=normal,standby
+ LogFile=/var/log/slurm/slurmdbd.log
+-PidFile=/var/run/slurmdbd.pid
++PidFile=/run/slurmdbd.pid
+ #PluginDir=/usr/lib/slurm
+ #PrivateData=accounts,users,usage,jobs
+ #TrackWCKey=yes
+--- slurm-llnl.orig/etc/slurmdbd.service.in
++++ slurm-llnl/etc/slurmdbd.service.in
+@@ -8,7 +8,7 @@
+ EnvironmentFile=-/etc/sysconfig/slurmdbd
+ ExecStart=@sbindir@/slurmdbd $SLURMDBD_OPTIONS
+ ExecReload=/bin/kill -HUP $MAINPID
+-PIDFile=/var/run/slurmdbd.pid
++PIDFile=/run/slurmdbd.pid
+ LimitNOFILE=65536
+ @SYSTEMD_TASKSMAX_OPTION@
+ 
+--- slurm-llnl.orig/src/plugins/auth/munge/auth_munge.c
++++ slurm-llnl/src/plugins/auth/munge/auth_munge.c
+@@ -170,7 +170,7 @@
+ 
+ #if 0
+ 	/* This logic can be used to determine what socket is used by default.
+-	 * A typical name is "/var/run/munge/munge.socket.2" */
++	 * A typical name is "/run/munge/munge.socket.2" */
+ {
+ 	char *old_socket;
+ 	if (munge_ctx_get(ctx, MUNGE_OPT_SOCKET, &old_socket) != EMUNGE_SUCCESS)
+--- slurm-llnl.orig/src/plugins/task/cray/task_cray.c
++++ slurm-llnl/src/plugins/task/cray/task_cray.c
+@@ -115,7 +115,7 @@
+ static int track_status = 1;
+ 
+ // A directory on the compute node where temporary files will be kept
+-#define TASK_CRAY_RUN_DIR   "/var/run/task_cray"
++#define TASK_CRAY_RUN_DIR   "/run/task_cray"
+ 
+ // The spool directory used by libalpslli
+ // If it doesn't exist, skip exit status recording

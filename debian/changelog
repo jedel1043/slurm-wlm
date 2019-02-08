@@ -9,6 +9,7 @@ slurm-llnl (18.08.5.2-1) UNRELEASED; urgency=medium
   * Remove trailing whitespace in debian/changelog
   * Remove trailing whitespace in debian/copyright
   * Remove trailing whitespace in debian/rules
+  * run-transition: /var/run to /run
 
  -- Michael R. Crusoe <michael.crusoe@gmail.com>  Fri, 08 Feb 2019 00:48:00 -0800
 

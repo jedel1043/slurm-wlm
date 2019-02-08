@@ -20,7 +20,7 @@ set -e
 
 case "$1" in
        purge)
-         rm -rf /var/run/slurm-llnl/slurmctld
+         rm -rf /run/slurm-llnl/slurmctld
          rm -rf /var/lib/slurm-llnl/slurmctld
          rm -f /var/log/slurm-llnl/slurmctld*.log*
          if [    ! -e /usr/sbin/slurmd \
@@ -32,7 +32,7 @@ case "$1" in
             if [ -n "$(id -u slurm 2>/dev/null)" ] ; then
               deluser --quiet slurm || true
             fi
-            rm -rf /var/run/slurm-llnl
+            rm -rf /run/slurm-llnl
             if which ucf >/dev/null; then
               ucf --purge /etc/slurm-llnl/slurm.conf
             fi

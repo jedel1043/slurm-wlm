@@ -50,7 +50,7 @@ case "$1" in
            if [ -n "$(id -u slurm 2>/dev/null)" ] ; then
              deluser --quiet slurm || true
            fi
-           rm -rf /var/run/slurm-llnl
+           rm -rf /run/slurm-llnl
            if which ucf >/dev/null; then
              ucf --purge /etc/slurm-llnl/slurm.conf
            fi
