@@ -27,6 +27,12 @@ case "$1" in
 	       cp --preserve=mode,ownership /etc/slurm-llnl/$conf_file /etc/slurm/
 	    fi
 	 done
+         if [ -e /etc/slurm/slurm.conf ] ; then
+            oldpiddir=/var/run/slurm-llnl
+            newpiddir=/run
+            conffile=/etc/slurm/slurm.conf
+            sed -i "s@^\(\s*Slurm\)\(ctl\|\)\(dPidFile\s*=\s*\)$oldpiddir@\1\2\3$newpiddir@i" $conffile
+         fi
          if [ -d /etc/slurm-llnl/plugstack.conf.d ] && \
             [ -n "$(ls /etc/slurm-llnl/plugstack.conf.d/*.conf 2> /dev/null || true)" ] ; then
             for file in /etc/slurm-llnl/plugstack.conf.d/*.conf ; do

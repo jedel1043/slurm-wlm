@@ -26,11 +26,6 @@ case "$1" in
          rm -rf /etc/slurm/slurmdbd.conf
          rm -rf /var/log/slurm-llnl/slurmdbd*log*
          pkill -9 -u slurm slurmdbd || true
-         if [    ! -e /usr/sbin/slurmctld \
-              -a ! -e /usr/sbin/slurmd \
-              -a ! -e /usr/bin/squeue ] ; then
-           rm -rf /var/run/slurm-llnl
-         fi
         ;;
 
        remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
