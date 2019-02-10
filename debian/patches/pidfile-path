@@ -1,6 +1,6 @@
 Description: Fix default pidfile paths
  This patch points default pidfild paths under /run
-Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+Author: Gennaro Oliva <oliva.g@na.icar.cnr.it> and Mehdi Dogguy <mehdi@debian.org>
 Bug-Debian: http://bugs.debian.org/885759
 Forwarded: no
 Last-Update: 2018-12-13
