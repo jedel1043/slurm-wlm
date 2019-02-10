@@ -1,6 +1,7 @@
 slurm-llnl (18.08.5-1) UNRELEASED; urgency=medium
 
-  * New upstream release fixes CVE-2019-6438
+  [ Gennaro Oliva ]
+  * New upstream release fixes CVE-2019-6438 (Closes: #920997)
   * Handling slurm user inside the plugin package as suggested by
     Karl Kornel (Closes: #850891)
   * Allow using a slurm user with a different UID if created before
@@ -11,7 +12,15 @@ slurm-llnl (18.08.5-1) UNRELEASED; urgency=medium
   * Move pid files under /run
   * Move log files under /var/log/slurm
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 31 Jan 2019 14:43:48 +0100
+  [ Michael R. Crusoe ]
+  * debhelper 11
+  * debian/control: reformated using cme fix dpkg-control
+  * Standards-Version: 4.3.0; no changes needed
+  * Remove trailing whitespace in debian/copyright
+  * Remove trailing whitespace in debian/rules
+  * run-transition: /var/run to /run
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sun, 10 Feb 2019 18:05:49 +0100
 
 slurm-llnl (18.08.3-1) unstable; urgency=medium
 
