@@ -205,7 +205,8 @@ Architecture: all
 Section: doc
 Depends: libjs-jquery,
          ${shlibs:Depends},
-         ${misc:Depends}
+         ${misc:Depends},
+	 libjs-jquery
 Description: SLURM documentation
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
