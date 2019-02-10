@@ -1,4 +1,4 @@
-slurm-llnl (18.08.5-1) UNRELEASED; urgency=medium
+slurm-llnl (18.08.5.2-1) UNRELEASED; urgency=medium
 
   [ Gennaro Oliva ]
   * New upstream release fixes CVE-2019-6438 (Closes: #920997)
