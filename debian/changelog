@@ -9,6 +9,7 @@ slurm-llnl (18.08.5-1) UNRELEASED; urgency=medium
   * Move configuration in /etc/slurm
   * Handling configuration files in the plugin package
   * Move pid files under /run
+  * Move log files under /var/log/slurm
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 31 Jan 2019 14:43:48 +0100
 

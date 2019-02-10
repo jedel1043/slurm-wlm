@@ -28,10 +28,17 @@ case "$1" in
 	    fi
 	 done
          if [ -e /etc/slurm/slurm.conf ] ; then
-            oldpiddir=/var/run/slurm-llnl
-            newpiddir=/run
             conffile=/etc/slurm/slurm.conf
-            sed -i "s@^\(\s*Slurm\)\(ctl\|\)\(dPidFile\s*=\s*\)$oldpiddir@\1\2\3$newpiddir@i" $conffile
+
+            # Moving PID file location
+            olddir=/var/run/slurm-llnl
+            newdir=/run
+            sed -i "s@^\(\s*Slurm\)\(ctl\|\)\(dPidFile\s*=\s*\)$olddir@\1\2\3$newdir@i" $conffile
+
+            # Moving log file location
+            olddir=/var/log/slurm-llnl
+            newdir=/var/log/slurm
+            sed -i "s@^\(\s*Slurm\)\(ctl\|\)\(dLogFile\s*=\s*\)$olddir@\1\2\3$newdir@i" $conffile
          fi
          if [ -d /etc/slurm-llnl/plugstack.conf.d ] && \
             [ -n "$(ls /etc/slurm-llnl/plugstack.conf.d/*.conf 2> /dev/null || true)" ] ; then

@@ -22,7 +22,7 @@ case "$1" in
       chown slurm:slurm /var/lib/slurm-llnl
       chown slurm:slurm /var/lib/slurm-llnl/slurmd
       chown slurm:slurm /var/lib/slurm-llnl/checkpoint
-      chown slurm:slurm /var/log/slurm-llnl
+      chown slurm:slurm /var/log/slurm
 
       # Check for a major release upgrade from version 1
       OLDMAJREL=$(echo $2 | sed "s/\..*//")
@@ -32,6 +32,11 @@ case "$1" in
 
       update-alternatives --install /usr/sbin/slurmd slurmd /usr/sbin/slurmd-wlm 50 \
 	--slave /usr/sbin/slurmstepd slurmstepd /usr/sbin/slurmstepd-wlm
+
+      if [ -n "$2" ] && dpkg --compare-versions $2 lt 18.08.5-1 ; then
+	 mv -n /var/log/slurm-llnl/slurmd.log* /var/log/slurm
+	 rmdir --ignore-fail-on-non-empty /var/log/slurm-llnl
+      fi
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

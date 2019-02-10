@@ -21,7 +21,7 @@ set -e
 case "$1" in
        purge)
          rm -rf /var/lib/slurm-llnl/slurmctld
-         rm -f /var/log/slurm-llnl/slurmctld*.log*
+         rm -f /var/log/slurm/slurmctld*.log*
          pkill -9 -u slurm slurmctld || true
          ;;
 

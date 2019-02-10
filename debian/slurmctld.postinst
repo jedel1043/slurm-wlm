@@ -21,8 +21,12 @@ case "$1" in
     configure)
       chown slurm:slurm /var/lib/slurm-llnl
       chown slurm:slurm /var/lib/slurm-llnl/slurmctld
-      chown slurm:slurm /var/log/slurm-llnl
+      chown slurm:slurm /var/log/slurm
       update-alternatives --install /usr/sbin/slurmctld slurmctld /usr/sbin/slurmctld-wlm 50
+      if [ -n "$2" ] && dpkg --compare-versions $2 lt 18.08.5-1 ; then
+	 mv -n /var/log/slurm-llnl/slurmctld.log* /var/log/slurm
+	 rmdir --ignore-fail-on-non-empty /var/log/slurm-llnl
+      fi
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

@@ -18,15 +18,25 @@ set -e
 #
 case "$1" in
     configure)
-      chown slurm:slurm /var/log/slurm-llnl
+      chown slurm:slurm /var/log/slurm
 
       if [ -n "$2" ] && dpkg --compare-versions $2 lt 18.08.5-1 ; then
         if [ -e /etc/slurm-llnl/slurmdbd.conf ] && [ ! -e /etc/slurm/slurmdbd.conf ] ; then
            cp --preserve=mode,ownership /etc/slurm-llnl/slurmdbd.conf /etc/slurm
-           oldpiddir=/var/run/slurm-llnl
-           newpiddir=/run
            conffile=/etc/slurm/slurmdbd.conf
-           sed -i "s@^\(\s*PidFile\s*=\s*\)$oldpiddir@\1$newpiddir@i" $conffile
+
+           # Moving PID file location
+           olddir=/var/run/slurm-llnl
+           newdir=/run
+           sed -i "s@^\(\s*PidFile\s*=\s*\)$olddir@\1$newdir@i" $conffile
+
+           # Moving log file location
+           olddir=/var/log/slurm-llnl
+           newdir=/var/log/slurm
+           sed -i "s@^\(\s*LogFile\s*=\s*\)$olddir@\1$newdir@i" $conffile
+
+	   mv -n /var/log/slurm-llnl/slurmdbd.log* /var/log/slurm
+	   rmdir --ignore-fail-on-non-empty /var/log/slurm-llnl
         fi
       fi
     ;;

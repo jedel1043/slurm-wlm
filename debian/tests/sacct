@@ -15,7 +15,7 @@ StorageLoc=slurm
 StoragePass=shazaam
 StorageType=accounting_storage/mysql
 StorageUser=slurm
-LogFile=/var/log/slurm-llnl/slurmdbd.log
+LogFile=/var/log/slurm/slurmdbd.log
 PidFile=/run/slurmdbd.pid
 SlurmUser=slurm
 EOF
@@ -57,9 +57,9 @@ JobCompType=jobcomp/linux
 JobAcctGatherFrequency=30
 JobAcctGatherType=jobacct_gather/none
 SlurmctldDebug=3
-SlurmctldLogFile=/var/log/slurm-llnl/slurmctld.log
+SlurmctldLogFile=/var/log/slurm/slurmctld.log
 SlurmdDebug=3
-SlurmdLogFile=/var/log/slurm-llnl/slurmd.log
+SlurmdLogFile=/var/log/slurm/slurmd.log
 NodeName=localhost Procs=1 State=UNKNOWN
 PartitionName=test Nodes=localhost Default=YES MaxTime=INFINITE State=UP
 EOF

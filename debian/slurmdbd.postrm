@@ -24,7 +24,7 @@ case "$1" in
            ucf --purge /etc/slurm/slurmdbd.conf
          fi
          rm -rf /etc/slurm/slurmdbd.conf
-         rm -rf /var/log/slurm-llnl/slurmdbd*log*
+         rm -rf /var/log/slurm/slurmdbd*log*
          pkill -9 -u slurm slurmdbd || true
         ;;
 
