@@ -20,7 +20,12 @@ set -e
 
 case "$1" in
        purge)
-         rm -rf /var/lib/slurm-llnl/slurmd
+         # Removing old SlurmdSpoolDir
+         if [ -e /var/lib/slurm-llnl/slurmd ] ; then
+            rm -rf /var/lib/slurm-llnl/slurmd
+            rmdir --ignore-fail-on-non-empty /var/lib/slurm-llnl
+         fi
+         rm -rf /var/lib/slurm/slurmd
          rm -f /var/log/slurm/slurmd*.log*
          ;;
 

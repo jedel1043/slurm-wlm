@@ -1,2 +1,2 @@
-var/lib/slurm-llnl/slurmctld
+var/lib/slurm/slurmctld
 var/log/slurm

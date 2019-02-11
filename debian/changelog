@@ -11,6 +11,7 @@ slurm-llnl (18.08.5.2-1) UNRELEASED; urgency=medium
   * Handling configuration files in the plugin package
   * Move pid files under /run
   * Move log files under /var/log/slurm
+  * Move statesave and spooldir under /var/lib/slurm
 
   [ Michael R. Crusoe ]
   * debhelper 11

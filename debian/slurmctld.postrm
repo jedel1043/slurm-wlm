@@ -20,7 +20,13 @@ set -e
 
 case "$1" in
        purge)
-         rm -rf /var/lib/slurm-llnl/slurmctld
+         # Remove old StateSaveLocation files
+         if [ -e /var/lib/slurm-llnl/slurmctld ] ; then
+            rm -rf /var/lib/slurm-llnl/slurmctld
+            rmdir --ignore-fail-on-non-empty /var/lib/slurm-llnl
+         fi
+
+         rm -rf /var/lib/slurm/slurmctld
          rm -f /var/log/slurm/slurmctld*.log*
          pkill -9 -u slurm slurmctld || true
          ;;
