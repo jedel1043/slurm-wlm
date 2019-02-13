@@ -1,3 +1,10 @@
+slurm-llnl (16.05.9-1+deb9u3) stretch-security; urgency=high
+
+  * Fix CVE-2019-6438 by adding mitigation for a potential
+    heap-overflow on 32-bit systems
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 12 Feb 2019 23:34:26 +0100
+
 slurm-llnl (16.05.9-1+deb9u2) stretch-security; urgency=high
 
   * Fix CVE-2018-10995 caused by mishandling user names (aka user_name
