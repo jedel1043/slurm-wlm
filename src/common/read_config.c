@@ -1336,6 +1336,9 @@ static int _parse_partitionname(void **dest, slurm_parser_enum_t type,
 		if (!s_p_get_string(&p->allow_accounts, "AllowAccounts",tbl))
 			s_p_get_string(&p->allow_accounts,
 				       "AllowAccounts", dflt);
+		/* lower case account names */
+		if (p->allow_accounts)
+			xstrtolower(p->allow_accounts);
 		if (p->allow_accounts &&
 		    (xstrcasecmp(p->allow_accounts, "ALL") == 0))
 			xfree(p->allow_accounts);
@@ -1348,6 +1351,9 @@ static int _parse_partitionname(void **dest, slurm_parser_enum_t type,
 
 		if (!s_p_get_string(&p->allow_qos, "AllowQos", tbl))
 			s_p_get_string(&p->allow_qos, "AllowQos", dflt);
+		/* lower case qos names */
+		if (p->allow_qos)
+			xstrtolower(p->allow_qos);
 		if (p->allow_qos && (xstrcasecmp(p->allow_qos, "ALL") == 0))
 			xfree(p->allow_qos);
 
@@ -1358,6 +1364,9 @@ static int _parse_partitionname(void **dest, slurm_parser_enum_t type,
 			error("Both AllowAccounts and DenyAccounts are "
 			      "defined, DenyAccounts will be ignored");
 		}
+		/* lower case account names */
+		else if(p->deny_accounts)
+			xstrtolower(p->deny_accounts);
 
 		if (!s_p_get_string(&p->deny_qos, "DenyQos", tbl))
 			s_p_get_string(&p->deny_qos, "DenyQos", dflt);
@@ -1365,6 +1374,9 @@ static int _parse_partitionname(void **dest, slurm_parser_enum_t type,
 			error("Both AllowQos and DenyQos are defined, "
 			      "DenyQos will be ignored");
 		}
+		/* lower case qos names */
+		else if(p->deny_qos)
+			xstrtolower(p->deny_qos);
 
 		if (!s_p_get_string(&p->allow_alloc_nodes,
 				    "AllocNodes", tbl)) {
@@ -3465,6 +3477,29 @@ static uint16_t _health_node_state(char *state_str)
 	return state_num;
 }
 
+/* Return TRUE if a comma-delimited token "hbm" is found */
+static bool _have_hbm_token(char *gres_plugins)
+{
+	char *tmp, *tok, *save_ptr = NULL;
+	bool rc = false;
+
+	if (!gres_plugins)
+		return false;
+
+	tmp = xstrdup(gres_plugins);
+	tok = strtok_r(tmp, ",", &save_ptr);
+	while (tok) {
+		if (!xstrcasecmp(tok, "hbm")) {
+			rc = true;
+			break;
+		}
+		tok = strtok_r(NULL, ",", &save_ptr);
+	}
+	xfree(tmp);
+
+	return rc;
+}
+
 /*
  *
  * IN/OUT ctl_conf_ptr - a configuration as loaded by read_slurm_conf_ctl
@@ -4012,6 +4047,15 @@ _validate_and_set_defaults(slurm_ctl_conf_t *conf, s_p_hashtbl_t *hashtbl)
 
 	(void) s_p_get_string(&conf->node_features_plugins,
 			     "NodeFeaturesPlugins", hashtbl);
+
+	if (xstrstr(conf->node_features_plugins, "knl_") &&
+	    !_have_hbm_token(conf->gres_plugins)) {
+		/* KNL nodes implicitly add GRES type of "hbm" */
+		if (conf->gres_plugins && conf->gres_plugins[0])
+			xstrcat(conf->gres_plugins, ",hbm");
+		else
+			xstrcat(conf->gres_plugins, "hbm");
+	}
 
 	if (!s_p_get_string(&conf->accounting_storage_tres,
 			    "AccountingStorageTRES", hashtbl))
