@@ -16,6 +16,7 @@ slurm-llnl (18.08.5.2-1) UNRELEASED; urgency=medium
   * Remove init scripts symlinks for old SlurmdSpoolDir and StateSaveLocation
   * Sync configurators with upstream
   * Bump debhelper compat level to 11
+  * Remove --without-blcr configure option not needed anymore
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 14 Feb 2019 13:25:36 +0100
 
