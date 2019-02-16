@@ -22,7 +22,7 @@ case "$1" in
        purge)
 
          # Delete slurm host key and cert
-         SCONF=/etc/slurm/slurm.conf
+         SCONF=/etc/slurm-llnl/slurm.conf
          if [ -e $SCONF ] ; then
            CRYPTOTYPE=$(grep CryptoType $SCONF | grep -v "^ *#" || true)
            CRYPTOTYPE=${CRYPTOTYPE##*=}
