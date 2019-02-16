@@ -14,6 +14,7 @@ slurm-llnl (18.08.5.2-1) UNRELEASED; urgency=medium
   * Update service files to sync with upstream
   * Update init scripts with the new pid files
   * Remove init scripts symlinks for old SlurmdSpoolDir and StateSaveLocation
+  * Sync configurators with upstream
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 14 Feb 2019 13:25:36 +0100
 
