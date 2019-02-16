@@ -12,6 +12,8 @@ slurm-llnl (18.08.5.2-1) UNRELEASED; urgency=medium
   * Fix a typo in the perl code
   * Remove rc4 symlink creation in slurmdbd.postinst
   * Update service files to sync with upstream
+  * Update init scripts with the new pid files
+  * Remove init scripts symlinks for old SlurmdSpoolDir and StateSaveLocation
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 14 Feb 2019 13:25:36 +0100
 
