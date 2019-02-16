@@ -70,7 +70,7 @@ override_dh_auto_install:
 	done
 
 	# Remove embedded jquery.min.js
-	rm -fv debian/tmp/usr/share/doc/slurm-wlm-doc/html/jquery.min.js
+	rm -fv debian/tmp/usr/share/doc/slurm-wlm/html/jquery.min.js
 
 	# Rename the header files directory to slurm
 	mv -v debian/tmp/usr/include/slurm-wlm debian/tmp/usr/include/slurm
