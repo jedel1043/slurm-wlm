@@ -18,6 +18,7 @@ slurm-llnl (18.08.5.2-1) UNRELEASED; urgency=medium
   * Bump debhelper compat level to 11
   * Remove --without-blcr configure option not needed anymore
   * Add libfreeipmi-dev build dependency to enable freeipmi support
+  * Remove old d/NEWS file
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 14 Feb 2019 13:25:36 +0100
 
