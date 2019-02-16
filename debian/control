@@ -25,6 +25,7 @@ Build-Depends:
  librrd-dev,
  libipmimonitoring-dev,
  hdf5-helpers,
+ libfreeipmi-dev,
  libhdf5-dev,
  man2html,
  libssh2-1-dev,
