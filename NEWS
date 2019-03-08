@@ -1,6 +1,62 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 18.08.6-2
+============================
+ -- Remove deadlock situation when logging and --enable-debug is used.
+ -- Fix RPM packaging for accounting_storage/mysql.
+
+* Changes in Slurm 18.08.6
+==========================
+ -- Added parsing of -H flag with scancel.
+ -- Fix slurmsmwd build on 32-bit systems.
+ -- acct_gather_filesystem/lustre - add support for Lustre 2.12 client.
+ -- Fix per-partition TRES factors/priority
+ -- Fix per-partition NICE priority
+ -- Fix partition access check validation for multi-partition job submissions.
+ -- Prevent segfault on empty response in 'scontrol show dwstat'.
+ -- node_features/knl_cray plugin - Preserve node's active features if it has
+    already booted when slurmctld daemon is reconfigured.
+ -- Detect missing burst buffer script and reject job.
+ -- GRES: Properly reset the topo_gres_cnt_alloc counter on slurmctld restart
+    to prevent underflow.
+ -- Avoid errors from packing accounting_storage_mysql.so when RPM is built
+    with out mysql support.
+ -- Remove deprecated -t option from slurmctld --help.
+ -- acct_gather_filesystem/lustre - fix stats gathering.
+ -- Enforce documented default usage start and end times when querying jobs from
+    the database.
+ -- Fix issues when querying running jobs from the database.
+ -- Deny sacct request where start time is later than the end time requested.
+ -- Fix sacct verbose about time and states queried.
+ -- burst_buffer/cray - allow 'scancel --hurry <jobid>' to tear down a burst
+    buffer that is currently staging data out.
+ -- X11 forwarding - allow setup if the DISPLAY environment variable lacks
+    a screen number. (Permit both "localhost:10.0" and "localhost:10".)
+ -- docs - change HTML title to include the page title or man page name.
+ -- X11 forwarding - fix an unnecessary error message when using the
+    local_xauthority X11Parameters option.
+ -- Add use_raw_hostname to X11Parameters.
+ -- Fix smail so it passes job arrays to seff correctly.
+ -- Don't check InactiveLimit for salloc --no-shell jobs.
+ -- Add SALLOC_GRES and SBATCH_GRES as input to salloc/sbatch.
+ -- Remove drain state when node doesn't reboot by ResumeTimeout.
+ -- Fix considering "resuming" nodes in scheduling.
+ -- Do not kill suspended jobs due to exceeding time limit.
+ -- Add NoAddrCache CommunicationParameter.
+ -- Don't ping powering up cloud nodes.
+ -- Add cloud_dns SlurmctldParameter.
+ -- Consider --sbindir configure option as the default path to find slurmstepd.
+ -- Fix node state printing of DRAINED$
+ -- Fix spamming dbd of down/drained nodes in maintenance reservation.
+ -- Avoid buffer overflow in time_str2secs.
+ -- Calculate suspended time for suspended steps.
+ -- Add null check for step_ptr->step_node_bitmap in _pick_step_nodes.
+ -- Fix multi-cluster srun issue after 'scontrol reconfigure' was called.
+ -- Fix accessing response_cluster_rec outside of write locks.
+ -- Fix Lua user messages not showing up on rejected submissions.
+ -- Fix printing multi-line error messages on rejected submissions.
+
 * Changes in Slurm 18.08.5-2
 ============================
  -- Fix Perl build for 32-bit systems.
@@ -531,6 +587,9 @@ documents those changes that are of interest to users and administrators.
  -- Change function name from node_features_p_changible_feature() to
     node_features_p_changeable_feature in node_features plugin.
  -- Add Slurm configuration file check logic using "slurmctld -t" command.
+
+* Changes in Slurm 17.11.14
+===========================
 
 * Changes in Slurm 17.11.13-2
 =============================

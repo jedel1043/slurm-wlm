@@ -142,6 +142,27 @@ static void _sync_part_prio(void);
 static int  _update_preempt(uint16_t old_enable_preempt);
 
 
+/*
+ * Setup the global response_cluster_rec
+ */
+static void _set_response_cluster_rec()
+{
+	if (response_cluster_rec)
+		return;
+
+	response_cluster_rec = xmalloc(sizeof(slurmdb_cluster_rec_t));
+	response_cluster_rec->name = xstrdup(slurmctld_conf.cluster_name);
+	if (slurmctld_conf.slurmctld_addr) {
+		response_cluster_rec->control_host =
+			xstrdup(slurmctld_conf.slurmctld_addr);
+	} else {
+		response_cluster_rec->control_host =
+			xstrdup(slurmctld_conf.control_addr[0]);
+	}
+	response_cluster_rec->control_port = slurmctld_conf.slurmctld_port;
+	response_cluster_rec->rpc_version = SLURM_PROTOCOL_VERSION;
+}
+
 /* Verify that Slurm directories are secure, not world writable */
 static void _stat_slurm_dirs(void)
 {
@@ -431,7 +452,10 @@ static int _build_bitmaps(void)
 			bit_set(booting_node_bitmap, i);
 		if (IS_NODE_COMPLETING(node_ptr))
 			bit_set(cg_node_bitmap, i);
-		if (IS_NODE_IDLE(node_ptr) || IS_NODE_ALLOCATED(node_ptr)) {
+		if (IS_NODE_IDLE(node_ptr) ||
+		    IS_NODE_ALLOCATED(node_ptr) ||
+		    (IS_NODE_REBOOT(node_ptr) &&
+		     (node_ptr->next_state == NODE_RESUME))) {
 			if ((drain_flag == 0) &&
 			    (!IS_NODE_NO_RESPOND(node_ptr)))
 				make_node_avail(i);
@@ -441,6 +465,10 @@ static int _build_bitmaps(void)
 			bit_set(power_node_bitmap, i);
 		if (IS_NODE_FUTURE(node_ptr))
 			bit_set(future_node_bitmap, i);
+
+		if (IS_NODE_REBOOT(node_ptr) &&
+		    (node_ptr->next_state == NODE_RESUME))
+			bit_set(rs_node_bitmap, i);
 	}
 
 	return error_code;
@@ -1459,6 +1487,8 @@ int read_slurm_conf(int recover, bool reconfig)
 	select_g_reconfigure();
 	if (reconfig && (slurm_mcs_reconfig() != SLURM_SUCCESS))
 		fatal("Failed to reconfigure mcs plugin");
+
+	_set_response_cluster_rec();
 
 	slurmctld_conf.last_update = time(NULL);
 	END_TIMER2("read_slurm_conf");

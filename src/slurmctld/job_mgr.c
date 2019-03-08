@@ -4607,6 +4607,10 @@ static int _select_nodes_parts(struct job_record *job_ptr, bool test_only,
 	ListIterator iter;
 	int rc = ESLURM_REQUESTED_PART_CONFIG_UNAVAILABLE;
 	int best_rc = -1, part_limits_rc = WAIT_NO_REASON;
+	bitstr_t *save_avail_node_bitmap = NULL;
+
+	save_avail_node_bitmap = bit_copy(avail_node_bitmap);
+	bit_or(avail_node_bitmap, rs_node_bitmap);
 
 	if (job_ptr->part_ptr_list) {
 		list_sort(job_ptr->part_ptr_list, priority_sort_part_tier);
@@ -4727,6 +4731,10 @@ static int _select_nodes_parts(struct job_record *job_ptr, bool test_only,
 		job_ptr->state_reason = WAIT_POWER_RESERVED;
 	else if (rc == ESLURM_PARTITION_DOWN)
 		job_ptr->state_reason = WAIT_PART_DOWN;
+
+	FREE_NULL_BITMAP(avail_node_bitmap);
+	avail_node_bitmap = save_avail_node_bitmap;
+
 	return rc;
 }
 
@@ -5112,6 +5120,11 @@ extern int job_signal(struct job_record *job_ptr, uint16_t signal,
 	time_t now = time(NULL);
 
 	trace_job(job_ptr, __func__, "enter");
+
+	if (IS_JOB_STAGE_OUT(job_ptr) && (flags & KILL_HURRY)) {
+		job_ptr->bit_flags |= JOB_KILL_HURRY;
+		return bb_g_job_cancel(job_ptr);
+	}
 
 	if (IS_JOB_FINISHED(job_ptr))
 		return ESLURM_ALREADY_DONE;
@@ -6331,6 +6344,7 @@ static int _valid_job_part(job_desc_msg_t * job_desc,
 			     (rc == ESLURM_JOB_MISSING_REQUIRED_PARTITION_GROUP) ||
 			     (slurmctld_conf.enforce_part_limits ==
 			      PARTITION_ENFORCE_ALL))) {
+				fail_rc = rc;
 				break;
 			} else if (rc != SLURM_SUCCESS) {
 				fail_rc = rc;
@@ -8557,7 +8571,11 @@ void job_time_limit(void)
 		if (_pack_configuring_test(job_ptr))
 			continue;
 
-		if (!IS_JOB_RUNNING(job_ptr) && !IS_JOB_SUSPENDED(job_ptr))
+		/*
+		 * Only running jobs can be killed due to timeout. Do not kill
+		 * suspended jobs due to timeout.
+		 */
+		if (!IS_JOB_RUNNING(job_ptr))
 			continue;
 
 		/*
@@ -8566,8 +8584,7 @@ void job_time_limit(void)
 		 * everything below is considered "slow", and needs to jump to
 		 * time_check before the next job is tested
 		 */
-		if (job_ptr->preempt_time &&
-		    (IS_JOB_RUNNING(job_ptr) || IS_JOB_SUSPENDED(job_ptr))) {
+		if (job_ptr->preempt_time) {
 			if ((job_ptr->warn_time) &&
 			    (!(job_ptr->warn_flags & WARN_SENT)) &&
 			    (job_ptr->warn_time + PERIODIC_TIMEOUT + now >=
@@ -17867,7 +17884,6 @@ extern void update_job_fed_details(struct job_record *job_ptr)
 				fed_mgr_get_cluster_id(job_ptr->job_id));
 }
 
-
 /*
  * Set the allocation response with the current cluster's information and the
  * job's allocated node's addr's if the allocation is being filled by a cluster
@@ -17895,23 +17911,6 @@ set_remote_working_response(resource_allocation_response_msg_t *resp,
 		    fed_mgr_cluster_rec) {
 			resp->working_cluster_rec = fed_mgr_cluster_rec;
 		} else {
-			if (!response_cluster_rec) {
-				response_cluster_rec =
-					xmalloc(sizeof(slurmdb_cluster_rec_t));
-				response_cluster_rec->name =
-					xstrdup(slurmctld_conf.cluster_name);
-				if (slurmctld_conf.slurmctld_addr) {
-					response_cluster_rec->control_host =
-						slurmctld_conf.slurmctld_addr;
-				} else {
-					response_cluster_rec->control_host =
-						slurmctld_conf.control_addr[0];
-				}
-				response_cluster_rec->control_port =
-					slurmctld_conf.slurmctld_port;
-				response_cluster_rec->rpc_version =
-					SLURM_PROTOCOL_VERSION;
-			}
 			resp->working_cluster_rec = response_cluster_rec;
 		}
 
