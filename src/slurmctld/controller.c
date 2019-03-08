@@ -1846,12 +1846,8 @@ static void _queue_reboot_msg(void)
 		node_ptr->node_state &=  NODE_STATE_FLAGS;
 		node_ptr->node_state |=  NODE_STATE_DOWN;
 
-		if (node_ptr->next_state != NODE_RESUME) {
-			bit_clear(avail_node_bitmap, i);
-			bit_clear(idle_node_bitmap, i);
-		} else {
-			bit_set(rs_node_bitmap, i);
-		}
+		bit_clear(avail_node_bitmap, i);
+		bit_clear(idle_node_bitmap, i);
 
 		node_ptr->boot_req_time = now;
 		node_ptr->last_response = now + slurm_get_resume_timeout();
@@ -2679,8 +2675,6 @@ static void _usage(char *prog_name)
 	fprintf(stderr, "  -R      "
 			"\tRecover full state from last checkpoint.\n");
 #endif
-	fprintf(stderr, "  -t      "
-			"\tTest configuration files for validity.\n");
 	fprintf(stderr, "  -v      "
 			"\tVerbose mode. Multiple -v's increase verbosity.\n");
 	fprintf(stderr, "  -V      "

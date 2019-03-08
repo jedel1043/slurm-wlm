@@ -1,4 +1,4 @@
-.TH "slurm.conf" "5" "Slurm Configuration File" "December 2018" "Slurm Configuration File"
+.TH "slurm.conf" "5" "Slurm Configuration File" "February 2019" "Slurm Configuration File"
 
 .SH "NAME"
 slurm.conf \- Slurm configuration file
@@ -121,13 +121,13 @@ Also see \fBDefaultStoragePort\fR.
 \fBAccountingStorageTRES\fR
 Comma separated list of resources you wish to track on the cluster.
 These are the resources requested by the sbatch/srun job when it
-is submitted.  Currently this consists of any GRES, BB (burst buffer) or
+is submitted. Currently this consists of any GRES, BB (burst buffer) or
 license along with CPU, Memory, Node, Energy, FS/[Disk|Lustre], IC/OFED, Pages,
 and VMem. By default Billing, CPU, Energy, Memory, Node, FS/Disk, Pages and VMem
-are tracked.
+are tracked. These default TRES cannot be disabled, but only appended to.
 AccountingStorageTRES=gres/craynetwork,license/iop1
-will track billing, cpu, energy, memory, nodes, FS/disk along with a
-gres called craynetwork as well as a license called iop1.  Whenever these
+will track billing, cpu, energy, memory, nodes, fs/disk, pages and vmem along
+with a gres called craynetwork as well as a license called iop1. Whenever these
 resources are used on the cluster they are recorded. The TRES are automatically
 set up in the database on the start of the slurmctld.
 
@@ -403,6 +403,12 @@ Comma separated options identifying communication options.
 Used specifically on a Cray using an Aries Ghal interconnect.  This will check
 to see if the system is quiescing when sending a message, and if so, we wait
 until it is done before sending.
+.TP
+\fBNoAddrCache\fR By default, Slurm will cache a node's network address after
+successfully establishing the node's network address. This option disables the
+cache and Slurm will look up the node's network address each time a connection
+is made. This is useful, for example, in a cloud environment where the node
+addresses come and go out of DNS.
 .TP
 \fBNoCtldInAddrAny\fR
 Used to directly bind to the address of what the node resolves to running
@@ -915,7 +921,8 @@ Note that the \fBHealthCheckProgram\fR will be executed at the same time
 on all nodes to minimize its impact upon parallel programs.
 This program is will be killed if it does not terminate normally within
 60 seconds.
-This program will also be executed when the slurmd daemon is first started.
+This program will also be executed when the slurmd daemon is first started and
+before it registers with the slurmctld daemon.
 By default, no program will be executed.
 
 .TP
@@ -2591,7 +2598,7 @@ submitted to.
 \fBbf_max_job_assoc=#\fR
 The maximum number of jobs per user association to attempt starting with the
 backfill scheduler.
-This setting is similar to to \fBbf_max_job_user\fR but is handy if a user
+This setting is similar to \fBbf_max_job_user\fR but is handy if a user
 has multiple assocations equating to basically different users.
 One can set this limit to prevent users from flooding the backfill
 queue with jobs that cannot start and that prevent jobs from other users
@@ -3310,6 +3317,15 @@ Multiple options may be comma-separated.
 Permit setting triggers from non-root/slurm_user users. SlurmUser must also
 be set to root to permit these triggers to work. See the \fBstrigger\fR man
 page for additional details.
+.TP
+\fBcloud_dns\fR
+By default, Slurm expects that the network addresses for cloud nodes won't
+won't be know until creation of the node and that Slurm will be notified of the
+node's address (e.g. \fBscontrol update nodename=<name> nodeaddr=<addr>\fR).
+Since Slurm communications rely on the node configuration found in the
+slurm.conf, Slurm will tell the client command, after waiting for all nodes to
+boot, each node's ip address. However, in environments where the nodes are in
+DNS, this step can be avoided by configuring this option.
 .RE
 
 .TP
@@ -4053,6 +4069,10 @@ If set, xauth data on the compute node will be placed in a temporary file
 \fBXAUTHORITY\fR environment variable will be injected into the job's
 environment (as well as any process captured by pam_slurm_adopt).
 This can help avoid file locking contention on the user's home directory.
+.TP 8
+\fBuse_raw_hostname\fR
+If set, xauth hostname will use the raw value of gethostname() instead
+of the local part-only (as is used elsewhere within Slurm).
 .RE
 
 .LP
@@ -4784,12 +4804,14 @@ Specifies, in units of seconds, the preemption grace time
 to be extended to a job which has been selected for preemption.
 The default value is zero, no preemption grace time is allowed on
 this partition.
-Once a job has been selected for preemption, it's end time is set to the
-current time plus GraceTime. The job is immediately sent SIGCONT and SIGTERM
+Once a job has been selected for preemption, its end time is set to the current
+time plus GraceTime. The job's tasks are immediately sent SIGCONT and SIGTERM
 signals in order to provide notification of its imminent termination.
 This is followed by the SIGCONT, SIGTERM and SIGKILL signal sequence upon
-reaching its new end time.
-(Meaningful only for PreemptMode=CANCEL)
+reaching its new end time. This second set of signals is sent to both the
+tasks \fBand\fR the containing batch script, if applicable.
+Meaningful only for PreemptMode=CANCEL.
+See also the global \fBKillWait\fR configuration parameter.
 
 .TP
 \fBHidden\fR
