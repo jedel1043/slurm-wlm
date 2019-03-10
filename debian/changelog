@@ -1,6 +1,7 @@
 slurm-llnl (18.08.6.2-1) UNRELEASED; urgency=medium
 
   * New upstream release 18.08.6.2
+  * Update libslurm{,db} symbols file
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 08 Mar 2019 23:59:37 +0100
 
