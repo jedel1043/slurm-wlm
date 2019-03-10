@@ -22,8 +22,8 @@ case "$1" in
       if [ -n "$2" ] && dpkg --compare-versions $2 lt 18.08.5.2-1 ; then
         if [ -e /etc/slurm-llnl/slurmdbd.conf ] ; then
            # Move PID file location
-           olddir=/var/run/slurm-llnl
-           newdir=/run
+           olddir="\(/var\)\?/run/slurm-llnl"
+           newdir="/run"
            sed -i "s@^\(\s*PidFile\s*=\s*\)$olddir@\1$newdir@i" \
 		/etc/slurm-llnl/slurmdbd.conf
         fi
