@@ -1,3 +1,9 @@
+slurm-llnl (18.08.6.2-1) UNRELEASED; urgency=medium
+
+  * New upstream release 18.08.6.2
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 08 Mar 2019 23:59:37 +0100
+
 slurm-llnl (18.08.5.2-1) unstable; urgency=medium
 
   * New upstream release fixes CVE-2019-6438 (Closes: #920997)
