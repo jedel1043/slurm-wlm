@@ -106,7 +106,6 @@ override_dh_auto_install:
 
 override_dh_strip:
 	dh_strip -plibslurm33
-	dh_strip -plibslurmdb33
 	dh_strip -plibpmi0 --dbgsym-migration='libpmi0-dbg (<< 17.02.6~)'
 	dh_strip -plibpmi2-0 --dbgsym-migration='libpmi2-0-dbg (<< 17.02.6~)'
 	dh_strip -pslurm-wlm-basic-plugins --dbgsym-migration='slurm-wlm-basic-plugins-dbg (<< 17.02.6~)'
@@ -123,7 +122,6 @@ override_dh_strip:
 	dh_strip -pslurm-client-emulator --no-automatic-dbgsym
 	dh_strip -plibpmi0-dev --no-automatic-dbgsym
 	dh_strip -plibpmi2-0-dev --no-automatic-dbgsym
-	dh_strip -plibslurmdb-dev --no-automatic-dbgsym
 	dh_strip -plibslurm-dev --no-automatic-dbgsym
 	dh_strip -pslurm-wlm-basic-plugins-dev --no-automatic-dbgsym
 	strip --verbose --strip-unneeded --remove-section=.comment \
