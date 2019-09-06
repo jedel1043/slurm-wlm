@@ -2,6 +2,7 @@ slurm-llnl (19.05.2-1) UNRELEASED; urgency=medium
 
   * New upstream release (Closes: #931880)
   * Remove libslurmdb packages as it was merged into libslurm
+  * Bump standard version to 4.4.0 (no changes)
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 19 Aug 2019 14:52:44 +0200
 
