@@ -5,6 +5,7 @@ slurm-llnl (19.05.2-1) UNRELEASED; urgency=medium
   * Bump standard version to 4.4.0 (no changes)
   * Update d/copyright
   * Sync configurators with upstream
+  * Refresh patches
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 19 Aug 2019 14:52:44 +0200
 
