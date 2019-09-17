@@ -1,6 +1,6 @@
 slurm-llnl (19.05.2-1) UNRELEASED; urgency=medium
 
-  * New upstream release (Closes: #931880)
+  * New upstream release fixes CVE-2019-12838 (Closes: #931880)
   * Remove libslurmdb packages as it was merged into libslurm
   * Bump standard version to 4.4.0 (no changes)
   * Update d/copyright
