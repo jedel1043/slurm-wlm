@@ -301,12 +301,12 @@ Pre-Depends: ${misc:Pre-Depends}
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
-Description: The purpose of this module is to prevent users from sshing into
- nodes that they do not have a running job on, and to track the ssh connection
- and any other spawned processes for accounting and to ensure complete job
- cleanup when the job is completed. This module does this by determining the
- job which originated the ssh connection. The user's connection is "adopted"
- into the "external" step of the job.
+Description: PAM module to authenticate users running a SLURM job and track their processes
+ Pluggable Authentication Module (PAM) for restricting access to compute
+ nodes where SLURM performs resource management to users who have a
+ running job. The user's connection is "adopted" into the "external"
+ step of the job so that processes spawned are tracked and SLURM can
+ perform a complete cleanup when the job is completed.
 
 Package: slurm-wlm-emulator
 Architecture: any
