@@ -1,4 +1,4 @@
-slurm-llnl (19.05.2-1) UNRELEASED; urgency=medium
+slurm-llnl (19.05.3.2-1) UNRELEASED; urgency=medium
 
   * New upstream release fixes CVE-2019-12838 (Closes: #931880)
   * Remove libslurmdb packages as it was merged into libslurm
@@ -9,7 +9,7 @@ slurm-llnl (19.05.2-1) UNRELEASED; urgency=medium
   * Increase libslurm version to 34
   * Update libslurm symbols file
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 19 Aug 2019 14:52:44 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 04 Oct 2019 11:39:40 +0200
 
 slurm-llnl (18.08.6.2-1) unstable; urgency=medium
 
