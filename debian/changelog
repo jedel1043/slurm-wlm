@@ -1,8 +1,8 @@
-slurm-llnl (19.05.3.2-2) UNRELEASED; urgency=medium
+slurm-llnl (19.05.3.2-2) unstable; urgency=medium
 
   * Enable deprecated configure option on 32bit archs
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 14 Oct 2019 21:53:02 +0200
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 15 Oct 2019 09:31:57 +0200
 
 slurm-llnl (19.05.3.2-1) unstable; urgency=medium
 
