@@ -1,0 +1,44 @@
+Description: fix SIGABRT in the archive load logic
+ The problem was freeing an interior pointer to buffer contents before
+ the call to FREE_NULL_BUFFER. The issue was only triggered when loading
+ an archived data with protocol version < 17.11.
+Author: Nate Rini <nate@schedmd.com>
+Origin: upstream, https://github.com/SchedMD/slurm/commit/e174e1353f35dceccc8588969302e7aed374bfe8
+Last-Update: 2019-04-26
+
+diff --git a/src/plugins/accounting_storage/mysql/as_mysql_archive.c b/src/plugins/accounting_storage/mysql/as_mysql_archive.c
+index f2cf67f02c..4e8c8fea16 100644
+--- a/src/plugins/accounting_storage/mysql/as_mysql_archive.c
++++ b/src/plugins/accounting_storage/mysql/as_mysql_archive.c
+@@ -789,7 +789,6 @@ static int _unpack_local_job(local_job_t *object,
+ 				 */
+ 				tmp_uint64 &= (~0x80000000);
+ 				tmp_uint64 |= MEM_PER_CPU;
+-				xfree(object->req_mem);
+ 				object->req_mem = xstrdup_printf("%"PRIu64,
+ 								 tmp_uint64);
+ 			}
+@@ -846,7 +845,6 @@ static int _unpack_local_job(local_job_t *object,
+ 				 */
+ 				tmp_uint64 &= (~0x80000000);
+ 				tmp_uint64 |= MEM_PER_CPU;
+-				xfree(object->req_mem);
+ 				object->req_mem = xstrdup_printf("%"PRIu64,
+ 								 tmp_uint64);
+ 			}
+@@ -903,7 +901,6 @@ static int _unpack_local_job(local_job_t *object,
+ 				 */
+ 				tmp_uint64 &= (~0x80000000);
+ 				tmp_uint64 |= MEM_PER_CPU;
+-				xfree(object->req_mem);
+ 				object->req_mem = xstrdup_printf("%"PRIu64,
+ 								 tmp_uint64);
+ 			}
+@@ -959,7 +956,6 @@ static int _unpack_local_job(local_job_t *object,
+ 				 */
+ 				tmp_uint64 &= (~0x80000000);
+ 				tmp_uint64 |= MEM_PER_CPU;
+-				xfree(object->req_mem);
+ 				object->req_mem = xstrdup_printf("%"PRIu64,
+ 								 tmp_uint64);
+ 			}
