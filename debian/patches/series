@@ -7,3 +7,4 @@ mpiexec-man-page
 fix-perl-doc
 fix-SIGABRT
 fix-memory-leak
+CVE-2019-12838
