@@ -1,6 +1,6 @@
 Name:		slurm
-Version:	19.05.3
-%define rel	2
+Version:	19.05.4
+%define rel	1
 Release:	%{rel}%{?dist}
 Summary:	Slurm Workload Manager
 
@@ -124,7 +124,7 @@ BuildRequires: numactl-devel
 
 %if %{with pmix}
 BuildRequires: pmix
-%global pmix %(rpm -q pmix --qf "%{VERSION}")
+%global pmix_version %(rpm -q pmix --qf "%{VERSION}")
 %endif
 
 %if %{with ucx}
