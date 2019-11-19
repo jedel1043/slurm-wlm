@@ -118,9 +118,7 @@ typedef struct slurm_gres_ops {
 	void		(*job_set_env)		( char ***job_env_ptr,
 						  void *gres_ptr, int node_inx );
 	void		(*step_set_env)		( char ***job_env_ptr,
-						  void *gres_ptr,
-						  char *tres_freq,
-						  int local_proc_id );
+						  void *gres_ptr );
 	void		(*step_reset_env)	( char ***job_env_ptr,
 						  void *gres_ptr,
 						  bitstr_t *usable_gres );
@@ -1220,7 +1218,7 @@ static void _validate_slurm_conf(List slurm_conf_list,
 		/* Forbid mixing typed and untyped GRES under the same name */
 		if (slurm_gres->type_cnt &&
 		    slurm_gres->gres_cnt_config > tmp_count)
-			fatal("%s: Some %s GRES in slurm.conf have a type while others do not (slurm_gres->gres_cnt_config (%ld) > tmp_count (%ld))",
+			fatal("%s: Some %s GRES in slurm.conf have a type while others do not (slurm_gres->gres_cnt_config (%"PRIu64") > tmp_count (%"PRIu64"))",
 			      __func__, context_ptr->gres_name,
 			      slurm_gres->gres_cnt_config, tmp_count);
 	}
@@ -1385,7 +1383,7 @@ static void _check_conf_mismatch(List slurm_conf_list, List gres_conf_list,
 	iter = list_iterator_create(gres_conf_list_tmp);
 	while ((gres_conf = list_next(iter)))
 		if (gres_conf->count > 0)
-			info("WARNING: A line in gres.conf for GRES %s%s%s has %ld more configured than expected in slurm.conf. Ignoring extra GRES.",
+			info("WARNING: A line in gres.conf for GRES %s%s%s has %"PRIu64" more configured than expected in slurm.conf. Ignoring extra GRES.",
 			     gres_conf->name,
 			     (gres_conf->type_name) ? ":" : "",
 			     (gres_conf->type_name) ? gres_conf->type_name : "",
@@ -1488,7 +1486,7 @@ static void _set_file_subset(gres_slurmd_conf_t *gres_conf, uint64_t new_count)
 	xfree(gres_conf->file);
 	gres_conf->file = hostlist_ranged_string_xmalloc(hl);
 
-	debug3("%s: to (%ld) %s", __func__, new_count, gres_conf->file);
+	debug3("%s: to (%"PRIu64") %s", __func__, new_count, gres_conf->file);
 	hostlist_destroy(hl);
 }
 
@@ -1521,7 +1519,7 @@ static void _merge_gres2(List gres_conf_list, List new_list, uint64_t count,
 	while ((match = _match_type(gres_conf_list, gres_context, type_name))) {
 		list_append(new_list, match);
 
-		debug3("%s: From gres.conf, using %s:%s:%ld:%s", __func__,
+		debug3("%s: From gres.conf, using %s:%s:%"PRIu64":%s", __func__,
 		       match->name, match->type_name, match->count,
 		       match->file);
 
@@ -12390,8 +12388,7 @@ extern void gres_plugin_step_hardware_init(List step_gres_list,
 			info("devices: %s", dev_str);
 			xfree(dev_str);
 		}
-		(*(gres_context[i].ops.step_hardware_init))(devices,
-								 settings);
+		(*(gres_context[i].ops.step_hardware_init))(devices, settings);
 	}
 	slurm_mutex_unlock(&gres_context_lock);
 }
@@ -12577,9 +12574,7 @@ extern void gres_plugin_step_set_env(char ***job_env_ptr, List step_gres_list,
 				} else {
 					(*(gres_context[i].ops.step_set_env))
 						(job_env_ptr,
-						 gres_ptr->gres_data,
-						 tres_freq,
-						 local_proc_id);
+						 gres_ptr->gres_data);
 				}
 				found = true;
 			}
@@ -12591,10 +12586,7 @@ extern void gres_plugin_step_set_env(char ***job_env_ptr, List step_gres_list,
 					(job_env_ptr, NULL, NULL); /* Fixme */
 			} else {
 				(*(gres_context[i].ops.step_set_env))
-					(job_env_ptr,
-					 NULL,
-					 NULL, /* Fixme */
-					 0); /* Fixme */
+					(job_env_ptr, NULL);
 			}
 		}
 		FREE_NULL_BITMAP(usable_gres);

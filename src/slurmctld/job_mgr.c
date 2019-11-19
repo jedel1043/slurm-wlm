@@ -1906,6 +1906,7 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 		}
 		safe_unpack32(&job_ptr->bit_flags, buffer);
 		job_ptr->bit_flags &= ~BACKFILL_TEST;
+		job_ptr->bit_flags |= JOB_MEM_SET;
 		safe_unpackstr_xmalloc(&tres_alloc_str,
 				       &name_len, buffer);
 		safe_unpackstr_xmalloc(&tres_fmt_alloc_str,
@@ -2133,6 +2134,7 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 		}
 		safe_unpack32(&job_ptr->bit_flags, buffer);
 		job_ptr->bit_flags &= ~BACKFILL_TEST;
+		job_ptr->bit_flags |= JOB_MEM_SET;
 		safe_unpackstr_xmalloc(&tres_alloc_str,
 				       &name_len, buffer);
 		safe_unpackstr_xmalloc(&tres_fmt_alloc_str,
@@ -12993,10 +12995,6 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 				   __func__, entity,
 				   (job_specs->pn_min_memory & (~MEM_PER_CPU)),
 				   job_ptr);
-			sched_info("%s: setting min_memory_%s to %"PRIu64
-				   " for job_id %u", __func__, entity,
-				   (job_specs->pn_min_memory & (~MEM_PER_CPU)),
-				   job_ptr->job_id);
 			/*
 			 * Always use the acct_policy_limit_set.*
 			 * since if set by a super user it be set correctly
@@ -13232,6 +13230,23 @@ static int _update_job(struct job_record *job_ptr, job_desc_msg_t * job_specs,
 
 			sched_info("%s: setting name to %s for %pJ",
 				   __func__, job_ptr->name, job_ptr);
+			update_accounting = true;
+		}
+	}
+
+	if (job_specs->work_dir && detail_ptr &&
+	    !xstrcmp(job_specs->work_dir, detail_ptr->work_dir)) {
+		sched_debug("%s: new work_dir identical to old work_dir %s",
+			    __func__, job_specs->work_dir);
+	} else if (job_specs->work_dir) {
+		if (!IS_JOB_PENDING(job_ptr)) {
+			error_code = ESLURM_JOB_NOT_PENDING;
+			goto fini;
+		} else if (detail_ptr) {
+			xfree(detail_ptr->work_dir);
+			detail_ptr->work_dir = xstrdup(job_specs->work_dir);
+			sched_info("%s: setting work_dir to %s for %pJ",
+				   __func__, detail_ptr->work_dir, job_ptr);
 			update_accounting = true;
 		}
 	}

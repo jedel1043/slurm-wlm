@@ -552,6 +552,7 @@ static void _dump_resv_req(resv_desc_msg_t *resv_ptr, char *mode)
 
 	xfree(flag_str);
 	xfree(node_cnt_str);
+	xfree(core_cnt_str);
 }
 
 static int _generate_resv_id(void)
@@ -1797,6 +1798,7 @@ static bool _job_overlap(time_t start_time, uint32_t flags,
 		return overlap;
 	if (flags & RESERVE_FLAG_TIME_FLOAT)
 		start_time += time(NULL);
+
 	job_iterator = list_iterator_create(job_list);
 	while ((job_ptr = (struct job_record *) list_next(job_iterator))) {
 		if (IS_JOB_RUNNING(job_ptr)		&&
@@ -2243,12 +2245,23 @@ extern int create_resv(resv_desc_msg_t *resv_desc_ptr)
 		}
 		total_node_cnt = bit_set_count(node_bitmap);
 		if (!(resv_desc_ptr->flags & RESERVE_FLAG_IGN_JOBS) &&
-		    !resv_desc_ptr->core_cnt &&
-		    _job_overlap(resv_desc_ptr->start_time - now,
-				 resv_desc_ptr->flags, node_bitmap, NULL)) {
-			info("Reservation request overlaps jobs");
-			rc = ESLURM_NODES_BUSY;
-			goto bad_parse;
+		    !resv_desc_ptr->core_cnt) {
+			uint32_t flags = resv_desc_ptr->flags;
+
+			/*
+			 * Need to clear this flag before _job_overlap()
+			 * which would otherwise add the current time
+			 * on to the start_time. start_time for floating
+			 * reservations has already been set to now.
+			 */
+			flags &= ~RESERVE_FLAG_TIME_FLOAT;
+
+			if (_job_overlap(resv_desc_ptr->start_time, flags,
+					 node_bitmap, NULL)) {
+				info("Reservation request overlaps jobs");
+				rc = ESLURM_NODES_BUSY;
+				goto bad_parse;
+			}
 		}
 		/* We do allow to request cores with nodelist */
 		if (resv_desc_ptr->core_cnt) {
@@ -2302,7 +2315,8 @@ extern int create_resv(resv_desc_msg_t *resv_desc_ptr)
 	if (rc != SLURM_SUCCESS)
 		goto bad_parse;
 
-	if (resv_desc_ptr->name) {
+	/* If name == NULL or empty string, then generate a name. */
+	if (resv_desc_ptr->name && (resv_desc_ptr->name[0] != '\0')) {
 		resv_ptr = (slurmctld_resv_t *) list_find_first (resv_list,
 				_find_resv_name, resv_desc_ptr->name);
 		if (resv_ptr) {
@@ -2312,6 +2326,7 @@ extern int create_resv(resv_desc_msg_t *resv_desc_ptr)
 			goto bad_parse;
 		}
 	} else {
+		xfree(resv_desc_ptr->name);
 		while (1) {
 			_generate_resv_name(resv_desc_ptr);
 			resv_ptr = (slurmctld_resv_t *)
