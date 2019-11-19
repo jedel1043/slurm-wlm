@@ -1,3 +1,10 @@
+slurm-llnl (18.08.5.2-1+deb10u1) buster-security; urgency=high
+
+  * FIX CVE-2019-12838 by escaping strings in archive files in
+    accounting_storage/mysql
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 17 Oct 2019 14:30:18 +0200
+
 slurm-llnl (18.08.5.2-1) unstable; urgency=medium
 
   * New upstream release fixes CVE-2019-6438 (Closes: #920997)
