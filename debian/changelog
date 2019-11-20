@@ -13,6 +13,7 @@ slurm-llnl (19.05.4-1) UNRELEASED; urgency=medium
   * Remove useless libglade2 build dep (better later than never)
   * Remove libssh2 build dep
   * Remove crypto/openssl related stuff
+  * Use python3 to generate html doc (Closes: #938499)
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 19 Nov 2019 17:43:13 +0100
 

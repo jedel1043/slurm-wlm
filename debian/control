@@ -10,7 +10,7 @@ Build-Depends:
  libmunge-dev,
  libncurses5-dev,
  po-debconf,
- python,
+ python3,
  libgtk2.0-dev,
  default-libmysqlclient-dev,
  libpam0g-dev,
