@@ -1,3 +1,9 @@
+slurm-llnl (19.05.4-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 19 Nov 2019 17:43:13 +0100
+
 slurm-llnl (19.05.3.2-2) unstable; urgency=medium
 
   * Enable deprecated configure option on 32bit archs
