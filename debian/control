@@ -9,7 +9,6 @@ Build-Depends:
  debhelper (>= 11),
  libmunge-dev,
  libncurses5-dev,
- libssl-dev,
  po-debconf,
  python,
  libgtk2.0-dev,
@@ -70,11 +69,9 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- openssl,
  slurm-wlm-basic-plugins (= ${binary:Version}),
  ucf,
  munge,
- openssl (>= 0.9.8g-9),
  lsb-base (>= 3.2-12)
 Description: SLURM compute node daemon
  SLURM stands for Simple Linux Utility for Resource Management, it
@@ -89,11 +86,9 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  slurm-client (= ${binary:Version}),
- openssl,
  slurm-wlm-basic-plugins (= ${binary:Version}),
  ucf,
  munge,
- openssl (>= 0.9.8g-9),
  lsb-base (>= 3.2-12)
 Description: SLURM central management daemon
  SLURM stands for Simple Linux Utility for Resource Management, it
