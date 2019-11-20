@@ -27,7 +27,6 @@ Build-Depends:
  libfreeipmi-dev,
  libhdf5-dev,
  man2html,
- libssh2-1-dev,
  libcurl4-openssl-dev,
  liblz4-dev
 Standards-Version: 4.4.1
