@@ -3,8 +3,9 @@ slurm-llnl (19.05.4-1) UNRELEASED; urgency=medium
   * New upstream release
 
   [ Martijn Kruiten ]
-  * Include slurmdb.h in libslurm-dev
+  * Include slurmdb.h in libslurm-dev (Closes: #944606)
   * Remove conflicting docs from the slurmd and slurmctld packages
+    (Closes: #942453)
   * Credit to Martijn for libpam-slurm-adopt in release 19.05.3.2-1.
     Sorry for not mentioning it before and thank you very much for your
     contribution!
