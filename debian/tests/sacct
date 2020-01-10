@@ -67,7 +67,7 @@ EOF
 adduser --disabled-password --gecos "" --no-create-home --quiet slurmtest
 
 # slurmdbd needs a little time to initialize its db
-sleep 5
+sleep 20
 
 sacctmgr -i add cluster cluster
 sacctmgr -i add account slurmtest Cluster=cluster
@@ -82,6 +82,7 @@ sinfo --Node
 su slurmtest -c "/usr/bin/srun /bin/true"
 
 # slurmdbd needs a little time to store information
-sleep 5
+sleep 20
 
-sacct
+sacct > $AUTOPKGTEST_TMP/sacct.log
+grep '^[0-9]*\s*true\s*test\s*slurmtest\s*[0-9]*\s*COMPLETED\s*0:0' $AUTOPKGTEST_TMP/sacct.log
