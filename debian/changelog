@@ -16,6 +16,7 @@ slurm-llnl (19.05.5-1) UNRELEASED; urgency=medium
   * Remove crypto/openssl related stuff
   * Use python3 to generate html doc (Closes: #938499)
   * Update libslurm symbols file
+  * Add support for pmix (Closes: #948008)
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 19 Nov 2019 17:43:13 +0100
 
