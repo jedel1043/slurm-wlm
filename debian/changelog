@@ -18,6 +18,9 @@ slurm-llnl (19.05.5-1) UNRELEASED; urgency=medium
   * Update libslurm symbols file
   * Add support for pmix (Closes: #948008)
 
+  [ Christian Ehrhardt ] 
+  * Improve sacct test
+
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 19 Nov 2019 17:43:13 +0100
 
 slurm-llnl (19.05.3.2-2) unstable; urgency=medium
