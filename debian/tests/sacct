@@ -84,5 +84,4 @@ su slurmtest -c "/usr/bin/srun /bin/true"
 # slurmdbd needs a little time to store information
 sleep 20
 
-sacct > $AUTOPKGTEST_TMP/sacct.log
-grep '^[0-9]*\s*true\s*test\s*slurmtest\s*[0-9]*\s*COMPLETED\s*0:0' $AUTOPKGTEST_TMP/sacct.log
+sacct --user=slurmtest --format=State --noheader | grep COMPLETED
