@@ -1,4 +1,4 @@
-slurm-llnl (19.05.5-1) UNRELEASED; urgency=medium
+slurm-llnl (19.05.5-1) unstable; urgency=medium
 
   * New upstream release
 
@@ -21,7 +21,7 @@ slurm-llnl (19.05.5-1) UNRELEASED; urgency=medium
   [ Christian Ehrhardt ] 
   * Improve sacct test
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 19 Nov 2019 17:43:13 +0100
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 16 Jan 2020 22:46:11 +0100
 
 slurm-llnl (19.05.3.2-2) unstable; urgency=medium
 
