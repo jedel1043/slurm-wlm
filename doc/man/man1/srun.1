@@ -1,4 +1,4 @@
-.TH srun "1" "Slurm Commands" "December 2019" "Slurm Commands"
+.TH srun "1" "Slurm Commands" "February 2020" "Slurm Commands"
 
 .SH "NAME"
 srun \- Run parallel jobs
@@ -24,20 +24,21 @@ https://slurm.schedmd.com/cpu_management.html
 srun will return the highest exit code of all tasks run or the highest signal
 (with the high-order bit set in an 8-bit integer -- e.g. 128 + signal) of any
 task that exited with a signal.
+.br
+The value 253 is reserved for out-of-memory errors.
 
 .SH "EXECUTABLE PATH RESOLUTION"
 
-.nr step 1 1
 The executable is resolved in the following order:
 .br
-.IP \n[step]. 3
+.IP 1. 3
 If executable starts with ".", then path is constructed as:
 current working directory / executable
-.IP \n+[step].
+.IP 2.
 If executable starts with a "/", then path is considered absolute.
-.IP \n+[step].
+.IP 3.
 If executable can be resolved through PATH. See \fBpath_resolution\fR(7).
-.IP \n+[step].
+.IP 4.
 If executable is in current working directory.
 .P
 Current working directory is the calling process working directory unless the
@@ -106,7 +107,7 @@ for energy profiling using the acct_gather_energy plugin
 .TP
 \fBnetwork=\fI<interval>\fR
 where \fI<interval>\fR is the sampling interval in seconds
-for infiniband profiling using the acct_gather_infiniband
+for infiniband profiling using the acct_gather_interconnect
 plugin.
 .TP
 \fBfilesystem=\fI<interval>\fR
@@ -221,14 +222,6 @@ already passed for that year, in which case the next year is used.
 .br
 This option applies to job allocations.
 .RE
-
-.TP
-\fB\-\-checkpoint\fR=<\fItime\fR>
-Specifies the interval between creating checkpoints of the job step.
-By default, the job step will have no checkpoints created.
-Acceptable time formats include "minutes", "minutes:seconds",
-"hours:minutes:seconds", "days\-hours", "days\-hours:minutes" and
-"days\-hours:minutes:seconds". This option applies to job and step allocations.
 
 .TP
 \fB\-\-cluster\-constraint\fR=<\fIlist\fR>
@@ -599,7 +592,6 @@ This option applies to job and step allocations.
 \fB\-\-cpus\-per\-gpu\fR=<\fIncpus\fR>
 Advise Slurm that ensuing job steps will require \fIncpus\fR processors per
 allocated GPU.
-Requires the \fB\-\-gpus\fR option.
 Not compatible with the \fB\-\-cpus\-per\-task\fR option.
 
 .TP
@@ -670,9 +662,11 @@ srun within an existing salloc or sbatch allocation) only to job allocations.
 <\fItype:job_id[:job_id][?type:job_id[:job_id]]\fR>.
 All dependencies must be satisfied if the "," separator is used.
 Any dependency may be satisfied if the "?" separator is used.
+Only one separator may be used.
 Many jobs can share the same dependency and these jobs may even belong to
 different  users. The  value may be changed after job submission using the
 scontrol command.
+Dependencies on remote jobs are allowed in a federation.
 Once a job dependency fails due to the termination state of a preceding job,
 the dependent job will never be run, even if the preceding job is requeued and
 has a different termination state in a subsequent execution. This option applies
@@ -680,9 +674,10 @@ to job allocations.
 .PD
 .RS
 .TP
-\fBafter:job_id[:jobid...]\fR
-This job can begin execution after the specified jobs have begun
-execution.
+\fBafter:job_id[[+time][:jobid[+time]...]]\fR
+After the specified jobs start and 'time' in minutes from job start happens this
+job can begin execution. If no 'time' is given then then there is no delay after
+start.
 .TP
 \fBafterany:job_id[:jobid...]\fR
 This job can begin execution after the specified jobs have terminated.
@@ -708,12 +703,16 @@ executed (ran to completion with an exit code of zero).
 Resources allocated to this job should be used to expand the specified job.
 The job to expand must share the same QOS (Quality of Service) and partition.
 Gang scheduling of resources in the partition is also not supported.
+"expand" is not allowed for jobs that didn't originate on the same cluster
+as the submitted job.
 .TP
 \fBsingleton\fR
 This job can begin execution after any previously launched jobs
 sharing the same job name and user have terminated.
 In other words, only one job by that name and owned by that user can be running
 or suspended at any point in time.
+In a federation, a singleton dependency must be fulfilled on all clusters
+unless DependencyParameters=disable_remote_singleton is used in slurm.conf.
 .RE
 
 .TP
@@ -786,25 +785,54 @@ following options should NOT be specified
 See \fBEXAMPLE\fR below.
 
 .TP
-\fB\-\-export\fR=<\fIenvironment variables [ALL] | NONE\fR>
-Identify which environment variables are propagated to the launched application.
-By default, \fIall\fR are propagated.
-Multiple environment variable names should be comma separated.
+\fB\-\-export\fR=<\fI[ALL,]environment variables\fR|\fIALL\fR|\fINONE\fR>
+Identify which environment variables from the submission environment are
+propagated to the launched application.
+.RS
+.TP 10
+\fB\-\-export\fR=\fIALL\fR
+.br
+Default mode if \fB\-\-export\fR is not specified. All of the users environment
+will be loaded from callers environment.
+.TP
+\fB\-\-export\fR=\fINONE\fR
+.br
+None of the user environment will be defined. User must use absolute path to
+the binary to be executed that will define the environment. User can not
+specify explicit environment variables with \fINONE\fR.
+.br
+This option is particularly important for jobs that are submitted on one
+cluster and execute on a different cluster (e.g. with different paths).
+To avoid steps inheriting environment export settings (e.g. \fINONE\fR) from
+sbatch command, either set \fB\-\-export\fR=\fIALL\fR or the environment
+variable SLURM_EXPORT_ENV should be set to \fIALL\fR.
+.TP
+\fB\-\-export\fR=<\fI[ALL,]environment variables>\fR
+.br
+Exports all SLURM* environment variables along with explicitly defined
+variables. Multiple environment variable names should be comma separated.
 Environment variable names may be specified to propagate the current
-value (e.g. "\-\-export=EDITOR") or specific values
-may be exported (e.g. "\-\-export=EDITOR=/bin/emacs"). In these two examples,
-the propagated environment will only contain the variable \fIEDITOR\fR.
-If one desires to add to the environment instead of replacing it, have the
-argument include \fIALL\fR (e.g. "\-\-export=ALL,EDITOR=/bin/emacs").
-This will propagate \fIEDITOR\fR along with the current environment.
-Unlike sbatch, if \fIALL\fR is specified, any additional specified environment
-variables are ignored.
-If one desires no environment variables be propagated, use the argument
-\fINONE\fR.
-Regardless of this setting, the appropriate \fISLURM_*\fR task environment
-variables are always exported to the environment.
-\fIsrun\fR may deviate from the above behavior if the default launch plugin,
-\fIlaunch/slurm\fR, is not used.
+value (e.g. "\-\-export=EDITOR") or specific values may be exported
+(e.g. "\-\-export=EDITOR=/bin/emacs"). If \fIALL\fR is specified, then all user
+environment variables will be loaded and will take precedence over any
+explicitly given environment variables.
+.RS 5
+.TP 5
+Example: \fB\-\-export\fR=EDITOR,ARG1=test
+.br
+In this example, the propagated environment will only contain the
+variable \fIEDITOR\fR from the user's environment, \fISLURM_*\fR environment
+variables, and \fIARG1\fR=test.
+.TP
+Example: \fB\-\-export\fR=ALL,EDITOR=/bin/emacs
+.br
+There are two possible outcomes for this example. If the caller has the
+\fIEDITOR\fR environment variable defined, then the job's environment will
+inherit the variable from the caller's environment.  If the caller doesn't
+have an environment variable defined for \fIEDITOR\fR, then the job's
+environment will use the value given by \fB--export\fR.
+.RE
+.RE
 
 .TP
 \fB\-F\fR, \fB\-\-nodefile\fR=<\fInode file\fR>
@@ -932,13 +960,14 @@ This option applies to job allocations.
 Specify the number of GPUs required for the job on each task to be spawned
 in the job's resource allocation.
 An optional GPU type specification can be supplied.
-This option requires the specification of a task count.
-For example "\-\-gpus\-per\-task=volta:1".
-Multiple options can be requested in a comma separated list, for example:
-"\-\-gpus\-per\-task=volta:3,kepler:1".
-Requires job to specify a task count (\-\-nodes).
-See also the \fB\-\-gpus\fR, \fB\-\-gpus\-per\-socket\fR and
-\fB\-\-gpus\-per\-node\fR options.
+This option requires the specification of a task count (e.g. \-n or \-\-ntasks
+options). For example "\-\-gpus\-per\-task=volta:1". Multiple options can be
+requested in a comma separated list, for example:
+"\-\-gpus\-per\-task=volta:3,kepler:1". See also the \fB\-\-gpus\fR,
+\fB\-\-gpus\-per\-socket\fR and \fB\-\-gpus\-per\-node\fR options.
+.br
+NOTE: This option will not have any impact on GPU binding, specifically
+it won't limit the number of devices set for CUDA_VISIBLE_DEVICES.
 
 .TP
 \fB\-\-gres\fR=<\fIlist\fR>
@@ -1514,9 +1543,6 @@ procedures.
 .B list
 Lists available mpi types to choose from.
 .TP
-.B openmpi
-For use with OpenMPI.
-.TP
 .B pmi2
 To enable PMI2 support. The PMI2 support in Slurm works only if the MPI
 implementation supports it, in other words if the MPI has the PMI2
@@ -1834,14 +1860,14 @@ Otherwise the default value is specified by the system configuration parameter
 \fIJobFileAppend\fR. This option applies to job and step allocations.
 
 .TP
-\fB\-\-pack\-group\fR=<\fIexpr\fR>
-Identify each job in a heterogeneous job allocation for which a step is
+\fB\-\-het\-group\fR=<\fIexpr\fR>
+Identify each component in a heterogeneous job allocation for which a step is
 to be created. Applies only to srun commands issued inside a salloc allocation
 or sbatch script.
 \fR<\fIexpr\fR> is a set of integers corresponding to one or more options
-indexes on the salloc or sbatch command line.
-Examples: "\-\-pack\-group=2", "\-\-pack\-group=0,4", "\-\-pack\-group=1,3\-5".
-The default value is \-\-pack\-group=0.
+offsets on the salloc or sbatch command line.
+Examples: "\-\-het\-group=2", "\-\-het\-group=0,4", "\-\-het\-group=1,3\-5".
+The default value is \-\-het\-group=0.
 
 .TP
 \fB\-p\fR, \fB\-\-partition\fR=<\fIpartition_names\fR>
@@ -2014,7 +2040,8 @@ applies to step allocations.
 \fB\-\-reboot\fR
 Force the allocated nodes to reboot before starting the job.
 This is only supported with some system configurations and will otherwise be
-silently ignored. This option applies to job allocations.
+silently ignored. Only root, \fISlurmUser\fR or admins can reboot nodes. This
+option applies to job allocations.
 
 .TP
 \fB\-\-resv\-ports\fR[=\fIcount\fR]
@@ -2056,7 +2083,7 @@ This option can not be used with the \fB\-\-thread\-spec\fR option. This option
 applies to job allocations.
 
 .TP
-\fB\-\-signal\fR=<\fIsig_num\fR>[@<\fIsig_time\fR>]
+\fB\-\-signal\fR=[R:]<\fIsig_num\fR>[@<\fIsig_time\fR>]
 When a job is within \fIsig_time\fR seconds of its end time,
 send it the signal \fIsig_num\fR.
 Due to the resolution of event handling by Slurm, the signal may
@@ -2066,6 +2093,8 @@ be sent up to 60 seconds earlier than specified.
 By default, no signal is sent before the job's end time.
 If a \fIsig_num\fR is specified without any \fIsig_time\fR,
 the default time will be 60 seconds. This option applies to job allocations.
+Use the "R:" option to allow this job to overlap with a reservation with
+MaxStartDelay set.
 To have the signal sent at preemption time see
 the \fBpreempt_send_user_signal\fR \fBSlurmctldParameter\fR.
 
@@ -2485,6 +2514,19 @@ job128\-00.out, job128\-01.out, ...
 .RS -10
 .PP
 
+.SH "PERFORMANCE"
+.PP
+Executing \fBsrun\fR sends a remote procedure call to \fBslurmctld\fR. If
+enough calls from \fBsrun\fR or other Slurm client commands that send remote
+procedure calls to the \fBslurmctld\fR daemon come in at once, it can result in
+a degradation of performance of the \fBslurmctld\fR daemon, possibly resulting
+in a denial of service.
+.PP
+Do not run \fBsrun\fR or other Slurm client commands that send remote procedure
+calls to \fBslurmctld\fR from loops in shell scripts or other programs. Ensure
+that programs limit calls to \fBsrun\fR to the minimum necessary for the
+information you are trying to gather.
+
 .SH "INPUT ENVIRONMENT VARIABLES"
 .PP
 Some srun options may be set via environment variables.
@@ -2540,9 +2582,6 @@ Same as \fB\-\-bcast\fR
 .TP
 \fBSLURM_BURST_BUFFER\fR
 Same as \fB\-\-bb\fR
-.TP
-\fBSLURM_CHECKPOINT\fR
-Same as \fB\-\-checkpoint\fR
 .TP
 \fBSLURM_COMPRESS\fR
 Same as \fB\-\-compress\fR
@@ -2643,6 +2682,11 @@ Same as \fB\-\-jobid\fR
 Same as \fB\-J, \-\-job\-name\fR except within an existing
 allocation, in which case it is ignored to avoid using the batch job's name
 as the name of each job step.
+.TP
+\fBSLURM_JOB_NODELIST\fR
+Same as \fB\-w\fR, \fB\-\-nodelist\fR=<\fIhost1,host2,...\fR or
+\fIfilename\fR>. If job has been resized, ensure that this nodelist is adjusted
+(or undefined) to avoid jobs steps being rejected due to down nodes.
 .TP
 \fBSLURM_JOB_NUM_NODES\fR (and \fBSLURM_NNODES\fR for backwards compatibility)
 Same as \fB\-N, \-\-nodes\fR
@@ -2795,7 +2839,7 @@ Same as \fB\-W, \-\-wckey\fR
 \fB\-D, \-\-chdir\fR
 .TP
 \fBSRUN_EXPORT_ENV\fR
-Same as \-\-export\fR, and will override any setting for \fBSRUN_EXPORT_ENV\fR.
+Same as \-\-export\fR, and will override any setting for \fBSLURM_EXPORT_ENV\fR.
 
 
 .SH "OUTPUT ENVIRONMENT VARIABLES"
@@ -2805,7 +2849,7 @@ of the executing tasks on the remote compute nodes.
 These environment variables are:
 
 .TP 22
-\fBSLURM_*_PACK_GROUP_#\fR
+\fBSLURM_*_HET_GROUP_#\fR
 For a heterogeneous job allocation, the environment variables are set separately
 for each component.
 .TP
@@ -2956,7 +3000,7 @@ List of nodes allocated to the job.
 \fBSLURM_NTASKS\fR (and \fBSLURM_NPROCS\fR for backwards compatibility)
 Total number of processes in the current job or job step.
 .TP
-\fBSLURM_PACK_SIZE\fR
+\fBSLURM_HET_SIZE\fR
 Set to count of components in heterogeneous job.
 .TP
 \fBSLURM_PRIO_PROCESS\fR
@@ -2982,7 +3026,7 @@ List of nodes allocated to the step.
 Number of nodes allocated to the step.
 .TP
 \fBSLURM_STEP_NUM_TASKS\fR
-Number of processes in the step.
+Number of processes in the job step or whole heterogeneous job step.
 .TP
 \fBSLURM_STEP_TASKS_PER_NODE\fR
 Number of processes per node within the step.
@@ -3006,7 +3050,7 @@ comma separated and in the same order as SLURM_JOB_NODELIST.
 If two or more consecutive nodes are to have the same task
 count, that count is followed by "(x#)" where "#" is the
 repetition count. For example, "SLURM_TASKS_PER_NODE=2(x3),1"
-indicates that the first three nodes will each execute three
+indicates that the first three nodes will each execute two
 tasks and the fourth node will execute one task.
 
 .TP

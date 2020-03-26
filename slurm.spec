@@ -1,5 +1,5 @@
 Name:		slurm
-Version:	19.05.5
+Version:	20.02.0
 %define rel	1
 Release:	%{rel}%{?dist}
 Summary:	Slurm Workload Manager
@@ -22,6 +22,7 @@ Source:		%{slurm_source_dir}.tar.bz2
 # --prefix		%_prefix path		install path for commands, libraries, etc.
 # --with cray		%_with_cray 1		build for a Native-Slurm Cray system
 # --with cray_network	%_with_cray_network 1	build for a non-Cray system with a Cray network
+# --with slurmrestd	%_with_slurmrestd 1	build slurmrestd
 # --with slurmsmwd      %_with_slurmsmwd 1      build slurmsmwd
 # --without debug	%_without_debug 1	don't compile with debugging symbols
 # --with hdf5		%_with_hdf5 path	require hdf5 support
@@ -37,6 +38,7 @@ Source:		%{slurm_source_dir}.tar.bz2
 #  Options that are off by default (enable with --with <opt>)
 %bcond_with cray
 %bcond_with cray_network
+%bcond_with slurmrestd
 %bcond_with slurmsmwd
 %bcond_with multiple_slurmd
 %bcond_with ucx
@@ -57,12 +59,17 @@ Source:		%{slurm_source_dir}.tar.bz2
 # Build with PAM by default on linux
 %bcond_without pam
 
+# Disable hardened builds. -z,now or -z,relro breaks the plugin stack
+%undefine _hardened_build
+%global _hardened_cflags "-Wl,-z,lazy"
+%global _hardened_ldflags "-Wl,-z,lazy"
+
 Requires: munge
 
 %{?systemd_requires}
 BuildRequires: systemd
 BuildRequires: munge-devel munge-libs
-BuildRequires: python
+BuildRequires: python3
 BuildRequires: readline-devel
 Obsoletes: slurm-lua slurm-munge slurm-plugins
 
@@ -289,6 +296,15 @@ running on the node, or any user who has allocated resources on the node
 according to the Slurm
 %endif
 
+%if %{with slurmrestd}
+%package slurmrestd
+Summary: Slurm REST API translator
+Group: System Environment/Base
+Requires: %{name}%{?_isa} = %{version}-%{release}
+%description slurmrestd
+Provides a REST interface to Slurm.
+%endif
+
 %if %{with slurmsmwd}
 %package slurmsmwd
 Summary: support daemons and software for the Cray SMW
@@ -368,6 +384,11 @@ install -D -m644 etc/slurmdbd.service  %{buildroot}/%{_unitdir}/slurmdbd.service
    rm -f %{buildroot}/%{_sbindir}/capmc_suspend
    rm -f %{buildroot}/%{_sbindir}/capmc_resume
    rm -f %{buildroot}/%{_sbindir}/slurmconfgen.py
+%endif
+
+%if %{with slurmrestd}
+%else
+   rm -f %{buildroot}/%{_sbindir}/slurmrestd
 %endif
 
 %if %{with slurmsmwd}
@@ -606,6 +627,12 @@ rm -rf %{buildroot}
 %if %{with pam}
 %files -f pam.files pam_slurm
 %defattr(-,root,root)
+%endif
+#############################################################################
+
+%if %{with slurmrestd}
+%files slurmrestd
+%{_sbindir}/slurmrestd
 %endif
 #############################################################################
 

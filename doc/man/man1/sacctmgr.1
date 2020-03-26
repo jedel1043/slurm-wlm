@@ -1,4 +1,4 @@
-.TH sacctmgr "1" "Slurm Commands" "September 2019" "Slurm Commands"
+.TH sacctmgr "1" "Slurm Commands" "January 2020" "Slurm Commands"
 
 .SH "NAME"
 sacctmgr \- Used to view and modify Slurm account information.
@@ -228,8 +228,8 @@ A group of clusters that work together to schedule jobs.
 
 .TP
 \fIjob\fR
-Used to modify specific fields of a job: Derived Exit Code and
-the Comment String.
+Used to modify specific fields of a job: Derived Exit Code,
+the Comment String, or wckey.
 
 .TP
 \fIqos\fR
@@ -748,7 +748,8 @@ The name of a user in the association.
 
 .TP
 \fIClassification\fP=<classification>
-Type of machine, current classifications are capability and capacity.
+Type of machine, current classifications are capability, capacity and
+capapacity.
 
 .TP
 \fIFeatures\fP=<comma separated list of feature names>
@@ -787,11 +788,6 @@ cluster will accept jobs as a non\-federated cluster.
 .RE
 
 .TP
-\fIFlags\fP=<flag list>
-Comma separated list of Attributes for a particular cluster.  Current
-Flags include CrayXT, FrontEnd, and MultipleSlurmd.
-
-.TP
 \fIName\fP=<name>
 The name of a cluster.
 This should be equal to the \fIClusterName\fR parameter in the \fIslurm.conf\fR
@@ -819,7 +815,7 @@ NOTE: You can also use the general specifications list above in the
 
 .TP
 \fIClassification\fP
-Type of machine, i.e. capability or capacity.
+Type of machine, i.e. capability, capacity or capapacity.
 
 .TP
 \fICluster\fP
@@ -853,7 +849,14 @@ Numeric value of the name of the FedState.
 
 .TP
 \fIFlags\fP
-Attributes possessed by the cluster.
+Attributes possessed by the cluster. Current flags include Cray, External and
+MultipleSlurmd.
+
+External clusters are registration only clusters. A slurmctld can designate an
+external slurmdbd with the \fIAccountingStorageExternalHost\fR slurm.conf
+option. This allows a slurmctld to register to an external slurmdbd so that
+clusters attached to the external slurmdbd can communicate with the external
+cluster with Slurm commands.
 
 .TP
 \fIID\fP
@@ -1081,20 +1084,52 @@ The index of the cluster in the federation.
 .SH "SPECIFICATIONS FOR JOB"
 
 .TP
-\fIDerivedExitCode\fP
-The derived exit code can be modified after a job completes based on
-the user's judgment of whether the job succeeded or failed. The user
-can only modify the derived exit code of their own job.
-
-.TP
-\f3Comment\fP
+\fIComment\fP=<comment>
 The job's comment string when the AccountingStoreJobComment parameter
 in the slurm.conf file is set (or defaults) to YES.  The user can only
 modify the comment string of their own job.
 
 .TP
-The \fIDerivedExitCode\fP and \f3Comment\fP fields are the only fields
-of a job record in the database that can be modified after job
+\fICluster\fP=<cluster_list>
+List of clusters to alter jobs on, defaults to local cluster.
+
+.TP
+\fIDerivedExitCode\fP=<derived_exit_code>
+The derived exit code can be modified after a job completes based on
+the user's judgment of whether the job succeeded or failed. The user
+can only modify the derived exit code of their own job.
+
+.TP
+\fIEndTime\fP
+Jobs must end before this time to be modified. Format output is,
+YYYY\-MM\-DDTHH:MM:SS, unless changed through the SLURM_TIME_FORMAT environment
+variable.
+
+.TP
+\fIJobID\fP=<jobid_list>
+The id of the job to change.  Not needed if altering multiple jobs using wckey
+specification.
+
+.TP
+\fINewWCKey\fP=<newwckey>
+Use to rename a wckey on job(s) in the accounting database
+
+.TP
+\fIStartTime\fP
+Jobs must start at or after this time to be modified in the same format as
+\f3EndTime\fP.
+
+.TP
+\fIUser\fP=<user_list>
+Used to specify the jobs of users jobs to alter.
+
+.TP
+\fIWCKey\fP=<wckey_list>
+Used to specify the wckeys to alter.
+
+.TP
+The \fIDerivedExitCode\fP, \fIComment\fP and \fIWCKey\fP fields are the only
+fields of a job record in the database that can be modified after job
 completion.
 
 .SH "LIST/SHOW JOB FORMAT OPTIONS"
@@ -1297,9 +1332,8 @@ Mechanism used to preempt jobs of this QOS if the clusters \fIPreemptType\fP
 is configured to \fIpreempt/qos\fP.  The default preemption mechanism
 is specified by the cluster\-wide \fIPreemptMode\fP configuration parameter.
 Possible values are "Cluster" (meaning use cluster default), "Cancel",
-"Checkpoint" and "Requeue".  This option is not compatible with
-PreemptMode=OFF or PreemptMode=SUSPEND (i.e. preempted jobs must be removed
-from the resources).
+and "Requeue".  This option is not compatible with PreemptMode=OFF or
+PreemptMode=SUSPEND (i.e. preempted jobs must be removed from the resources).
 
 .TP
 \fIPreemptExemptTime\fP
@@ -1488,9 +1522,8 @@ Mechanism used to preempt jobs of this QOS if the clusters \fIPreemptType\fP
 is configured to \fIpreempt/qos\fP.  The default preemption mechanism
 is specified by the cluster\-wide \fIPreemptMode\fP configuration parameter.
 Possible values are "Cluster" (meaning use cluster default), "Cancel",
-"Checkpoint" and "Requeue".  This option is not compatible with
-PreemptMode=OFF or PreemptMode=SUSPEND (i.e. preempted jobs must be removed
-from the resources).
+and "Requeue".  This option is not compatible with PreemptMode=OFF or
+PreemptMode=SUSPEND (i.e. preempted jobs must be removed from the resources).
 
 .TP
 \fIPriority\fP
@@ -1614,7 +1647,10 @@ List of TRES in the reservation.
 
 .TP
 \fIUnusedWall\fP
-Wall clock time in seconds unused by any job.
+Wall clock time in seconds unused by any job. A job's allocated usage is its
+run time multiplied by the ratio of its CPUs to the total number of CPUs in the
+reservation. For example, a job using all the CPUs in the reservation running
+for 1 minute would reduce unused_wall by 1 minute.
 
 
 .SH "SPECIFICATIONS FOR RESOURCE"
@@ -2257,6 +2293,19 @@ File to load into database.
 \fIInsert=\fP
 SQL to insert directly into the database.  This should be used very
 cautiously since this is writing your sql into the database.
+
+.SH "PERFORMANCE"
+.PP
+Executing \fBsacctmgr\fR sends a remote procedure call to \fBslurmdbd\fR. If
+enough calls from \fBsacctmgr\fR or other Slurm client commands that send remote
+procedure calls to the \fBslurmdbd\fR daemon come in at once, it can result in a
+degradation of performance of the \fBslurmdbd\fR daemon, possibly resulting in a
+denial of service.
+.PP
+Do not run \fBsacctmgr\fR or other Slurm client commands that send remote
+procedure calls to \fBslurmdbd\fR from loops in shell scripts or other programs.
+Ensure that programs limit calls to \fBsacctmgr\fR to the minimum necessary for
+the information you are trying to gather.
 
 .SH "ENVIRONMENT VARIABLES"
 .PP
