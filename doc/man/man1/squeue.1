@@ -1,4 +1,4 @@
-.TH squeue "1" "Slurm Commands" "April 2019" "Slurm Commands"
+.TH squeue "1" "Slurm Commands" "February 2020" "Slurm Commands"
 
 .SH "NAME"
 squeue \- view information about jobs located in the Slurm scheduling queue.
@@ -94,6 +94,10 @@ Request jobs requesting or using one or more of the named licenses.
 The license list consists of a comma separated list of license names.
 
 .TP
+\fB\-\-me\fR
+Equivalent to \fB\-\-user=<my username>\fR.
+
+.TP
 \fB\-M\fR, \fB\-\-clusters\fR=<\fIstring\fR>
 Clusters to issue commands to.  Multiple cluster names may be comma separated.
 A value of of '\fIall\fR' will query to run on all clusters.
@@ -116,6 +120,10 @@ Specify the information to be displayed, its size and position
 Also see the \fB\-O <output_format>\fR, \fB\-\-Format=<output_format>\fR
 option described below (which supports less flexibility in formatting, but
 supports access to all fields).
+If the command is executed in an federated cluster environment and information
+about more than one cluster is to be displayed and the \fB\-h, \-\-noheader\fR
+option is used, then the cluster name will be displayed before the default
+output formats shown below.
 The default formats with various options are
 
 .RS
@@ -198,9 +206,8 @@ Number of nodes allocated to the job or the minimum number of nodes
 required by a pending job. The actual number of nodes allocated to a pending
 job may exceed this number if the job specified a node range count (e.g.
 minimum and maximum node counts) or the job specifies a processor
-count instead of a node count and the cluster contains nodes with varying
-processor counts. As a job is completing this number will reflect the
-current number of nodes allocated.
+count instead of a node count. As a job is completing this number will reflect
+the current number of nodes allocated.
 (Valid for jobs only)
 .TP
 \fB%e\fR
@@ -519,14 +526,6 @@ Burst Buffer specification
 Burst Buffer state
 (Valid for jobs only)
 .TP
-\fBchptdir\fR
-Prints the directory where the job checkpoint will be written to.
-(Valid for job steps only)
-.TP
-\fBchptinter\fR
-Prints the time interval of the checkpoint.
-(Valid for job steps only)
-.TP
 \fBcluster\fR
 Name of the cluster that is running the job or job step.
 .TP
@@ -716,9 +715,8 @@ Number of nodes allocated to the job or the minimum number of nodes
 required by a pending job. The actual number of nodes allocated to a pending
 job may exceed this number if the job specified a node range count (e.g.
 minimum and maximum node counts) or the job specifies a processor
-count instead of a node count and the cluster contains nodes with varying
-processor counts. As a job is completing this number will reflect the
-current number of nodes allocated.
+count instead of a node count. As a job is completing this number will reflect
+the current number of nodes allocated.
 (Valid for jobs only)
 .TP
 \fBnumtasks\fR
@@ -747,14 +745,14 @@ or the partition is configured with OverSubscribe=Force,
 "OK" otherwise (typically allocated dedicated CPUs),
 (Valid for jobs only)
 .TP
-\fBpackjobid\fR
+\fBhetjobid\fR
 Job ID of the heterogeneous job leader.
 .TP
-\fBpackjoboffset\fR
-Zero origin offset within a collection of heterogeneous jobs.
+\fBhetjoboffset\fR
+Zero origin offset within a collection of heterogeneous job components.
 .TP
-\fBpackjobidset\fR
-Expression identifying all job IDs within a heterogeneous job.
+\fBhetjobidset\fR
+Expression identifying all components job IDs within a heterogeneous job.
 .TP
 \fBpartition\fR
 Partition of the job or job step.
@@ -821,7 +819,7 @@ The amount of time changed for the job to run.
 (Valid for jobs only)
 .TP
 \fBrestartcnt\fR
-The number of checkpoint restarts for the job.
+The number of restarts for the job.
 (Valid for jobs only)
 .TP
 \fBresvport\fR
@@ -1294,6 +1292,18 @@ released for other jobs.
 \fBTO  TIMEOUT\fR
 Job terminated upon reaching its time limit.
 
+.SH "PERFORMANCE"
+.PP
+Executing \fBsqueue\fR sends a remote procedure call to \fBslurmctld\fR. If
+enough calls from \fBsqueue\fR or other Slurm client commands that send remote
+procedure calls to the \fBslurmctld\fR daemon come in at once, it can result in
+a degradation of performance of the \fBslurmctld\fR daemon, possibly resulting
+in a denial of service.
+.PP
+Do not run \fBsqueue\fR or other Slurm client commands that send remote
+procedure calls to \fBslurmctld\fR from loops in shell scripts or other
+programs. Ensure that programs limit calls to \fBsqueue\fR to the minimum
+necessary for the information you are trying to gather.
 
 .SH "ENVIRONMENT VARIABLES"
 .PP
@@ -1451,8 +1461,7 @@ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
 FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
 details.
 .SH "SEE ALSO"
-\fBscancel\fR(1), \fBscontrol\fR(1), \fBsinfo\fR(1),
-\fBsmap\fR(1), \fBsrun\fR(1),
+\fBscancel\fR(1), \fBscontrol\fR(1), \fBsinfo\fR(1), \fBsrun\fR(1),
 \fBslurm_load_ctl_conf\fR (3), \fBslurm_load_jobs\fR (3),
 \fBslurm_load_node\fR (3),
 \fBslurm_load_partitions\fR (3)

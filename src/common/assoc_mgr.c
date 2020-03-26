@@ -164,11 +164,7 @@ static bool _remove_from_assoc_list(slurmdb_assoc_rec_t *assoc)
 
 	return assoc_ptr ? 1 : 0;
 }
-/*
- * find_job_record - return a pointer to the job record with the given job_id
- * IN job_id - requested job's id
- * RET pointer to the job's record, NULL on error
- */
+
 static slurmdb_assoc_rec_t *_find_assoc_rec_id(uint32_t assoc_id)
 {
 	slurmdb_assoc_rec_t *assoc;
@@ -201,7 +197,8 @@ static slurmdb_assoc_rec_t *_find_assoc_rec(
 	slurmdb_assoc_rec_t *assoc_ptr;
 	int inx;
 
-	if (assoc->id)
+	/* We can only use _find_assoc_rec_id if we are not on the slurmdbd */
+	if (assoc->id && assoc_mgr_cluster_name)
 		return _find_assoc_rec_id(assoc->id);
 
 	if (!assoc_hash) {
@@ -580,7 +577,7 @@ static int _grab_parents_qos(slurmdb_assoc_rec_t *assoc)
 	if (assoc->qos_list)
 		list_flush(assoc->qos_list);
 	else
-		assoc->qos_list = list_create(slurm_destroy_char);
+		assoc->qos_list = list_create(xfree_ptr);
 
 	parent_assoc = assoc->usage->parent_assoc_ptr;
 
@@ -1047,7 +1044,9 @@ static int _post_user_list(List user_list)
 {
 	slurmdb_user_rec_t *user = NULL;
 	ListIterator itr = list_iterator_create(user_list);
-	//START_TIMER;
+	DEF_TIMERS;
+
+	START_TIMER;
 	while ((user = list_next(itr))) {
 		uid_t pw_uid;
 		/* Just to make sure we have a default_wckey since it
@@ -1056,15 +1055,14 @@ static int _post_user_list(List user_list)
 		if (!user->default_wckey)
 			user->default_wckey = xstrdup("");
 		if (uid_from_string (user->name, &pw_uid) < 0) {
-			if (slurmdbd_conf)
-				debug("post user: couldn't get a "
-				      "uid for user %s",
-				      user->name);
+			debug("%s: couldn't get a uid for user: %s",
+			      __func__, user->name);
 			user->uid = NO_VAL;
 		} else
 			user->uid = pw_uid;
 	}
 	list_iterator_destroy(itr);
+	END_TIMER2(__func__);
 	return SLURM_SUCCESS;
 }
 
@@ -1485,7 +1483,7 @@ static int _get_assoc_mgr_tres_list(void *db_conn, int enforce)
 
 	/* If this exists we only want/care about tracking/caching these TRES */
 	if ((tres_req_str = slurm_get_accounting_storage_tres())) {
-		tres_q.type_list = list_create(slurm_destroy_char);
+		tres_q.type_list = list_create(xfree_ptr);
 		slurm_addto_char_list(tres_q.type_list, tres_req_str);
 		xfree(tres_req_str);
 	}
@@ -2012,19 +2010,6 @@ extern int assoc_mgr_init(void *db_conn, assoc_init_args_t *args,
 	/* get tres before association and qos since it is used there */
 	if ((!assoc_mgr_tres_list)
 	    && (init_setup.cache_level & ASSOC_MGR_CACHE_TRES)) {
-		/*
-		 * We need the old list just in case something changed.  If
-		 * the tres is still stored in the assoc_mgr_list we will get
-		 * it from there.  This second check can be removed 2 versions
-		 * after 18.08.
-		 */
-		if (!slurmdbd_conf &&
-		    (load_assoc_mgr_last_tres() != SLURM_SUCCESS))
-			/* We don't care about the error here.  It should only
-			 * happen if we can't find the file.  If that is the
-			 * case then we don't need to worry about old state.
-			 */
-			(void)load_assoc_mgr_state(1);
 		if (_get_assoc_mgr_tres_list(db_conn, init_setup.enforce)
 		    == SLURM_ERROR)
 			return SLURM_ERROR;
@@ -2483,10 +2468,9 @@ extern int assoc_mgr_fill_in_assoc(void *db_conn,
 		if (!assoc->cluster)
 			assoc->cluster = assoc_mgr_cluster_name;
 	}
-/* 	info("looking for assoc of user=%s(%u), acct=%s, " */
-/* 	     "cluster=%s, partition=%s", */
-/* 	     assoc->user, assoc->uid, assoc->acct, */
-/* 	     assoc->cluster, assoc->partition); */
+	debug5("%s: looking for assoc of user=%s(%u), acct=%s, cluster=%s, partition=%s",
+	       __func__, assoc->user, assoc->uid, assoc->acct, assoc->cluster,
+	       assoc->partition);
 	if (!locked)
 		assoc_mgr_lock(&locks);
 
@@ -2512,7 +2496,9 @@ extern int assoc_mgr_fill_in_assoc(void *db_conn,
 		else
 			return SLURM_SUCCESS;
 	}
-	debug3("found correct association");
+	debug3("%s: found correct association of user=%s(%u), acct=%s, cluster=%s, partition=%s to assoc=%u acct=%s",
+	       __func__, assoc->user, assoc->uid, assoc->acct, assoc->cluster,
+	       assoc->partition, ret_assoc->id, ret_assoc->acct);
 	if (assoc_pptr)
 		*assoc_pptr = ret_assoc;
 
@@ -2657,7 +2643,8 @@ extern int assoc_mgr_fill_in_user(void *db_conn, slurmdb_user_rec_t *user,
 			return SLURM_SUCCESS;
 	}
 
-	debug3("found correct user");
+	debug3("%s: found correct user: %s(%u)",
+	       __func__, found_user->name, found_user->uid);
 	if (user_pptr)
 		*user_pptr = found_user;
 
@@ -2926,6 +2913,21 @@ extern int assoc_mgr_fill_in_wckey(void *db_conn, slurmdb_wckey_rec_t *wckey,
 
 	itr = list_iterator_create(assoc_mgr_wckey_list);
 	while ((found_wckey = list_next(itr))) {
+		/* only and always check for on the slurmdbd */
+		if (!assoc_mgr_cluster_name) {
+			if (!wckey->cluster) {
+				error("No cluster name was given "
+				      "to check against, "
+				      "we need one to get a wckey.");
+				continue;
+			}
+
+			if (xstrcasecmp(wckey->cluster, found_wckey->cluster)) {
+				debug4("not the right cluster");
+				continue;
+			}
+		}
+
 		if (wckey->id) {
 			if (wckey->id == found_wckey->id) {
 				ret_wckey = found_wckey;
@@ -2950,23 +2952,6 @@ extern int assoc_mgr_fill_in_wckey(void *db_conn, slurmdb_wckey_rec_t *wckey,
 				debug4("not the right name %s != %s",
 				       wckey->name, found_wckey->name);
 				continue;
-			}
-
-			/* only check for on the slurmdbd */
-			if (!assoc_mgr_cluster_name) {
-				if (!wckey->cluster) {
-					error("No cluster name was given "
-					      "to check against, "
-					      "we need one to get a wckey.");
-					continue;
-				}
-
-				if (found_wckey->cluster
-				    && xstrcasecmp(wckey->cluster,
-						   found_wckey->cluster)) {
-					debug4("not the right cluster");
-					continue;
-				}
 			}
 		}
 		ret_wckey = found_wckey;
@@ -4184,6 +4169,12 @@ extern int assoc_mgr_update_wckeys(slurmdb_update_object_t *update, bool locked)
 
 		list_iterator_reset(itr);
 		while ((rec = list_next(itr))) {
+			/* only and always check for on the slurmdbd */
+			if (!assoc_mgr_cluster_name &&
+			    xstrcasecmp(object->cluster, rec->cluster)) {
+				debug4("not the right cluster");
+				continue;
+			}
 			if (object->id) {
 				if (object->id == rec->id) {
 					break;
@@ -4200,15 +4191,6 @@ extern int assoc_mgr_update_wckeys(slurmdb_update_object_t *update, bool locked)
 					|| xstrcasecmp(object->name,
 						       rec->name))) {
 					debug4("not the right wckey");
-					continue;
-				}
-
-				/* only check for on the slurmdbd */
-				if (!assoc_mgr_cluster_name && object->cluster
-				    && (!rec->cluster
-					|| xstrcasecmp(object->cluster,
-						       rec->cluster))) {
-					debug4("not the right cluster");
 					continue;
 				}
 				break;
@@ -4843,6 +4825,10 @@ extern int assoc_mgr_update_qos(slurmdb_update_object_t *update, bool locked)
 	return rc;
 }
 
+/*
+ * NOTE: This function only works when assoc_mgr_cluster_name is defined.  This
+ * does not currently work for the slurmdbd.
+ */
 extern int assoc_mgr_update_res(slurmdb_update_object_t *update, bool locked)
 {
 	slurmdb_res_rec_t *rec = NULL;
@@ -5936,27 +5922,6 @@ extern int load_assoc_mgr_state(bool only_tres)
 	while (remaining_buf(buffer) > 0) {
 		safe_unpack16(&type, buffer);
 		switch(type) {
-		/* DBD_ADD_TRES can be removed 2 versions after 18.08 */
-		case DBD_ADD_TRES:
-			error_code = slurmdbd_unpack_list_msg(
-				&msg, ver, DBD_ADD_TRES, buffer);
-			if (error_code != SLURM_SUCCESS)
-				goto unpack_error;
-			else if (!msg->my_list) {
-				error("No tres retrieved");
-				break;
-			}
-			FREE_NULL_LIST(assoc_mgr_tres_list);
-			assoc_mgr_post_tres_list(msg->my_list);
-			/*
-			 * assoc_mgr_tres_list gets set in
-			 * assoc_mgr_post_tres_list
-			 */
-			debug("Recovered %u tres",
-			      list_count(assoc_mgr_tres_list));
-			msg->my_list = NULL;
-			slurmdbd_free_list_msg(msg);
-			break;
 		case DBD_ADD_ASSOCS:
 			if (!g_tres_count)
 				fatal("load_assoc_mgr_state: "
@@ -6186,11 +6151,13 @@ extern int assoc_mgr_set_missing_uids()
 			if (object->name && (object->uid == NO_VAL)) {
 				if (uid_from_string(
 					    object->name, &pw_uid) < 0) {
-					debug3("refresh user couldn't get "
-					       "a uid for user %s",
-					       object->name);
-				} else
+					debug3("%s: refresh user couldn't get uid for user %s",
+					       __func__, object->name);
+				} else {
+					debug5("%s: found uid %u for user %s",
+					       __func__, pw_uid, object->name);
 					object->uid = pw_uid;
+				}
 			}
 		}
 		list_iterator_destroy(itr);

@@ -4,6 +4,7 @@ SUBDIRS =		\
 	common		\
 	database	\
 	layouts		\
+	lua		\
 	plugins		\
 	sacct		\
 	sacctmgr	\
@@ -18,7 +19,6 @@ SUBDIRS =		\
 	slurmctld	\
 	slurmd		\
 	slurmdbd	\
-	smap		\
 	sprio		\
 	squeue		\
 	sreport		\
@@ -27,3 +27,7 @@ SUBDIRS =		\
 	sstat		\
 	strigger	\
 	sview
+
+if WITH_SLURMRESTD
+SUBDIRS += slurmrestd
+endif
