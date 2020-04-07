@@ -5,5 +5,4 @@ pidfile-path
 rpath
 mpiexec-man-page
 fix-perl-doc
-use-python3
 miscellanea-manpages
