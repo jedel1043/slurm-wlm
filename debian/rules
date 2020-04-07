@@ -101,7 +101,6 @@ override_dh_auto_install:
 	mv -v debian/tmp-emulator/usr/bin/srun 	debian/tmp-emulator/usr/bin/srun-emulator
 	mv -v debian/tmp-emulator/usr/bin/squeue 	debian/tmp-emulator/usr/bin/squeue-emulator
 	mv -v debian/tmp-emulator/usr/bin/sprio 	debian/tmp-emulator/usr/bin/sprio-emulator
-	mv -v debian/tmp-emulator/usr/bin/smap 	debian/tmp-emulator/usr/bin/smap-emulator
 	mv -v debian/tmp-emulator/usr/bin/sdiag 	debian/tmp-emulator/usr/bin/sdiag-emulator
 	mv -v debian/tmp-emulator/usr/bin/strigger debian/tmp-emulator/usr/bin/strigger-emulator
 	mv -v debian/tmp-emulator/usr/bin/sinfo 	debian/tmp-emulator/usr/bin/sinfo-emulator

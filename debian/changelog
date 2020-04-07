@@ -3,6 +3,7 @@ slurm-llnl (20.02.1-1) UNRELEASED; urgency=medium
   * New upstream release
   * Refresh miscellanea-manpages and mail-path patches
   * Remove use-python3 patch included upstream
+  * Remove smap command
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 30 Mar 2020 23:05:17 +0200
 
