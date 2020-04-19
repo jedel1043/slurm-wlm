@@ -7,6 +7,7 @@ slurm-llnl (20.02.1-1) UNRELEASED; urgency=medium
   * Remove cray.conf.5 man page
   * Bump libslurm to soname 35
   * Fix spelling errors in man pages
+  * Update configurators
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 30 Mar 2020 23:05:17 +0200
 

@@ -185,7 +185,6 @@ function displayfile()
    "# <br>" +
    "# SCHEDULING <br>" +
    "#DefMemPerCPU=0 <br>" +
-   "FastSchedule=" + get_radio_value(document.config.fast_schedule) + "<br>" +
    "#MaxMemPerCPU=0 <br>" +
    "#SchedulerTimeSlice=30 <br>" +
    "SchedulerType=sched/" + get_radio_value(document.config.sched_type) + "<br>" +
@@ -286,7 +285,7 @@ function displayfile()
 </HEAD>
 <BODY>
 <FORM name=config>
-<H1>Slurm Version 19.02 Configuration Tool</H1>
+<H1>Slurm Version 20.02 Configuration Tool</H1>
 <P>This form can be used to create a Slurm configuration file with
 you controlling many of the important configuration parameters.</P>
 
@@ -295,7 +294,7 @@ has all the configuration options to create a Slurm configuration file. There
 is a simplified version of the Slurm configuration tool available at
 <a href="file:///usr/share/doc/slurmctld/slurm-wlm-configurator.easy.html">configurator.easy.html</a>.</p>
 
-<P><B>This tool supports Slurm version 19.02 only.</B>
+<P><B>This tool supports Slurm version 20.02 only.</B>
 Configuration files for other versions of Slurm should be built
 using the tool distributed with it in <i>doc/html/configurator.html</i>.
 Some parameters will be set to default values, but you can
@@ -445,19 +444,6 @@ FIFO with backfill<BR>
 <input type="radio" name="sched_type" value="builtin">  <B>Builtin</B>: First-In
 First-Out (FIFO)<BR>
 <P>
-Define what node configuration (sockets, cores, memory, etc.) should be used.
-Using values defined in the configuration file will provide faster scheduling.<BR>
-Select one value for <B>FastSchedule</B>:<BR>
-<input type="radio" name="fast_schedule" value="0">
-<B>0</B>: Use node configuration values actually found on each node
-(if configured with with gang scheduling or allocation of individual
-processors to jobs rather than only whole node allocations, the processor
-count on the node should match the configured value to avoid having extra
-processors left idle).<BR>
-<input type="radio" name="fast_schedule" value="1" checked>
-<B>1</B>: Use node configuration values defined in configuration file.
-Mark node DOWN if registers with fewer resources.<BR>
-<P>
 
 <H2>Interconnect</H2>
 Define the node interconnect used.<BR>
@@ -498,7 +484,10 @@ control<BR>
 <H2>Resource Selection</H2>
 Define resource (node) selection algorithm to be used.<BR>
 Select one value for <B>SelectType</B>:<BR>
-<input type="radio" name="select_type" value="cons_res" checked>
+<input type="radio" name="select_type" value="cons_tres" checked>
+<b>cons_tres</b>: Allocate individual processors, memory, GPUs, and other
+trackable resources<br />
+<input type="radio" name="select_type" value="cons_res">
 <B>Cons_res</B>: Allocate individual processors and memory<BR>
 <input type="radio" name="select_type" value="cray_aries">
 <B>Cray XC</B>: Cray XC systems running native Slurm without ALPS<BR>
