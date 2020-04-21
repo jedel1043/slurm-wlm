@@ -1,2 +1,2 @@
-etc/slurm-llnl
+etc/slurm
 var/log/slurm-llnl
