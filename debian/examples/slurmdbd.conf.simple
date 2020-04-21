@@ -2,7 +2,7 @@
 #                   Sample configuration file for slurmdbd
 ###############################################################################
 #
-# /etc/slurm-llnl/slurmdb.conf is an ASCII file which describes Slurm
+# slurmdb.conf is an ASCII file which describes Slurm
 # Database Daemon (SlurmDBD) configuration information.
 # The contents of the file are case insensitive except for the names of
 # nodes and files. Any text following a "#" in the configuration file is
