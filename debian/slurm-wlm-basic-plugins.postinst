@@ -36,22 +36,7 @@ case "$1" in
       fi
 
       if [ -n "$2" ] && dpkg --compare-versions $2 lt 20.02.1-1 ; then
-         if ls /etc/slurm-llnl/*.conf 2>/dev/null > /dev/null ; then
-            for file in /etc/slurm-llnl/*.conf ; do
-               conffilename=$(basename $file)
-               if [ ! -e /etc/slurm/$conffilename ] ; then
-                  cp --preserve=mode,ownership $file /etc/slurm
-               fi
-            done
-         fi
-         if ls /etc/slurm-llnl/plugstack.conf.d/*.conf 2>/dev/null > /dev/null ; then
-            for file in /etc/slurm-llnl/plugstack.conf.d/*.conf ; do
-               conffilename=$(basename $file)
-               if [ ! -e /etc/slurm/$conffilename ] ; then
-                  cp --preserve=mode,ownership $file /etc/slurm/plugstack.conf.d
-               fi
-            done
-         fi
+         cp -a -n /etc/slurm-llnl/. /etc/slurm
       fi
     ;;
 
