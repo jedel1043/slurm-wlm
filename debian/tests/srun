@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-cat > /etc/slurm-llnl/slurm.conf <<EOF 
+cat > /etc/slurm/slurm.conf <<EOF
 ControlMachine=localhost
 AuthType=auth/munge
 CacheGroups=0

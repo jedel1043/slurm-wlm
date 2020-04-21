@@ -5,7 +5,7 @@ echo "CREATE USER 'slurm'@'localhost' IDENTIFIED BY 'shazaam';" | mariadb
 echo "CREATE DATABASE slurm;" | mariadb
 echo "GRANT ALL PRIVILEGES ON slurm.* TO 'slurm'@'localhost';" | mariadb
 
-cat > /etc/slurm-llnl/slurmdbd.conf << EOF
+cat > /etc/slurm/slurmdbd.conf << EOF
 AuthType=auth/munge
 AuthInfo=/run/munge/munge.socket.2
 DbdHost=localhost
@@ -22,7 +22,7 @@ EOF
 
 service slurmdbd restart
 
-cat > /etc/slurm-llnl/slurm.conf <<EOF 
+cat > /etc/slurm/slurm.conf <<EOF
 ControlMachine=localhost
 AuthType=auth/munge
 CryptoType=crypto/munge
