@@ -1,2 +1,2 @@
 etc/slurm
-var/log/slurm-llnl
+var/log/slurm
