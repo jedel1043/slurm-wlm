@@ -21,7 +21,7 @@ set -e
 case "$1" in
        purge)
          rm -rf /var/lib/slurm-llnl/slurmd
-         rm -f /var/log/slurm-llnl/slurmd*.log*
+         rm -f /var/log/slurm-llnl/slurmd.log*
          ;;
 
        remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
