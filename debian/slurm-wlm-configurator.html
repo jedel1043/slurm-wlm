@@ -419,10 +419,10 @@ The location of a directory where slurmd saves state should also be defined.
 This must be a unique directory on each compute server (local disk).
 The use of a highly reliable file system (e.g. RAID) is recommended.
 <P>
-<input type="text" name="state_save_location" value="/var/lib/slurm-llnl/slurmctld"> <B><font color="red">StateSaveLocation</font></B>:
+<input type="text" name="state_save_location" value="/var/lib/slurm/slurmctld"> <B><font color="red">StateSaveLocation</font></B>:
 Slurmctld state save directory <B>Must be writable by all SlurmctldHost nodes</B>
 <P>
-<input type="text" name="slurmd_spool_dir" value="/var/lib/slurm-llnl/slurmd"> <B><font color="red">SlurmdSpoolDir</font></B>:
+<input type="text" name="slurmd_spool_dir" value="/var/lib/slurm/slurmd"> <B><font color="red">SlurmdSpoolDir</font></B>:
 Slurmd state save directory
 <P>
 Define when a non-responding (DOWN) node is returned to service.<BR>
