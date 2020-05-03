@@ -130,7 +130,7 @@ StorageUser=slurm
 # Fully qualified pathname of a file into which the Slurm Database
 # Daemon’s logs are written. The default value is none (performs
 # logging via syslog).
-LogFile=/var/log/slurm-llnl/slurmdbd.log
+LogFile=/var/log/slurm/slurmdbd.log
 
 # PidFile
 # Fully qualified pathname of a file into which  the  Slurm  Database  Daemon's
