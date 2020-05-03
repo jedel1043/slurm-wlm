@@ -9,6 +9,7 @@ slurm-llnl (20.02.1-1) UNRELEASED; urgency=medium
   * Fix spelling errors in man pages
   * Update configurators
   * Fix the slurmdbd example file (Closes: #949734)
+  * Move new default log location under /var/log/slurm
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 30 Mar 2020 23:05:17 +0200
 
