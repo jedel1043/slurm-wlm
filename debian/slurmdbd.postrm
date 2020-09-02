@@ -23,7 +23,6 @@ case "$1" in
          if which ucf >/dev/null; then
            ucf --purge /etc/slurm-llnl/slurmdbd.conf
          fi
-         rm -rf /etc/slurm-llnl/slurmdbd.conf
 
          # Remove log files in the old log dir location
          rm -rf /var/log/slurm-llnl/slurmdbd.log*
