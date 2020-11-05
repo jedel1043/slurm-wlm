@@ -6,3 +6,4 @@ rpath
 mpiexec-man-page
 fix-perl-doc
 miscellanea-manpages
+remove-acute-accent-in-manual
