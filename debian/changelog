@@ -11,6 +11,7 @@ slurm-wlm (20.02.5-1) UNRELEASED; urgency=medium
   * Remove llnl from the source package name and from the
     configuration, lib and log directory names
   * Remove PM Green patch: bug fixed upstream
+  * Update d/copyright
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 30 Mar 2020 23:05:17 +0200
 
