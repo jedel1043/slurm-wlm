@@ -42,7 +42,7 @@ diff --git a/doc/man/man5/slurm.conf.5 b/doc/man/man5/slurm.conf.5
 index 6958af8d76..dca152a3f4 100644
 --- a/doc/man/man5/slurm.conf.5
 +++ b/doc/man/man5/slurm.conf.5
-@@ -1653,7 +1653,7 @@ This provides support for a highly configurable set of plugins to
+@@ -1604,7 +1604,7 @@ This provides support for a highly configurable set of plugins to
  be called before and/or after execution of each task spawned as
  part of a user's job step.  Default location is "plugstack.conf"
  in the same directory as the system slurm.conf. For more information
@@ -51,7 +51,7 @@ index 6958af8d76..dca152a3f4 100644
  
  .TP
  \fBPowerParameters\fR
-@@ -5879,4 +5879,4 @@ details.
+@@ -5873,4 +5873,4 @@ details.
  \fBgetrlimit\fR (2), \fBgres.conf\fR(5), \fBgroup\fR (5), \fBhostname\fR (1),
  \fBscontrol\fR(1), \fBslurmctld\fR(8), \fBslurmd\fR(8),
  \fBslurmdbd\fR(8), \fBslurmdbd.conf\fR(5), \fBsrun(1)\fR,
@@ -113,8 +113,8 @@ index 6141f49e6f..9be38511ba 100644
 --- a/doc/man/man8/spank.8
 +++ b/doc/man/man7/spank.7
 @@ -1,4 +1,4 @@
--.TH SPANK "8" "Slurm Component" "January 2020" "Slurm Component"
-+.TH SPANK "7" "Slurm Component" "January 2020" "Slurm Component"
+-.TH SPANK "8" "Slurm Component" "April 2020" "Slurm Component"
++.TH SPANK "7" "Slurm Component" "April 2020" "Slurm Component"
  
  .SH "NAME"
  \fBSPANK\fR \- Slurm Plug\-in Architecture for Node and job (K)control
