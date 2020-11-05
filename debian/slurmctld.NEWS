@@ -1,4 +1,4 @@
-slurmctld (20.02.1-1) unstable; urgency=medium
+slurmctld (20.02.5-1) unstable; urgency=medium
 
   The configuration directory has been moved from /etc/slurm-llnl to
   /etc/slurm. The upgrade process will copy the existing configuration
