@@ -6,7 +6,6 @@ slurm-wlm (20.02.5-1) UNRELEASED; urgency=medium
   * Remove smap command
   * Remove cray.conf.5 man page
   * Bump libslurm to soname 35
-  * Fix spelling errors in man pages
   * Update configurators
   * Fix the slurmdbd example file (Closes: #949734)
   * Remove llnl from the source package name and from the
