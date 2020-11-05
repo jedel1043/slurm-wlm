@@ -1,4 +1,4 @@
-.TH scontrol "1" "Slurm Commands" "February 2020" "Slurm Commands"
+.TH scontrol "1" "Slurm Commands" "July 2020" "Slurm Commands"
 
 .SH "NAME"
 scontrol \- view or modify Slurm configuration and state.
@@ -91,7 +91,7 @@ written.
 .TP
 \fBcancel_reboot \fI<NodeList>\fP
 Cancel pending reboots on nodes. If the node reason is "Reboot ASAP" (the
-default reason set by reboot_nodes's \fIASAP\fP keyword), then the DRAIN state
+default reason set by reboot's \fIASAP\fP keyword), then the DRAIN state
 flag will be removed and the node reason will be cleared.
 
 .TP
@@ -220,7 +220,7 @@ Instruct all Slurm daemons to re\-read the configuration file.
 This command does not restart the daemons.
 This mechanism would be used to modify configuration parameters (Epilog,
 Prolog, SlurmctldLogFile, SlurmdLogFile, etc.).
-The Slurm controller (slurmctld) forwards the request all other daemons
+The Slurm controller (slurmctld) forwards the request to all other daemons
 (slurmd daemon on each compute node). Running jobs continue execution.
 Most configuration parameters can be changed by just running this command,
 however, Slurm daemons should be shutdown and restarted if any of these
@@ -750,7 +750,7 @@ Either \fIMinMemoryCPU\fP or \fIMinMemoryNode\fP may be set, but not both.
 Set the job's minimum temporary disk space required per node to the specified value.
 Only the Slurm administrator or root can change this parameter.
 .TP
-\fTimeMin\fP=<timespec>
+\fITimeMin\fP=<timespec>
 Change TimeMin value which specifies the minimum time limit minutes of the job.
 .TP
 \fIJobName\fP=<name>
@@ -850,7 +850,7 @@ Set the job's reservation to the specified value.
 Value may be cleared with blank data value, "ReservationName=".
 .TP
 \fIResetAccrueTime\fP
-Reset the job's accrue time value to 0 meaning it will loose any time
+Reset the job's accrue time value to 0 meaning it will lose any time
 previously accrued for priority.  Helpful if you have a large queue of jobs
 already in the queue and want to start limiting how many jobs can accrue time
 without waiting for the queue to flush out.
@@ -1148,7 +1148,9 @@ restart of the slurmctld daemon with the \fI\-R\fR option and state files
 preserved or slurmctld's receipt of a SIGHUP.
 Update slurm.conf with any changes meant to be persistent across normal
 restarts of slurmctld or the execution of \fBscontrol reconfig\fR.
-Also see \fIActiveFeatures\fP.
+
+\fBNote\fR: Available features being removed via \fBscontrol\fR must not be
+active (i.e. remove them from \fIActiveFeatures\fP first).
 
 .TP
 \fICpuBind\fP=<node>
@@ -1688,8 +1690,9 @@ This is because the CRAY API for managing DataWarps supports both formats.
 
 .TP
 \fICoreCnt\fP=<num>
-This option is only supported when SelectType=select/cons_res. Identify number
-of cores to be reserved. If NodeCnt is used without the FIRST_CORES flag, this
+This option is only supported when \fISelectType=select/cons_res\fP or
+\fIselect/cons_tres\fP. Identify number of cores to be reserved.
+If NodeCnt is used without the FIRST_CORES flag, this
 is the total number of cores to reserve where cores per node is CoreCnt/NodeCnt.
 If a nodelist is used, or if NodeCnt is used with the FIRST_CORES flag, this
 should be an array of core numbers by node: Nodes=node[1\-5] CoreCnt=2,2,3,3,4
@@ -1821,6 +1824,10 @@ Maintenance mode, receives special accounting treatment.
 This reservation is permitted to use resources that are already in another
 reservation.
 .TP
+\fIMAGNETIC\fR
+This flag allows jobs to be considered for this reservation even if they didn't
+request it.
+.TP
 \fINO_HOLD_JOBS_AFTER\fR
 By default, when a reservation ends the reservation request will be removed from
 any pending jobs submitted to the reservation and will be put into a held state.
@@ -1834,10 +1841,6 @@ reservation.
 \fIPART_NODES\fR
 This flag can be used to reserve all nodes within the specified
 partition.  PartitionName and Nodes=ALL must be specified with this flag.
-.TP
-\fIPROMISCUOUS\fR
-This flag allows jobs to be considered for this reservation even if they didn't
-request it.
 .TP
 \fIPURGE_COMP\fR[=<timespec>]
 Purge the reservation if it is ever idle for timespec (no jobs associated with
@@ -1855,6 +1858,9 @@ This option can be used to maintain a constant number of idle resources
 available for pending jobs (subject to availability of idle resources).
 This should be used with the \fINodeCnt\fP reservation option; do not identify
 specific nodes to be included in the reservation.
+
+\fBNOTE\fR: Removing a node from the cluster while in a reservation with the
+\fIREPLACE\fR flag will not cause it to be replaced.
 .TP
 \fIREPLACE_DOWN\fR
 Nodes which are DOWN or DRAINED are automatically replenished using idle resources.
@@ -1862,6 +1868,9 @@ This option can be used to maintain a constant sized pool of resources
 available for pending jobs (subject to availability of idle resources).
 This should be used with the \fINodeCnt\fP reservation option; do not identify
 specific nodes to be included in the reservation.
+
+\fBNOTE\fR: Removing a node from the cluster while in a reservation with the
+\fIREPLACE_DOWN\fR flag will not cause it to be replaced.
 .TP
 \fISPEC_NODES\fR
 Reservation is for specific nodes (output only)
@@ -1874,7 +1883,7 @@ and one goes down the reservation will select a new node to fill the spot.
 \fITIME_FLOAT\fR
 The reservation start time is relative to the current time and moves forward
 through time (e.g. a StartTime=now+10minutes will always be 10 minutes in the
-future).
+future). Repeating (e.g. DAILY) floating reservations are not supported.
 .TP
 \fIWEEKDAY\fR
 Repeat the reservation at the same time on every weekday (Monday, Tuesday,
@@ -1945,6 +1954,11 @@ Please note that CPU, Node, License and BB can override CoreCnt, NodeCnt,
 Licenses and BurstBuffer parameters respectively.  Also CPU represents
 CoreCnt, in a reservation and will be adjusted if you have threads per
 core on your nodes.
+
+Note that a reservation that contains nodes or cores is associated with
+one partition, and can't span resources over multiple partitions.
+The only exception from this is when
+the reservation is created with explicitly requested nodes.
 
 .TP
 \fBSPECIFICATIONS FOR SHOW COMMAND, LAYOUTS\fR
@@ -2040,7 +2054,7 @@ default value is unlimited.
 
 .SH "AUTHORIZATION"
 
-When using the Slurm db, users who have AdminLevel's defined (Operator
+When using SlurmDBD, users who have an AdminLevel defined (Operator
 or Admin) and users who are account coordinators are given the
 authority to view and modify jobs, reservations, nodes, etc., as
 defined in the following table \- regardless of whether a PrivateData

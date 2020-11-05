@@ -1513,6 +1513,14 @@ static bitstr_t *_pick_step_nodes(job_record_t *job_ptr,
 			if (step_ptr->state < JOB_RUNNING)
 				continue;
 
+			/*
+			 * Don't consider the batch and extern steps when
+			 * looking for "idle" nodes.
+			 */
+			if ((step_ptr->step_id == SLURM_BATCH_SCRIPT) ||
+			    (step_ptr->step_id == SLURM_EXTERN_CONT))
+				continue;
+
 			if (!step_ptr->step_node_bitmap) {
 				error("%s: %pS has no step_node_bitmap",
 				      __func__, step_ptr);
@@ -1829,7 +1837,8 @@ static int _count_cpus(job_record_t *job_ptr, bitstr_t *bitmap,
  *	and step's allocation */
 static void _pick_step_cores(step_record_t *step_ptr,
 			     job_resources_t *job_resrcs_ptr,
-			     int job_node_inx, uint16_t task_cnt)
+			     int job_node_inx, uint16_t task_cnt,
+			     uint16_t cpus_per_core)
 {
 	int bit_offset, core_inx, i, sock_inx;
 	uint16_t sockets, cores;
@@ -1849,8 +1858,11 @@ static void _pick_step_cores(step_record_t *step_ptr,
 		use_all_cores = true;
 	else
 		use_all_cores = false;
-	if (step_ptr->cpus_per_task > 0)
-		cpu_cnt *= step_ptr->cpus_per_task;
+
+	if (step_ptr->cpus_per_task > 0) {
+		cpu_cnt *= step_ptr->cpus_per_task + cpus_per_core - 1;
+		cpu_cnt	/= cpus_per_core;
+	}
 
 	/* select idle cores first */
 	for (sock_inx=0; sock_inx<sockets; sock_inx++) {
@@ -1910,6 +1922,19 @@ static void _pick_step_cores(step_record_t *step_ptr,
 				return;
 		}
 	}
+}
+
+static bool _use_one_thread_per_core(job_record_t *job_ptr)
+{
+	job_resources_t *job_resrcs_ptr = job_ptr->job_resrcs;
+
+	if ((job_resrcs_ptr->whole_node != 1) &&
+	    (slurmctld_conf.select_type_param & (CR_CORE | CR_SOCKET)) &&
+	    (job_ptr->details &&
+	     (job_ptr->details->cpu_bind_type != NO_VAL16) &&
+	     (job_ptr->details->cpu_bind_type & CPU_BIND_ONE_THREAD_PER_CORE)))
+		return true;
+	return false;
 }
 
 /* Update a job's record of allocated CPUs when a job step gets scheduled */
@@ -1996,10 +2021,21 @@ extern void step_alloc_lps(step_record_t *step_ptr)
 			}
 		}
 		if (pick_step_cores) {
+			uint16_t cpus_per_core = 1;
+			/*
+			 * Here we're setting number of CPUs per core
+			 * if we don't enforce 1 thread per core
+			 *
+			 * TODO: move cpus_per_core to slurm_step_layout_t
+			 */
+			if (!_use_one_thread_per_core(job_ptr))
+				cpus_per_core =
+					node_record_table_ptr[i_node].threads;
 			_pick_step_cores(step_ptr, job_resrcs_ptr,
 					 job_node_inx,
 					 step_ptr->step_layout->
-					 tasks[step_node_inx]);
+					 tasks[step_node_inx],
+					 cpus_per_core);
 		}
 		if (slurmctld_conf.debug_flags & DEBUG_FLAG_CPU_BIND)
 			_dump_step_layout(step_ptr);
@@ -2360,10 +2396,10 @@ extern int step_create(job_step_create_request_msg_t *step_specs,
 	uint32_t jobid;
 	slurm_step_layout_t *step_layout = NULL;
 	bool tmp_step_layout_used = false;
-
 #ifdef HAVE_NATIVE_CRAY
 	slurm_step_layout_t tmp_step_layout;
 #endif
+
 	*new_step_record = NULL;
 	job_ptr = find_job_record (step_specs->job_id);
 	if (job_ptr == NULL)
@@ -2707,22 +2743,58 @@ extern int step_create(job_step_create_request_msg_t *step_specs,
 
 #ifdef HAVE_NATIVE_CRAY
 	if (job_ptr->het_job_id && (job_ptr->het_job_id != NO_VAL)) {
-		jobid = job_ptr->het_job_id;
+		job_record_t *het_job_ptr;
+		step_record_t *het_step_ptr;
+		bitstr_t *het_grp_bits = NULL;
 
 		/*
-		 * We only want to set up the Aries switch for the first
-		 * job with all the nodes in the total allocation along
-		 * with that node count.
+		 * Het job compontents are sent across on the network
+		 * variable.
 		 */
-		if (job_ptr->job_id == job_ptr->het_job_id) {
-			job_record_t *het_job_ptr;
-			hostlist_t hl = hostlist_create(NULL);
-			ListIterator itr = list_iterator_create(
-				job_ptr->het_job_list);
+		if (!step_specs->network) {
+			het_job_ptr = find_job_record(job_ptr->het_job_id);
+		} else {
+			int first_bit = 0;
+			het_grp_bits = bit_alloc(128);
+			if (bit_unfmt_hexmask(het_grp_bits,
+					      step_specs->network)) {
+				error("%s: bad het group given", __func__);
+				FREE_NULL_BITMAP(het_grp_bits);
+				return ESLURM_INTERCONNECT_FAILURE;
+			}
+			xfree(step_ptr->network);
+			step_ptr->network = xstrdup(job_ptr->network);
+			if ((first_bit = bit_ffs(het_grp_bits)) == -1) {
+				error("%s: no components given from srun for hetstep %pS",
+				      __func__, step_ptr);
+				return ESLURM_INTERCONNECT_FAILURE;
+			}
+			/* The het step might not start on the 0 component. */
+			het_job_ptr = find_het_job_record(
+				job_ptr->het_job_id, first_bit);
+		}
 
-			while ((het_job_ptr = list_next(itr)))
-				hostlist_push(hl, het_job_ptr->nodes);
+		/* Get the step record from the first component in the step */
+		het_step_ptr = find_step_record(het_job_ptr, step_ptr->step_id);
+
+		jobid = job_ptr->het_job_id;
+		if (!het_step_ptr || !het_step_ptr->switch_job) {
+			job_record_t *het_job_comp_ptr;
+			hostlist_t hl = hostlist_create(NULL);
+			ListIterator itr;
+
+			/* Now let's get the real het_job_ptr */
+			het_job_ptr = find_job_record(job_ptr->het_job_id);
+			itr = list_iterator_create(het_job_ptr->het_job_list);
+			while ((het_job_comp_ptr = list_next(itr))) {
+				if (het_grp_bits &&
+				    !bit_test(het_grp_bits,
+					      het_job_comp_ptr->het_job_offset))
+					continue;
+				hostlist_push(hl, het_job_comp_ptr->nodes);
+			}
 			list_iterator_destroy(itr);
+			FREE_NULL_BITMAP(het_grp_bits);
 
 			hostlist_uniq(hl);
 
@@ -2734,22 +2806,12 @@ extern int step_create(job_step_create_request_msg_t *step_specs,
 			hostlist_destroy(hl);
 			tmp_step_layout_used = true;
 		} else {
-			/* assume that job offset 0 has already run! */
-			step_record_t *het_step_ptr;
-			job_record_t *het_job_ptr =
-				find_het_job_record(job_ptr->het_job_id, 0);
-			ListIterator itr =
-				list_iterator_create(het_job_ptr->step_list);
 
-			while ((het_step_ptr = list_next(itr)))
-				if (het_step_ptr->step_id == step_ptr->step_id)
-					break;
-			list_iterator_destroy(itr);
+			if (!het_step_ptr->switch_job)
+				return ESLURM_INTERCONNECT_FAILURE;
 
-			if (het_step_ptr)
-				switch_g_duplicate_jobinfo(
-					het_step_ptr->switch_job,
-					&step_ptr->switch_job);
+			switch_g_duplicate_jobinfo(het_step_ptr->switch_job,
+						   &step_ptr->switch_job);
 			/*
 			 * Prevent switch_g_build_jobinfo from getting a new
 			 * cookie below.
@@ -2895,13 +2957,7 @@ extern slurm_step_layout_t *step_layout_create(step_record_t *step_ptr,
 			 * of cpus available if we only want to run 1
 			 * thread per core.
 			 */
-			if ((job_resrcs_ptr->whole_node != 1)
-			    && (slurmctld_conf.select_type_param
-				& (CR_CORE | CR_SOCKET))
-			    && (job_ptr->details &&
-				(job_ptr->details->cpu_bind_type != NO_VAL16)
-				&& (job_ptr->details->cpu_bind_type
-				    & CPU_BIND_ONE_THREAD_PER_CORE))) {
+			if (_use_one_thread_per_core(job_ptr)) {
 				uint16_t threads;
 				threads = node_ptr->config_ptr->threads;
 

@@ -41,23 +41,6 @@
 
 #define _DEBUG 0	/* Enables module specific debugging */
 
-/*
- * These symbols are defined here so when we link with something other
- * than the slurmctld we will have these symbols defined. They will get
- * overwritten when linking with the slurmctld.
- */
-#if defined (__APPLE__)
-extern slurmctld_config_t slurmctld_config __attribute__((weak_import));
-extern bitstr_t *idle_node_bitmap __attribute__((weak_import));
-extern node_record_t *node_record_table_ptr __attribute__((weak_import));
-extern List job_list __attribute__((weak_import));
-#else
-slurmctld_config_t slurmctld_config;
-bitstr_t *idle_node_bitmap;
-node_record_t *node_record_table_ptr;
-List job_list;
-#endif
-
 typedef struct node_weight_struct {
 	bitstr_t *node_bitmap;	/* bitmap of nodes with this weight */
 	uint32_t weight;	/* priority of node for scheduling work on */
@@ -2287,11 +2270,12 @@ static int _eval_nodes_topo(job_record_t *job_ptr,
 	/*
 	 * Top switch is highest level switch containing all required nodes
 	 * OR all nodes of the lowest scheduling weight
-	 * OR -1 of can not identify top-level switch
+	 * OR -1 if can not identify top-level switch, which may be due to a
+	 * disjoint topology and available nodes living on different switches.
 	 */
 	if (top_switch_inx == -1) {
-		error("%s: %s: %pJ unable to identify top level switch",
-		       plugin_type, __func__, job_ptr);
+		log_flag(SELECT_TYPE, "%s: %s: %pJ unable to identify top level switch",
+			 plugin_type, __func__, job_ptr);
 		rc = SLURM_ERROR;
 		goto fini;
 	}
@@ -3404,10 +3388,7 @@ extern avail_res_t *can_job_run_on_node(job_record_t *job_ptr,
 			(0xff - near_gpu_cnt);
 	}
 
-	for (i = 0; i < avail_res->sock_cnt; i++)
-		cpus += avail_res->avail_cores_per_sock[i];
-	cpus *= avail_res->vpus;
-	cpus -= avail_res->spec_threads;
+	cpus = avail_res->max_cpus;
 
 	if (cr_type & CR_MEMORY) {
 		/*

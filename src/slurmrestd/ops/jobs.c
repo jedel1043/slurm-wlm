@@ -374,8 +374,9 @@ static int _fill_job_desc_from_sbatch_opts(slurm_opt_t *opt,
 		desc->min_nodes = 0;
 	if (opt->ntasks_per_node)
 		desc->ntasks_per_node = opt->ntasks_per_node;
-	desc->user_id = opt->uid;
-	desc->group_id = opt->gid;
+	/* Disable sending uid/gid as it is handled by auth layer */
+	/* desc->user_id = opt->uid; */
+	/* desc->group_id = opt->gid; */
 	if (opt->dependency)
 		desc->dependency = xstrdup(opt->dependency);
 
@@ -917,8 +918,9 @@ static data_t *dump_job_info(slurm_job_info_t *job, data_t *jd)
 			data_t *cores = data_key_set(node, "cores");
 			data_set_dict(sockets);
 			data_set_dict(cores);
-			const size_t bit_reps = j->sockets_per_node[sock_inx] *
-						j->cores_per_socket[sock_inx];
+			const size_t bit_reps =
+				((size_t) j->sockets_per_node[sock_inx]) *
+				((size_t) j->cores_per_socket[sock_inx]);
 
 			if (sock_reps >= j->sock_core_rep_count[sock_inx]) {
 				sock_inx++;
@@ -1333,12 +1335,12 @@ static int _op_handler_job(const char *context_id, http_request_method_t method,
 	} else if (tag == URL_TAG_JOB &&
 		   method == HTTP_REQUEST_DELETE) {
 		int signal = 0;
-		data_t *_signal = data_key_get(query, "signal");
+		data_t *dsignal = data_key_get(query, "signal");
 
-		if (signal && data_get_type(_signal) == DATA_TYPE_INT_64)
-			signal = data_get_int(_signal);
-		else if (_signal && data_get_type(_signal) == DATA_TYPE_STRING)
-			signal = sig_name2num(data_get_string(_signal));
+		if (data_get_type(dsignal) == DATA_TYPE_INT_64)
+			signal = data_get_int(dsignal);
+		else if (data_get_type(dsignal) == DATA_TYPE_STRING)
+			signal = sig_name2num(data_get_string(dsignal));
 		else
 			signal = SIGKILL;
 
@@ -1368,6 +1370,13 @@ static int _op_handler_submit_job_post(const char *context_id,
 	submit_response_msg_t *resp = NULL;
 	char *script = NULL;
 
+	if (!query) {
+		error("%s: [%s] unexpected empty query for job",
+		      __func__, context_id);
+		rc = SLURM_ERROR;
+		goto finish;
+	}
+
 	if (get_log_level() >= LOG_LEVEL_DEBUG5) {
 		char *buffer = dump_json(query, DUMP_JSON_FLAGS_COMPACT);
 		debug5("%s: job submit query from %s: %s",
@@ -1383,6 +1392,7 @@ static int _op_handler_submit_job_post(const char *context_id,
 		error("%s: unexpected missing script for job from %s",
 		      __func__, context_id);
 		rc = SLURM_ERROR;
+		goto finish;
 	}
 
 	if (!rc) {
@@ -1408,12 +1418,13 @@ static int _op_handler_submit_job_post(const char *context_id,
 			       __func__, context_id);
 			rc = jobs_rc.rc;
 			if (jobs_rc.het_job) {
-				rc = slurm_submit_batch_het_job(
-					jobs_rc.jobs, &resp);
+				if (slurm_submit_batch_het_job(jobs_rc.jobs,
+							       &resp))
+					rc = errno;
 				list_destroy(jobs_rc.jobs);
 			} else {
-				rc = slurm_submit_batch_job(jobs_rc.job,
-								&resp);
+				if (slurm_submit_batch_job(jobs_rc.job, &resp))
+					rc = errno;
 				slurm_free_job_desc_msg(jobs_rc.job);
 			}
 		}
@@ -1454,7 +1465,10 @@ static int _op_handler_submit_job_post(const char *context_id,
 		}
 		data_set_string(data_key_set(d, "job_submit_user_msg"),
 				resp->job_submit_user_msg);
-	} else {
+	}
+
+finish:
+	if (rc) {
 		data_t *error = data_set_dict(data_list_append(errors));
 		data_set_int(data_key_set(error, "error_code"), rc);
 		data_set_string(data_key_set(error, "error"),

@@ -965,6 +965,11 @@ static bool _opt_verify(void)
 	cpu_freq_set_env("SLURM_CPU_FREQ_REQ",
 			 opt.cpu_freq_min, opt.cpu_freq_max, opt.cpu_freq_gov);
 
+	if (opt.gpus_per_socket && (opt.sockets_per_node == NO_VAL)) {
+		error("--gpus-per-socket option requires --sockets-per-node specification");
+		exit(error_exit);
+	}
+
 	return verified;
 }
 
@@ -1113,7 +1118,7 @@ static void _help(void)
 	slurm_ctl_conf_t *conf;
 
 	printf (
-"Usage: sbatch [OPTIONS...] executable [args...]\n"
+"Usage: sbatch [OPTIONS(0)...] [ : [OPTIONS(N)...]] script(0) [args(0)...]\n"
 "\n"
 "Parallel run options:\n"
 "  -a, --array=indexes         job array index values\n"

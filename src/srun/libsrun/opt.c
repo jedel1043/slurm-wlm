@@ -95,8 +95,6 @@ slurm_opt_t opt =
 List 	opt_list = NULL;
 int	pass_number = 0;
 time_t	srun_begin_time = 0;
-bool	tres_bind_err_log = true;
-bool	tres_freq_err_log = true;
 
 /*---- forward declarations of static variables and functions  ----*/
 
@@ -286,12 +284,12 @@ static slurm_opt_t *_opt_copy(void)
 	opt_dup->srun_opt->export_env = xstrdup(sropt.export_env);
 	opt_dup->extra = xstrdup(opt.extra);
 	opt.gres = NULL;		/* Moved by memcpy */
-	opt_dup->gpu_bind = NULL;	/* Moved by memcpy */
-	opt_dup->gpu_freq = NULL;	/* Moved by memcpy */
-	opt_dup->gpus = NULL;		/* Moved by memcpy */
-	opt_dup->gpus_per_node = NULL;	/* Moved by memcpy */
-	opt_dup->gpus_per_socket = NULL;/* Moved by memcpy */
-	opt_dup->gpus_per_task = NULL;	/* Moved by memcpy */
+	opt.gpu_bind = NULL;		/* Moved by memcpy */
+	opt.gpu_freq = NULL;		/* Moved by memcpy */
+	opt.gpus = NULL;		/* Moved by memcpy */
+	opt.gpus_per_node = NULL;	/* Moved by memcpy */
+	opt.gpus_per_socket = NULL;	/* Moved by memcpy */
+	opt.gpus_per_task = NULL;	/* Moved by memcpy */
 	opt_dup->ifname = xstrdup(opt.ifname);
 	opt_dup->job_name = xstrdup(opt.job_name);
 	opt.licenses = NULL;		/* Moved by memcpy */
@@ -340,6 +338,16 @@ extern int initialize_and_process_args(int argc, char **argv, int *argc_off)
 
 	het_grp_bits = _get_het_group(argc, argv, default_het_job_offset++,
 				      &opt_found);
+	/*
+	 * Put all these bits on the global grp bits to send with the step
+	 * requests.
+	 */
+	if (opt_found) {
+		if (!g_het_grp_bits)
+			g_het_grp_bits = bit_alloc(MAX_HET_JOB_COMPONENTS);
+		bit_or(g_het_grp_bits, het_grp_bits);
+	}
+
 	i_first = bit_ffs(het_grp_bits);
 	i_last  = bit_fls(het_grp_bits);
 	for (i = i_first; i <= i_last; i++) {
@@ -1213,6 +1221,13 @@ static bool _opt_verify(void)
 		opt.x11_magic_cookie = x11_get_xauth();
 	}
 
+	/* Validate allocation request only. */
+	if ((sropt.jobid == NO_VAL) &&
+	    opt.gpus_per_socket && (opt.sockets_per_node == NO_VAL)) {
+		error("--gpus-per-socket option requires --sockets-per-node specification");
+		exit(error_exit);
+	}
+
 	return verified;
 }
 
@@ -1383,7 +1398,7 @@ static void _help(void)
 	slurm_ctl_conf_t *conf;
 
         printf (
-"Usage: srun [OPTIONS...] executable [args...]\n"
+"Usage: srun [OPTIONS(0)... [executable(0) [args(0)...]]] [ : [OPTIONS(N)...]] executable(N) [args(N)...]\n"
 "\n"
 "Parallel run options:\n"
 "  -A, --account=name          charge job to specified account\n"

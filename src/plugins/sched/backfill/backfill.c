@@ -1166,6 +1166,8 @@ static bool _job_runnable_now(job_record_t *job_ptr)
 {
 	uint16_t cleaning = 0;
 
+	if (IS_JOB_REVOKED(job_ptr))
+		return false;
 	if (!IS_JOB_PENDING(job_ptr))	/* Started in other partition */
 		return false;
 	if (job_ptr->priority == 0)	/* Job has been held */
@@ -1201,9 +1203,10 @@ static void _restore_preempt_state(job_record_t *job_ptr,
 		job_ptr->details->preempt_start_time =
 			*tmp_preempt_start_time;
 		job_ptr->preempt_in_progress = *tmp_preempt_in_progress;
-		*tmp_preempt_start_time = 0;
-		*tmp_preempt_in_progress = false;
 	}
+
+	*tmp_preempt_start_time = 0;
+	*tmp_preempt_in_progress = false;
 }
 
 /*
@@ -1704,6 +1707,10 @@ static int _attempt_backfill(void)
 		if (job_ptr) {
 			job_resv_clear_promiscous_flag(job_ptr);
 			fill_array_reasons(job_ptr, reject_array_job);
+
+			/* Restore preemption state if needed. */
+			_restore_preempt_state(job_ptr, &tmp_preempt_start_time,
+			                       &tmp_preempt_in_progress);
 		}
 		job_queue_rec = (job_queue_rec_t *) list_pop(job_queue);
 		if (!job_queue_rec) {
@@ -1771,10 +1778,6 @@ static int _attempt_backfill(void)
 				continue;
 		}
 
-		/* Restore preemption state if needed. */
-		_restore_preempt_state(job_ptr, &tmp_preempt_start_time,
-				       &tmp_preempt_in_progress);
-
 		/*
 		 * Establish baseline (worst case) start time for hetjob
 		 * Update time once start time estimate established
@@ -1841,10 +1844,9 @@ static int _attempt_backfill(void)
 			    && !job_ptr->limit_set.qos) {
 				debug("backfill: %pJ has invalid QOS",
 				      job_ptr);
-				xfree(job_ptr->state_desc);
-				job_ptr->state_reason = FAIL_QOS;
-				last_job_update = now;
 				assoc_mgr_unlock(&locks);
+				job_fail_qos(job_ptr, __func__);
+				last_job_update = now;
 				continue;
 			} else if (job_ptr->state_reason == FAIL_QOS) {
 				xfree(job_ptr->state_desc);
@@ -1931,7 +1933,7 @@ static int _attempt_backfill(void)
 				job_no_reserve = TEST_NOW_ONLY;
 		}
 
-		if (tmp_preempt_in_progress)
+		if (job_ptr->preempt_in_progress)
 			continue; 	/* scheduled in another partition */
 
 		orig_start_time = job_ptr->start_time;
@@ -1947,10 +1949,12 @@ next_task:
 		 * Save the current preemption state. Reset preemption state
 		 * in the job_ptr so a job array can preempt multiple jobs.
 		 */
-		tmp_preempt_in_progress = job_ptr->preempt_in_progress;
-		tmp_preempt_start_time = job_ptr->details->preempt_start_time;
-		job_ptr->details->preempt_start_time = 0;
-		job_ptr->preempt_in_progress = false;
+		if (job_ptr->preempt_in_progress) {
+			tmp_preempt_in_progress = job_ptr->preempt_in_progress;
+			tmp_preempt_start_time = job_ptr->details->preempt_start_time;
+			job_ptr->details->preempt_start_time = 0;
+			job_ptr->preempt_in_progress = false;
+		}
 
 		job_test_count++;
 		slurmctld_diag_stats.bf_last_depth++;
@@ -2059,13 +2063,15 @@ next_task:
 		}
 		if (deadline_time_limit)
 			comp_time_limit = MIN(time_limit, deadline_time_limit);
-		else
+		else if (job_ptr->time_min &&
+			 (job_ptr->time_min < time_limit)) {
+			time_limit = job_ptr->time_limit = job_ptr->time_min;
+			comp_time_limit = time_limit;
+		} else
 			comp_time_limit = time_limit;
 		if ((qos_flags & QOS_FLAG_NO_RESERVE) &&
 		    slurm_get_preempt_mode())
 			time_limit = job_ptr->time_limit = 1;
-		else if (job_ptr->time_min && (job_ptr->time_min < time_limit))
-			time_limit = job_ptr->time_limit = job_ptr->time_min;
 
 		later_start = now;
 

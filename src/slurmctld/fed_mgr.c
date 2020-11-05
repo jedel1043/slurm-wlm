@@ -1988,9 +1988,12 @@ static void _handle_fed_job_submission(fed_job_update_info_t *job_update_info)
 	lock_slurmctld(job_write_lock);
 
 	if ((job_ptr = find_job_record(job_update_info->job_id))) {
-		info("Found existing fed %pJ, going to requeue/kill it",
-		     job_ptr);
-		purge_job_record(job_ptr->job_id);
+		debug("Found existing fed %pJ, going to requeue/unlink it",
+		      job_ptr);
+		/* Delete job quickly */
+		job_ptr->job_state |= JOB_REVOKED;
+		unlink_job_record(job_ptr);
+
 		/*
 		 * Make sure that the file delete request is purged from list
 		 * -- added from purge_job_record() -- before job is allocated
@@ -2125,7 +2128,7 @@ extern int _handle_fed_send_job_sync(fed_job_update_info_t *job_update_info)
 	char *sib_name = job_update_info->submit_cluster;
 
 	slurmctld_lock_t job_read_lock = {
-		NO_LOCK, READ_LOCK, NO_LOCK, NO_LOCK, READ_LOCK };
+		READ_LOCK, READ_LOCK, NO_LOCK, NO_LOCK, READ_LOCK };
 
 	lock_slurmctld(job_read_lock);
 
@@ -2780,7 +2783,7 @@ static void _add_missing_fed_job_info()
 extern int fed_mgr_init(void *db_conn)
 {
 	int rc = SLURM_SUCCESS;
-	uint64_t tmp;
+	uint64_t tmp = 0;
 	slurmdb_federation_cond_t fed_cond;
 	List fed_list;
 	slurmdb_federation_rec_t *fed = NULL, *state_fed = NULL;
@@ -3000,7 +3003,8 @@ static void _handle_dependencies_for_modified_fed(uint64_t added_clusters,
 	find_dep.depend_type = SLURM_DEPEND_SINGLETON;
 	itr = list_iterator_create(job_list);
 	while ((job_ptr = list_next(itr))) {
-		if (added_clusters && _is_fed_job(job_ptr, &origin_id) &&
+		if (added_clusters && IS_JOB_PENDING(job_ptr) &&
+		    _is_fed_job(job_ptr, &origin_id) &&
 		    find_dependency(job_ptr, &find_dep))
 			fed_mgr_submit_remote_dependencies(job_ptr, true,
 							   false);
@@ -5006,7 +5010,7 @@ extern int fed_mgr_job_revoke(job_record_t *job_ptr, bool job_complete,
 		return SLURM_SUCCESS;
 
 	/* Purge the revoked job -- remote only */
-	purge_job_record(job_ptr->job_id);
+	unlink_job_record(job_ptr);
 
 	return SLURM_SUCCESS;
 }
