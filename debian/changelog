@@ -1,4 +1,4 @@
-slurm-wlm (20.02.1-1) UNRELEASED; urgency=medium
+slurm-wlm (20.02.5-1) UNRELEASED; urgency=medium
 
   * New upstream release
   * Refresh miscellanea-manpages and mail-path patches
