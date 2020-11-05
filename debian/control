@@ -1,4 +1,4 @@
-Source: slurm-llnl
+Source: slurm-wlm
 Section: admin
 Priority: optional
 Maintainer: Debian HPC Team <debian-hpc@lists.debian.org>
