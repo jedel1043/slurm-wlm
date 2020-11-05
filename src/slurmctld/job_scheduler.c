@@ -434,6 +434,11 @@ extern List build_job_queue(bool clear_start, bool backfill)
 		if (job_ptr->array_recs->task_cnt == 1) {
 			job_ptr->array_task_id = i;
 			(void) job_array_post_sched(job_ptr);
+			if (job_ptr->details && job_ptr->details->dependency &&
+			    job_ptr->details->depend_list)
+				fed_mgr_submit_remote_dependencies(job_ptr,
+								   false,
+								   false);
 			continue;
 		}
 		job_ptr->array_task_id = i;
@@ -488,6 +493,11 @@ extern List build_job_queue(bool clear_start, bool backfill)
 		if (job_ptr->array_recs->task_cnt == 1) {
 			job_ptr->array_task_id = i;
 			(void) job_array_post_sched(job_ptr);
+			if (job_ptr->details && job_ptr->details->dependency &&
+			    job_ptr->details->depend_list)
+				fed_mgr_submit_remote_dependencies(job_ptr,
+								   false,
+								   false);
 			continue;
 		}
 		job_ptr->array_task_id = i;
@@ -508,8 +518,10 @@ extern List build_job_queue(bool clear_start, bool backfill)
 
 	job_iterator = list_iterator_create(job_list);
 	while ((job_ptr = list_next(job_iterator))) {
-		if (IS_JOB_PENDING(job_ptr))
+		if (IS_JOB_PENDING(job_ptr)) {
+			set_job_failed_assoc_qos_ptr(job_ptr);
 			acct_policy_handle_accrue_time(job_ptr, false);
+		}
 
 		if (((tested_jobs % 100) == 0) &&
 		    (slurm_delta_tv(&start_tv) >= build_queue_timeout)) {
@@ -526,6 +538,8 @@ extern List build_job_queue(bool clear_start, bool backfill)
 		}
 		tested_jobs++;
 		job_ptr->preempt_in_progress = false;	/* initialize */
+		if (job_ptr->array_recs)
+			job_ptr->array_recs->pend_run_tasks = 0;
 		if (job_ptr->state_reason != WAIT_NO_REASON) {
 			job_ptr->state_reason_prev = job_ptr->state_reason;
 			if ((job_ptr->state_reason != WAIT_PRIORITY) &&
@@ -1350,8 +1364,10 @@ static int _schedule(uint32_t job_limit)
 				break;
 
 			/* When not fifo we do this in build_job_queue(). */
-			if (IS_JOB_PENDING(job_ptr))
+			if (IS_JOB_PENDING(job_ptr)) {
+				set_job_failed_assoc_qos_ptr(job_ptr);
 				acct_policy_handle_accrue_time(job_ptr, false);
+			}
 
 			if (!avail_front_end(job_ptr)) {
 				job_ptr->state_reason = WAIT_FRONT_END;
@@ -1530,12 +1546,31 @@ next_task:
 			}
 		} else if (_failed_partition(job_ptr->part_ptr, failed_parts,
 					     failed_part_cnt)) {
-			job_ptr->state_reason = WAIT_PRIORITY;
-			xfree(job_ptr->state_desc);
+			if ((job_ptr->state_reason == WAIT_NO_REASON) ||
+			    (job_ptr->state_reason == WAIT_RESOURCES)) {
+				sched_debug("%pJ unable to schedule in Partition=%s (per _failed_partition()). State=PENDING. Previous-Reason=%s. Previous-Desc=%s. New-Reason=Priority. Priority=%u.",
+					    job_ptr,
+					    job_ptr->partition,
+					    job_reason_string(
+						    job_ptr->state_reason),
+					    job_ptr->state_desc,
+					    job_ptr->priority);
+				job_ptr->state_reason = WAIT_PRIORITY;
+				xfree(job_ptr->state_desc);
+			} else {
+				/*
+				 * Log job can not run even though we are not
+				 * overriding the reason */
+				sched_debug2("%pJ. unable to schedule in Partition=%s (per _failed_partition()). Retaining previous scheduling Reason=%s. Desc=%s. Priority=%u.",
+					     job_ptr,
+					     job_ptr->partition,
+					     job_reason_string(
+						     job_ptr->state_reason),
+					     job_ptr->state_desc,
+					     job_ptr->priority);
+			}
 			last_job_update = now;
-			sched_debug("%pJ. State=PENDING. Reason=Priority, Priority=%u. Partition=%s.",
-				    job_ptr, job_ptr->priority,
-				    job_ptr->partition);
+
 			continue;
 		} else if (wait_on_resv &&
 			   (job_ptr->warn_flags & KILL_JOB_RESV)) {
@@ -1584,11 +1619,10 @@ next_task:
 				!bit_test(job_ptr->assoc_ptr->usage->valid_qos,
 					  job_ptr->qos_id))
 			    && !job_ptr->limit_set.qos) {
-				sched_debug("%pJ has invalid QOS", job_ptr);
-				xfree(job_ptr->state_desc);
-				job_ptr->state_reason = FAIL_QOS;
-				last_job_update = now;
 				assoc_mgr_unlock(&locks);
+				sched_debug("%pJ has invalid QOS", job_ptr);
+				job_fail_qos(job_ptr, __func__);
+				last_job_update = now;
 				continue;
 			} else if (job_ptr->state_reason == FAIL_QOS) {
 				xfree(job_ptr->state_desc);
@@ -1656,7 +1690,8 @@ next_task:
 				     job_state_string(job_ptr->job_state),
 				     job_reason_string(job_ptr->state_reason),
 				     job_ptr->priority, job_ptr->partition);
-			continue;
+			fail_by_part = true;
+			goto fail_this_part;
 		}
 		if (license_job_test(job_ptr, time(NULL), true) !=
 		    SLURM_SUCCESS) {
@@ -3149,6 +3184,7 @@ static int _find_dependency(void *arg, void *key)
 	depend_spec_t *dep_ptr = (depend_spec_t *)arg;
 	depend_spec_t *new_dep = (depend_spec_t *)key;
 	return (dep_ptr->job_id == new_dep->job_id) &&
+		(dep_ptr->array_task_id == new_dep->array_task_id) &&
 		(dep_ptr->depend_type == new_dep->depend_type);
 }
 
@@ -3196,6 +3232,26 @@ static int _parse_depend_state(char **str_ptr, uint32_t *depend_state)
 	return SLURM_SUCCESS;
 }
 
+static job_record_t *_find_dependent_job_ptr(uint32_t job_id,
+					     uint32_t *array_task_id)
+{
+	job_record_t *dep_job_ptr;
+
+	if (*array_task_id == NO_VAL) {
+		dep_job_ptr = find_job_record(job_id);
+		if (!dep_job_ptr)
+			dep_job_ptr = find_job_array_rec(job_id, INFINITE);
+		if (dep_job_ptr &&
+		    (dep_job_ptr->array_job_id == job_id) &&
+		    ((dep_job_ptr->array_task_id != NO_VAL) ||
+		     (dep_job_ptr->array_recs != NULL)))
+			*array_task_id = INFINITE;
+	} else
+		dep_job_ptr = find_job_array_rec(job_id, *array_task_id);
+
+	return dep_job_ptr;
+}
+
 /*
  * The new dependency format is:
  *
@@ -3239,23 +3295,7 @@ static void _parse_dependency_jobid_new(job_record_t *job_ptr,
 			*rc = ESLURM_DEPENDENCY;
 			break;
 		}
-		if (array_task_id == NO_VAL) {
-			dep_job_ptr = find_job_record(job_id);
-			if (!dep_job_ptr) {
-				dep_job_ptr =
-					find_job_array_rec(job_id,
-							   INFINITE);
-			}
-			if (dep_job_ptr &&
-			    (dep_job_ptr->array_job_id == job_id) &&
-			    ((dep_job_ptr->array_task_id != NO_VAL) ||
-			     (dep_job_ptr->array_recs != NULL))) {
-				array_task_id = INFINITE;
-			}
-		} else {
-			dep_job_ptr = find_job_array_rec(job_id,
-							 array_task_id);
-		}
+		dep_job_ptr = _find_dependent_job_ptr(job_id, &array_task_id);
 		if ((depend_type == SLURM_DEPEND_EXPAND) &&
 		    ((expand_cnt++ > 0) || (dep_job_ptr == NULL) ||
 		     (!IS_JOB_RUNNING(dep_job_ptr))		||
@@ -3409,21 +3449,8 @@ static void _parse_dependency_jobid_old(job_record_t *job_ptr,
 		*rc = ESLURM_DEPENDENCY;
 		return;
 	}
-	/* Find the job_ptr */
-	if (array_task_id == NO_VAL) {
-		dep_job_ptr = find_job_record(job_id);
-		if (!dep_job_ptr) {
-			dep_job_ptr = find_job_array_rec(job_id, INFINITE);
-		}
-		if (dep_job_ptr &&
-		    (dep_job_ptr->array_job_id == job_id) &&
-		    ((dep_job_ptr->array_task_id != NO_VAL) ||
-		     (dep_job_ptr->array_recs != NULL))) {
-			array_task_id = INFINITE;
-		}
-	} else {
-		dep_job_ptr = find_job_array_rec(job_id, array_task_id);
-	}
+	dep_job_ptr = _find_dependent_job_ptr(job_id, &array_task_id);
+
 	dep_ptr = xmalloc(sizeof(depend_spec_t));
 	dep_ptr->array_task_id = array_task_id;
 	dep_ptr->depend_type = SLURM_DEPEND_AFTER_ANY;

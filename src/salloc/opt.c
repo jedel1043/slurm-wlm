@@ -656,6 +656,11 @@ static bool _opt_verify(void)
 	if (saopt.no_shell && !opt.job_name)
 		opt.job_name = xstrdup("no-shell");
 
+	if (opt.gpus_per_socket && (opt.sockets_per_node == NO_VAL)) {
+		error("--gpus-per-socket option requires --sockets-per-node specification");
+		exit(error_exit);
+	}
+
 	return verified;
 }
 
@@ -784,7 +789,7 @@ static void _help(void)
 	slurm_ctl_conf_t *conf;
 
         printf (
-"Usage: salloc [OPTIONS...] [command [args...]]\n"
+"Usage: salloc [OPTIONS(0)...] [ : [OPTIONS(N)]] [command(0) [args(0)...]]\n"
 "\n"
 "Parallel run options:\n"
 "  -A, --account=name          charge job to specified account\n"

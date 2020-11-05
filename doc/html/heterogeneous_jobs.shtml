@@ -552,23 +552,23 @@ SLURM_JOB_NODELIST=nid[00001,00011-00012]
 
 <p>Create a heterogeneous resource allocation containing one node with 256GB
 of memory and a feature of "haswell" plus 2176 cores on 32 nodes with a
-feature of "knl". Then launch a program called "master" on the "haswell" node
-and "slave" on the "knl" nodes. Each application will be in its own
+feature of "knl". Then launch a program called "server" on the "haswell" node
+and "client" on the "knl" nodes. Each application will be in its own
 MPI_COMM_WORLD.</p>
 <pre>
 salloc -N1 --mem=256GB -C haswell : \
        -n2176 -N32 --ntasks-per-core=1 -C knl bash
-srun master &
-srun --het-group=1 slave &
+srun server &
+srun --het-group=1 client &
 wait
 </pre>
 
-<p>This variation of the above example launches programs "master" and "slave"
+<p>This variation of the above example launches programs "server" and "client"
 in a single MPI_COMM_WORLD.</p>
 <pre>
 salloc -N1 --mem=256GB -C haswell : \
        -n2176 -N32 --ntasks-per-core=1 -C knl bash
-srun master : slave &
+srun server : client
 </pre>
 
 <p>The SLURM_PROCID and SLURM_TASKID environment variables will be set to
@@ -584,7 +584,7 @@ determined by examining Slurm environment variables.</p>
 
 <h2><a name="limitations">Limitations</a></h2>
 
-<p>The backfill scheduler has limiations in how it tracks usage of CPUs and
+<p>The backfill scheduler has limitations in how it tracks usage of CPUs and
 memory in the future.
 This typically requires the backfill scheduler be able to allocate each
 component of a heterogeneous job on a different node in order to begin its
@@ -595,6 +595,18 @@ allocated resources on the same node.</p>
 the cluster from which the job is submitted. The heterogeneous job will not
 be eligible to migrate between clusters or to have different components of
 the job execute on different clusters in the federation.</p>
+
+<p>Caution must be taken when submitting heterogeneous jobs that request
+multiple overlapping partitions. When the partitions share the same resources
+it's possible to starve your own job by having the first job component request
+enough nodes that the scheduler isn't able to fill the subsequent request(s).
+Consider an example where you have partition <i>p1</i> that contains 10 nodes
+and partition <i>p2</i> that exists on 5 of the same nodes. If you submit a
+heterogeneous job that requests 5 nodes in <i>p1</i> and 5 nodes in <i>p2</i>,
+the scheduler may try to allocate some of the nodes from the <i>p2</i>
+partition for the first job component, preventing the scheduler from being
+able to fulfill the second request, resulting in a job that is never able to
+start.</p>
 
 <p>Job arrays of heterogeneous jobs are not supported.</p>
 
@@ -710,6 +722,6 @@ Such a situation will have an adverse effect upon scheduling other jobs,
 especially other heterogeneous jobs.</p>
 
 
-<p style="text-align:center;">Last modified 20 January 2020</p>
+<p style="text-align:center;">Last modified 30 March 2020</p>
 
 <!--#include virtual="footer.txt"-->

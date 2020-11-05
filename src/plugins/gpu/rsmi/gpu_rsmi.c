@@ -41,7 +41,7 @@
 #include "src/common/slurm_xlator.h"
 #include "src/common/gres.h"
 #include "src/common/log.h"
-#include <rocm_smi.h>
+#include <rocm_smi/rocm_smi.h>
 
 /*
  * #defines needed to test rsmi.
@@ -112,7 +112,7 @@ typedef struct rsmiPciInfo_st {
 const char	*plugin_name		= "GPU RSMI plugin";
 const char	*plugin_type		= "gpu/rsmi";
 const uint32_t	plugin_version		= SLURM_VERSION_NUMBER;
-static log_level_t log_lvl              = LOG_LEVEL_QUIET;
+static log_level_t log_lvl              = LOG_LEVEL_DEBUG5;
 
 extern int init(void)
 {
@@ -1107,7 +1107,7 @@ static List _get_system_gpu_list_rsmi(node_config_load_t *node_config)
 		_rsmi_print_freqs(i, LOG_LEVEL_DEBUG2);
 
 		add_gres_to_list(gres_list_system, "gpu", 1,
-				 node_config->cpu_cnt, NULL,
+				 node_config->cpu_cnt, NULL, NULL,
 				 device_file, device_brand, NULL);
 
 		xfree(device_file);
@@ -1124,7 +1124,7 @@ extern int gpu_p_reconfig(void)
 	if (slurm_get_debug_flags() & DEBUG_FLAG_GRES)
 		log_lvl = LOG_LEVEL_INFO;
 	else
-		log_lvl = LOG_LEVEL_QUIET;
+		log_lvl = LOG_LEVEL_DEBUG5;
 
 	return SLURM_SUCCESS;
 }

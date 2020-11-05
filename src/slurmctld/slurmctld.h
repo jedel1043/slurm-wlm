@@ -564,7 +564,7 @@ struct job_details {
 					 * NICE_OFFSET == no change */
 	uint16_t ntasks_per_node;	/* number of tasks on each node */
 	uint32_t num_tasks;		/* number of tasks to start */
-	uint8_t open_mode;		/* stdout/err append or trunctate */
+	uint8_t open_mode;		/* stdout/err append or truncate */
 	uint8_t overcommit;		/* processors being over subscribed */
 	uint16_t plane_size;		/* plane size when task_dist =
 					 * SLURM_DIST_PLANE */
@@ -1079,6 +1079,12 @@ extern void abort_job_on_node(uint32_t job_id, job_record_t *job_ptr,
  */
 extern void abort_job_on_nodes(job_record_t *job_ptr, bitstr_t *node_bitmap);
 
+/*
+ * If a job has a FAIL_ACCOUNT or FAIL_QOS start_reason check and set pointers
+ * if they are now valid.
+ */
+extern void set_job_failed_assoc_qos_ptr(job_record_t *job_ptr);
+
 /* set the tres_req_str and tres_req_fmt_str for the job.  assoc_mgr_locked
  * is set if the assoc_mgr read lock is already set.
  */
@@ -1367,6 +1373,9 @@ extern bool is_node_down (char *name);
  * RET true if node exists and is responding, otherwise false
  */
 extern bool is_node_resp (char *name);
+
+/* Fail a job because the qos is no longer valid */
+extern int job_fail_qos(job_record_t *job_ptr, const char *func_name);
 
 /*
  * delete_job_desc_files - remove the state files and directory
@@ -2667,6 +2676,14 @@ extern void update_job_fed_details(job_record_t *job_ptr);
  * global: job_list - global job table
  */
 extern int purge_job_record(uint32_t job_id);
+
+/*
+ * Remove job from job hashes so that it can't be found, but leave job in
+ * job_table so that it can be deleted by _list_delete_job().
+ *
+ * IN job_ptr - job_ptr to be unlinked
+ */
+extern void unlink_job_record(job_record_t *job_ptr);
 
 /*
  * copy_job_record_to_job_desc - construct a job_desc_msg_t for a job.

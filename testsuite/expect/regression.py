@@ -41,6 +41,7 @@ def main(argv=None):
     tests = []
     failed_tests = []
     passed_tests = []
+    skipped_tests = []
     begin = (1,1)
 
     # Handle command line parameters
@@ -100,6 +101,11 @@ def main(argv=None):
 
     # Now run the tests
     start_time = time.time()
+    test_env = os.environ.copy()
+    if options.stop_on_first_fail:
+        test_env["SLURM_TESTSUITE_CLEANUP_ON_FAILURE"] = "false"
+    else:
+        test_env["SLURM_TESTSUITE_CLEANUP_ON_FAILURE"] = "true"
     print('Started:', time.asctime(time.localtime(start_time)), file=sys.stdout)
     sys.stdout.flush()
     for test in tests:
@@ -117,7 +123,7 @@ def main(argv=None):
         if options.time_individual:
             t1 = time.time()
         retcode = Popen(('expect', test[2]), shell=False,
-                        stdout=testlog, stderr=testlog).wait()
+                        env=test_env, stdout=testlog, stderr=testlog).wait()
         if options.time_individual:
             t2 = time.time()
             minutes = int(t2-t1)/60
@@ -130,6 +136,15 @@ def main(argv=None):
         if retcode == 0:
             passed_tests.append(test)
             sys.stdout.write('\n')
+            if not options.keep_logs:
+                try:
+                    os.remove(testlog_name)
+                except IOError as e:
+                    print('ERROR failed to close %s %s' % (testlog_name, e),
+                            file=sys.stederr);
+        elif retcode > 127:
+            skipped_tests.append(test)
+            sys.stdout.write('SKIPPED\n')
             if not options.keep_logs:
                 try:
                     os.remove(testlog_name)
@@ -150,6 +165,7 @@ def main(argv=None):
           %((end_time-start_time)/60,(end_time-start_time)%60), file=sys.stdout)
     print('Completions  :', len(passed_tests), file=sys.stdout)
     print('Failures     :', len(failed_tests), file=sys.stdout)
+    print('Skipped      :', len(skipped_tests), file=sys.stdout)
     if len(failed_tests) > 0:
         print('Failed tests : ', file=sys.stdout)
         first = True

@@ -98,7 +98,7 @@ static bitstr_t	*saved_gpus = NULL;
 const char	*plugin_name		= "GPU NVML plugin";
 const char	*plugin_type		= "gpu/nvml";
 const uint32_t	plugin_version		= SLURM_VERSION_NUMBER;
-static log_level_t log_lvl              = LOG_LEVEL_QUIET;
+static log_level_t log_lvl              = LOG_LEVEL_DEBUG5;
 
 
 /*
@@ -1274,7 +1274,7 @@ static List _get_system_gpu_list_nvml(node_config_load_t *node_config)
 		if (!_nvml_get_handle(i, &device)) {
 			error("Creating null GRES GPU record");
 			add_gres_to_list(gres_list_system, "gpu", 1,
-					 node_config->cpu_cnt, NULL,
+					 node_config->cpu_cnt, NULL, NULL,
 					 NULL, NULL, NULL);
 			continue;
 		}
@@ -1294,12 +1294,12 @@ static List _get_system_gpu_list_nvml(node_config_load_t *node_config)
 
 		// Convert from bitstr_t to cpu range str
 		cpu_aff_mac_range = bit_fmt_full(cpu_aff_mac_bitstr);
-		bit_free(cpu_aff_mac_bitstr);
 
 		// Convert cpu range str from machine to abstract(slurm) format
 		if (node_config->xcpuinfo_mac_to_abs(cpu_aff_mac_range,
 						     &cpu_aff_abs_range)) {
 			error("    Conversion from machine to abstract failed");
+			FREE_NULL_BITMAP(cpu_aff_mac_bitstr);
 			xfree(cpu_aff_mac_range);
 			continue;
 		}
@@ -1326,8 +1326,10 @@ static List _get_system_gpu_list_nvml(node_config_load_t *node_config)
 
 		add_gres_to_list(gres_list_system, "gpu", 1,
 				 node_config->cpu_cnt, cpu_aff_abs_range,
-				 device_file, device_name, nvlinks);
+				 cpu_aff_mac_bitstr, device_file, device_name,
+				 nvlinks);
 
+		FREE_NULL_BITMAP(cpu_aff_mac_bitstr);
 		xfree(cpu_aff_mac_range);
 		xfree(cpu_aff_abs_range);
 		xfree(nvlinks);
@@ -1368,7 +1370,7 @@ extern int gpu_p_reconfig(void)
 	if (slurm_get_debug_flags() & DEBUG_FLAG_GRES)
 		log_lvl = LOG_LEVEL_INFO;
 	else
-		log_lvl = LOG_LEVEL_QUIET;
+		log_lvl = LOG_LEVEL_DEBUG5;
 
 	return SLURM_SUCCESS;
 }

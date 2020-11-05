@@ -406,6 +406,36 @@ static int _addto_used_info(slurmdb_assoc_rec_t *assoc1,
 	assoc1->usage->used_submit_jobs += assoc2->usage->used_submit_jobs;
 	assoc1->usage->usage_raw += assoc2->usage->usage_raw;
 
+	/*
+	 * Basically copied from src/slurmctld/acct_policy.c
+	 * _add_usage_node_bitmap().
+	 */
+	if (assoc2->usage->grp_node_bitmap) {
+		int i_first, i_last;
+		if (assoc1->usage->grp_node_bitmap)
+			bit_or(assoc1->usage->grp_node_bitmap,
+			       assoc2->usage->grp_node_bitmap);
+		else
+			assoc1->usage->grp_node_bitmap =
+				bit_copy(assoc2->usage->grp_node_bitmap);
+
+		if (!assoc1->usage->grp_node_job_cnt)
+			assoc1->usage->grp_node_job_cnt = xcalloc(
+				bit_size(assoc1->usage->grp_node_bitmap),
+				sizeof(uint16_t));
+
+		i_first = bit_ffs(assoc2->usage->grp_node_bitmap);
+		if (i_first != -1) {
+			i_last = bit_fls(assoc2->usage->grp_node_bitmap);
+			for (int i = i_first; i <= i_last; i++) {
+				if (!bit_test(assoc2->usage->grp_node_bitmap,
+					      i))
+					continue;
+				assoc1->usage->grp_node_job_cnt[i] +=
+					assoc2->usage->grp_node_job_cnt[i];
+			}
+		}
+	}
 	return SLURM_SUCCESS;
 }
 
@@ -424,6 +454,13 @@ static int _clear_used_assoc_info(slurmdb_assoc_rec_t *assoc)
 	assoc->usage->accrue_cnt = 0;
 	assoc->usage->used_jobs  = 0;
 	assoc->usage->used_submit_jobs = 0;
+
+	if (assoc->usage->grp_node_bitmap)
+		bit_clear_all(assoc->usage->grp_node_bitmap);
+	if (assoc->usage->grp_node_job_cnt)
+		memset(assoc->usage->grp_node_job_cnt, 0,
+		       sizeof(uint16_t) * node_record_count);
+
 	/* do not reset usage_raw or grp_used_wall.
 	 * if you need to reset it do it
 	 * else where since sometimes we call this and do not want
@@ -6411,6 +6448,7 @@ extern char *assoc_mgr_make_tres_str_from_array(
 	int i;
 	char *tres_str = NULL;
 	assoc_mgr_lock_t locks = { .tres = READ_LOCK };
+	uint64_t count;
 
 	if (!tres_cnt)
 		return NULL;
@@ -6429,20 +6467,26 @@ extern char *assoc_mgr_make_tres_str_from_array(
 		} else if (!tres_cnt[i])
 			continue;
 
+		count = tres_cnt[i];
+
+		/* We want to print no_consume with a 0 */
+		if (count == NO_CONSUME_VAL64)
+			count = 0;
+
 		if (flags & TRES_STR_FLAG_SIMPLE) {
 			xstrfmtcat(tres_str, "%s%u=%"PRIu64,
 				   tres_str ? "," : "",
-				   assoc_mgr_tres_array[i]->id, tres_cnt[i]);
+				   assoc_mgr_tres_array[i]->id, count);
 		} else {
 			/* Always skip these when printing out named TRES */
-			if ((tres_cnt[i] == NO_VAL64) ||
-			    (tres_cnt[i] == INFINITE64))
+			if ((count == NO_VAL64) ||
+			    (count == INFINITE64))
 				continue;
 			if ((flags & TRES_STR_CONVERT_UNITS) &&
 			    ((assoc_mgr_tres_array[i]->id == TRES_MEM) ||
 			     !xstrcasecmp(assoc_mgr_tres_array[i]->type,"bb"))){
 				char outbuf[32];
-				convert_num_unit((double)tres_cnt[i], outbuf,
+				convert_num_unit((double)count, outbuf,
 						 sizeof(outbuf), UNIT_MEGA,
 						 NO_VAL,
 						 CONVERT_NUM_UNIT_EXACT);
@@ -6455,7 +6499,7 @@ extern char *assoc_mgr_make_tres_str_from_array(
 				   !xstrcasecmp(assoc_mgr_tres_array[i]->type,
 						"ic")) {
 				char outbuf[32];
-				convert_num_unit((double)tres_cnt[i], outbuf,
+				convert_num_unit((double)count, outbuf,
 						 sizeof(outbuf), UNIT_NONE,
 						 NO_VAL,
 						 CONVERT_NUM_UNIT_EXACT);
@@ -6467,7 +6511,7 @@ extern char *assoc_mgr_make_tres_str_from_array(
 				xstrfmtcat(tres_str, "%s%s=%"PRIu64,
 					   tres_str ? "," : "",
 					   assoc_mgr_tres_name_array[i],
-					   tres_cnt[i]);
+					   count);
 			}
 		}
 	}
@@ -6541,6 +6585,9 @@ extern double assoc_mgr_tres_weighted(uint64_t *tres_cnt, double *weights,
 		double tres_value  = tres_cnt[i];
 
 		if (i == TRES_ARRAY_BILLING)
+			continue;
+
+		if (tres_cnt[i] == NO_CONSUME_VAL64)
 			continue;
 
 		debug3("TRES Weight: %s = %f * %f = %f",

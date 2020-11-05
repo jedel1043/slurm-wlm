@@ -182,7 +182,8 @@ static void _stat_slurm_dirs(void)
 	 * _is_valid_path() instead
 	 */
 
-	if ((stat(slurmctld_conf.plugstack, &stat_buf) == 0) &&
+	if (slurmctld_conf.plugstack &&
+	    (stat(slurmctld_conf.plugstack, &stat_buf) == 0) &&
 	    (stat_buf.st_mode & S_IWOTH)) {
 		problem_dir = "PlugStack";
 	}
@@ -296,6 +297,9 @@ static void _add_nodes_with_feature(hostlist_t hl, char *feature)
 {
 	for (int i = 0; i < node_record_count; i++) {
 		char *features, *tmp, *tok, *last = NULL;
+
+		if (!node_record_table_ptr[i].features)
+			continue;
 
 		features = tmp = xstrdup(node_record_table_ptr[i].features);
 

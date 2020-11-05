@@ -83,7 +83,15 @@ static const char *_get_long_node_state(uint32_t state)
 
 static int _dump_node(data_t *p, node_info_t *node)
 {
-	data_t *d = data_set_dict(data_key_set(p, node->name));
+	data_t *d;
+
+	if (!node->name) {
+		debug2("%s: ignoring defunct node: %s",
+		       __func__, node->node_hostname);
+		return SLURM_SUCCESS;
+	}
+
+	d = data_set_dict(data_key_set(p, node->name));
 
 	data_set_string(data_key_set(d, "architecture"), node->arch);
 	data_set_string(data_key_set(d, "burstbuffer_network_address"),
@@ -118,9 +126,11 @@ static int _dump_node(data_t *p, node_info_t *node)
 	data_set_string(data_key_set(d, "operating_system"), node->os);
 	if (node->owner == NO_VAL)
 		data_set_null(data_key_set(d, "owner"));
-	else
-		data_set_string(data_key_set(d, "owner"),
-				uid_to_string_or_null(node->owner));
+	else {
+		char *user = uid_to_string_or_null(node->owner);
+		data_set_string(data_key_set(d, "owner"), user);
+		xfree(user);
+	}
 	// FIXME: data_set_string(data_key_set(d, "partitions"), node->partitions);
 	data_set_int(data_key_set(d, "port"), node->port);
 	data_set_int(data_key_set(d, "real_memory"), node->real_memory);

@@ -120,6 +120,8 @@ static s_p_hashtbl_t *default_partition_tbl;
 static log_level_t lvl = LOG_LEVEL_FATAL;
 static int	local_test_config_rc = SLURM_SUCCESS;
 static bool     no_addr_cache = false;
+static int plugstack_fd = -1;
+static char *plugstack_conf = NULL;
 static int topology_fd = -1;
 static char *topology_conf = NULL;
 
@@ -846,9 +848,6 @@ static int _parse_nodename(void **dest, slurm_parser_enum_t type,
 				      "reset to 1", n->nodenames);
 				n->sockets = 1;
 			}
-			if (no_cpus) {		/* infer missing CPUs= */
-				n->cpus = n->sockets * n->cores * n->threads;
-			}
 		} else {
 			/* In this case Boards=# is used.
 			 * CPUs=# or Procs=# are ignored.
@@ -886,6 +885,11 @@ static int _parse_nodename(void **dest, slurm_parser_enum_t type,
 				n->sockets = n->boards;
 			}
 		}
+
+		if (no_cpus) {		/* infer missing CPUs= */
+			n->cpus = n->sockets * n->cores * n->threads;
+		}
+
 		/* Node boards are factored into sockets */
 		if ((n->cpus != n->sockets) &&
 		    (n->cpus != n->sockets * n->cores) &&
@@ -3098,6 +3102,11 @@ static int _init_slurm_conf(const char *file_name)
 static void
 _destroy_slurm_conf(void)
 {
+	if (plugstack_conf) {
+		xfree(plugstack_conf);
+		close(plugstack_fd);
+	}
+
 	if (topology_conf) {
 		xfree(topology_conf);
 		close(topology_fd);
@@ -3185,9 +3194,14 @@ static int _establish_config_source(char **config_file, int *memfd)
 	 */
 	*memfd = dump_to_memfd("slurm.conf", config->config, config_file);
 	/*
-	 * If we've been handed a topology.conf file then slurmctld thinks
-	 * we'll need it. Stash it in case of an eventual slurm_topo_init().
+	 * If we've been handed a plugstack.conf or topology.conf file then
+	 * slurmctld thinks we'll need it. Stash it in case of an eventual
+	 * spank_stack_init() / slurm_topo_init().
 	 */
+	if (config->plugstack_config)
+		plugstack_fd = dump_to_memfd("plugstack.conf",
+					     config->plugstack_config,
+					     &plugstack_conf);
 	if (config->topology_config)
 		topology_fd = dump_to_memfd("topology.conf",
 					    config->topology_config,
@@ -4174,8 +4188,8 @@ _validate_and_set_defaults(slurm_ctl_conf_t *conf, s_p_hashtbl_t *hashtbl)
 			conf->accounting_storage_pass =
 				xstrdup(default_storage_pass);
 	}
-	if (s_p_get_boolean(&truth, "AccountingStoreJobComment", hashtbl)
-	    && truth)
+	if (!s_p_get_boolean(&truth, "AccountingStoreJobComment", hashtbl)
+	    || truth)
 		conf->conf_flags |= CTL_CONF_SJC;
 
 	if (!s_p_get_uint32(&conf->accounting_storage_port,
@@ -4210,8 +4224,7 @@ _validate_and_set_defaults(slurm_ctl_conf_t *conf, s_p_hashtbl_t *hashtbl)
 		return SLURM_ERROR;
 	}
 
-	if (!s_p_get_string(&conf->plugstack, "PlugStackConfig", hashtbl))
-		conf->plugstack = xstrdup(default_plugstack);
+	s_p_get_string(&conf->plugstack, "PlugStackConfig", hashtbl);
 
 	(void) s_p_get_string(&conf->power_parameters, "PowerParameters",
 			      hashtbl);
@@ -5817,14 +5830,16 @@ extern char *get_extra_conf_path(char *conf_name)
 	if (!val)
 		val = default_slurm_config_file;
 
-	if (topology_conf && !xstrcmp(conf_name, "topology.conf")) {
-		/*
-		 * the topology.conf needs special handling in "configless"
-		 * operation as srun, when used with route/topology, will
-		 * need to load it.
-		 */
+	/*
+	 * Both plugstack.conf and topology.conf need special handling in
+	 * "configless" operation as client commands will need to load them.
+	 */
+
+	if (plugstack_conf && !xstrcmp(conf_name, "plugstack.conf"))
+		return xstrdup(plugstack_conf);
+
+	if (topology_conf && !xstrcmp(conf_name, "topology.conf"))
 		return xstrdup(topology_conf);
-	}
 
 	/* Replace file name on end of path */
 	rc = xstrdup(val);
