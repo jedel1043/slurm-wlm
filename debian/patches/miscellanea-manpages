@@ -3,7 +3,7 @@ Description: Move general info man pages to the miscellanea section (7)
  to the miscellanea section since they are not related to commands
 Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
 Forwarded: https://bugs.schedmd.com/show_bug.cgi?id=8719
-Last-Update: 2020-04-07
+Last-Update: 2020-11-05
 
 diff --git a/configure.ac b/configure.ac
 index e1aff79c3d..c8512a2c2c 100644
