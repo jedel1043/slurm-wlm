@@ -2049,9 +2049,11 @@ static int _pick_best_nodes(struct node_set *node_set_ptr, int node_set_size,
 	for (j = min_feature; j <= max_feature; j++) {
 		if (job_ptr->details->req_node_bitmap) {
 			bool missing_required_nodes = false;
+			bool feature_found = false;
 			for (i = 0; i < node_set_size; i++) {
 				if (!bit_test(node_set_ptr[i].feature_bits, j))
 					continue;
+				feature_found = true;
 				node_set_map =
 					bit_copy(node_set_ptr[i].my_bitmap);
 
@@ -2069,6 +2071,8 @@ static int _pick_best_nodes(struct node_set *node_set_ptr, int node_set_size,
 				}
 
 			}
+			if (!feature_found)
+				continue;
 			if (!bit_super_set(job_ptr->details->req_node_bitmap,
 					   avail_bitmap))
 				missing_required_nodes = true;
@@ -2083,8 +2087,12 @@ static int _pick_best_nodes(struct node_set *node_set_ptr, int node_set_size,
 		for (i = 0; i < node_set_size; i++) {
 			int count1 = 0, count2 = 0;
 			if (!has_xand &&
-			    !bit_test(node_set_ptr[i].feature_bits, j))
-				continue;
+			    !bit_test(node_set_ptr[i].feature_bits, j)) {
+				if ((i+1) < node_set_size || !avail_bitmap)
+					continue;
+				else
+					goto try_sched;
+			}
 
 			if (total_bitmap) {
 				bit_or(total_bitmap,
@@ -2165,7 +2173,7 @@ static int _pick_best_nodes(struct node_set *node_set_ptr, int node_set_size,
 				 * most lightly loaded nodes */
 				continue;
 			}
-
+try_sched:
 			/* NOTE: select_g_job_test() is destructive of
 			 * avail_bitmap, so save a backup copy */
 			backup_bitmap = bit_copy(avail_bitmap);
@@ -3541,21 +3549,6 @@ extern bool valid_feature_counts(job_record_t *job_ptr, bool use_active,
 
 		last_op = job_feat_ptr->op_code;
 		last_paren_cnt = job_feat_ptr->paren;
-
-		if (job_feat_ptr->count && !(*has_xor)) {
-			/* simple AND/OR features should never have counts */
-			rc = false;
-
-			if (job_ptr->job_id) {
-				error("%s: %pJ has feature count requested: %s",
-				      __func__, job_ptr, detail_ptr->features);
-			} else {
-				error("%s: Reservation has feature count requested: %s",
-				      __func__, detail_ptr->features);
-			}
-			break;
-		}
-
 #if _DEBUG
 {
 		char *tmp_f, *tmp_w, *tmp_t;
@@ -3767,6 +3760,14 @@ static int _build_node_list(job_record_t *job_ptr,
 						   "the reservation");
 			}
 			return ESLURM_REQUESTED_NODE_CONFIG_UNAVAILABLE;
+		}
+		if (resv_overlap && bit_ffs(usable_node_mask) < 0) {
+			job_ptr->state_reason = WAIT_NODE_NOT_AVAIL;
+			xfree(job_ptr->state_desc);
+			xstrfmtcat(job_ptr->state_desc,
+				   "ReqNodeNotAvail, Reserved for maintenance");
+			FREE_NULL_BITMAP(usable_node_mask);
+			return ESLURM_RESERVATION_BUSY; /* All reserved */
 		}
 	}
 

@@ -31,21 +31,20 @@ source ./globals
 
 set exit_code   0
 set file_prog   "test$test_id.prog"
-set prompt      "PROMPT:"
 
-if {[test_select_type_params "CR_ONE_TASK_PER_CORE"]} {
+if {[param_contains [get_config_param "SelectTypeParameters"] "CR_ONE_TASK_PER_CORE"]} {
 	skip "This test is incompatible SelectTypeParameters=CR_ONE_TASK_PER_CORE"
 }
 
 #
 # Test if CPU affinity support is supported.
 #
-if {![test_cpu_affinity]} {
+if {![param_contains [get_affinity_types] "affinity"]} {
 	skip "CPU affinity not supported on this system"
 }
 log_debug "Task affinity plugin installed"
 
-set task_params [string tolower [get_affinity_params]]
+set task_params [string tolower [get_config_param "TaskPluginParam"]]
 if {[string first $task_params "boards"]  != -1 ||
     [string first $task_params "sockets"] != -1 ||
     [string first $task_params "cores"]   != -1} {
@@ -150,35 +149,27 @@ set salloc_pid [spawn $salloc -w $node_name -N1 --exclusive --verbose -t2 $bin_b
 expect {
 	-re "Granted job allocation ($number)" {
 		set job_id $expect_out(1,string)
-		send "export PS1=\"$prompt\"\r"
+		send "$reset_bash_prompt\r"
 		exp_continue
 	}
-	-re "export PS1=\"$prompt\"\r" {
+	-re "\"$test_prompt\"" {
+		# skip this, just echo of setting test_prompt
 		exp_continue
+	}
+	-re $test_prompt {
 	}
 	timeout {
 		slow_kill $salloc_pid
 		fail "salloc not responding or failure to recognize prompt"
 	}
-	-re $prompt {
-	}
 }
-set timeout 1
-expect {
-	-re $prompt {
-		exp_continue
-	}
-	timeout {
-	}
-}
-set timeout 30
 
 #
 # Reading a second prompt is required by some versions of Expect
 #
 set timeout 1
 expect {
-	-re $prompt {
+	-re $test_prompt {
 		exp_continue
 	}
 	timeout {
@@ -210,9 +201,9 @@ expect {
 	}
 	-re "$srun" {
 		# just so we don't grab the srun call
-		exp_continue;
+		exp_continue
 	}
-	-re $prompt
+	-re $test_prompt
 }
 #############################################################################
 #
@@ -237,9 +228,9 @@ expect {
 	}
 	-re "$srun" {
 		# just so we don't grab the srun call
-		exp_continue;
+		exp_continue
 	}
-	-re $prompt
+	-re $test_prompt
 }
 if {$task_mask != $expected_mask} {
 	log_error "Affinity mask inconsistency ($task_mask,$expected_mask)"
@@ -282,9 +273,9 @@ while {$this_cnt <= $num_sockets} {
 		}
 		-re "$srun" {
 			# just so we don't grab the srun call
-			exp_continue;
+			exp_continue
 		}
-		-re $prompt
+		-re $test_prompt
 	}
 
 	if {$num_tasks != $expected_tasks} {
@@ -335,9 +326,9 @@ while {$this_cnt <= $num_cores} {
 		}
 		-re "$srun" {
 			# just so we don't grab the srun call
-			exp_continue;
+			exp_continue
 		}
-		-re $prompt
+		-re $test_prompt
 	}
 
 	if {$num_tasks != $expected_tasks} {
@@ -388,9 +379,9 @@ while {$this_cnt <= $num_threads} {
 		}
 		-re "$srun" {
 			# just so we don't grab the srun call
-			exp_continue;
+			exp_continue
 		}
-		-re $prompt
+		-re $test_prompt
 	}
 
 	if {$num_tasks != $expected_tasks} {
@@ -440,9 +431,9 @@ while {$this_cnt <= $task_cnt} {
 		}
 		-re "$srun" {
 			# just so we don't grab the srun call
-			exp_continue;
+			exp_continue
 		}
-		-re $prompt
+		-re $test_prompt
 	}
 
 	if {$num_tasks != $expected_tasks} {
@@ -480,9 +471,9 @@ expect {
 	}
 	-re "$srun" {
 		# just so we don't grab the srun call
-		exp_continue;
+		exp_continue
 	}
-	-re $prompt
+	-re $test_prompt
 }
 
 if {$task_mask != $expected_mask} {
@@ -512,7 +503,7 @@ expect {
 
 if {$exit_code == 0} {
 	exec $bin_rm -f $file_prog
-} elseif { [test_config_overrides] == 1 } {
+} elseif {[param_contains [get_config_param "SlurmdParameters"] "config_overrides"]} {
 	exec $bin_rm -f $file_prog
 	fail "This test can fail if the node configuration in slurm.conf (sockets, cores, threads) differs from the actual configuration or if using task/cgroup without task/affinity"
 } else {

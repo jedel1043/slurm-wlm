@@ -32,12 +32,12 @@ configure several testsuite variables, for example:
 
 slurm_dir:                    slurm installation directory (prefix) [/usr]
 build_dir:                    slurm build directory [../..]
-max_file_delay:               maximum file propogation delay (e.g. nfs) [90]
-testsuite_cleanup_on_failure: run cleanup and remove test_dir on failure [false]
+testsuite_cleanup_on_failure: run cleanup and remove test_dir on failure [true]
 testsuite_shared_dir:         cluster-wide shared directory [.]
 testsuite_log_level:          logging threshold [$LOG_LEVEL_DEBUG]
 testsuite_log_format:         specifies the tracing fields used in logging
 testsuite_colorize:           boolean that turns colorization on or off
+testsuite_subtest_fatal:      first failing subtest aborts the test [false]
 
 The testsuite needs at least one cluster-wide shared file system.
 By default, we assume that it's the testsuite/expect directory (i.e. ".").
@@ -387,6 +387,10 @@ test7.19   Test sbatch/srun/salloc path resolving
 test7.20   Test lua JobSubmitPlugin
 test7.21   Test SPANK plugins that link against libslurm
 test7.23   Test time_str2secs parsing of different formats
+
+test8.#    Testing of advanced reservation functionality.
+=========================================================
+test8.12   Test reservation with flags=FLEX
 
 test9.#    System stress testing. Exercises all commands and daemons.
 =====================================================================

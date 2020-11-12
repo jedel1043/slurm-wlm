@@ -1008,9 +1008,13 @@ static bitstr_t *_pick_step_nodes(job_record_t *job_ptr,
 	if (!nodes_avail)
 		nodes_avail = bit_copy (job_ptr->node_bitmap);
 	bit_and(nodes_avail, up_node_bitmap);
-	if (step_spec->features) {
+
+	if (step_spec->features &&
+	    (!job_ptr->details ||
+	     xstrcmp(step_spec->features, job_ptr->details->features))) {
 		/*
 		 * We only select for a single feature name here.
+		 * Ignore step features if equal to job features.
 		 * FIXME: Add support for AND, OR, etc. here if desired
 		 */
 		node_feature_t *feat_ptr;
@@ -2028,7 +2032,10 @@ extern void step_alloc_lps(step_record_t *step_ptr)
 			 *
 			 * TODO: move cpus_per_core to slurm_step_layout_t
 			 */
-			if (!_use_one_thread_per_core(job_ptr))
+			if (!_use_one_thread_per_core(job_ptr) &&
+			    (!(node_record_table_ptr[i_node].cpus ==
+			      (node_record_table_ptr[i_node].sockets *
+			       node_record_table_ptr[i_node].cores))))
 				cpus_per_core =
 					node_record_table_ptr[i_node].threads;
 			_pick_step_cores(step_ptr, job_resrcs_ptr,

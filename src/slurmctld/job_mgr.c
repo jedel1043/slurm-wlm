@@ -2364,7 +2364,7 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 	xfree(job_ptr->mail_user);
 	if (mail_user)
 		job_ptr->mail_user    = mail_user;
-	else if (mail_type)
+	else
 		job_ptr->mail_user = _get_mail_user(NULL, user_id);
 	mail_user             = NULL;	/* reused, nothing left to free */
 	xfree(job_ptr->mcs_label);
@@ -2936,7 +2936,10 @@ static int _load_job_details(job_record_t *job_ptr, Buf buffer,
 	job_ptr->details->cpu_freq_min = cpu_freq_min;
 	job_ptr->details->cpu_freq_max = cpu_freq_max;
 	job_ptr->details->cpu_freq_gov = cpu_freq_gov;
-	job_ptr->details->cpus_per_task = cpus_per_task;
+	if (cpus_per_task != NO_VAL16)
+		job_ptr->details->cpus_per_task = cpus_per_task;
+	else
+		job_ptr->details->cpus_per_task = 1;
 	job_ptr->details->orig_cpus_per_task = cpus_per_task;
 	job_ptr->details->depend_list = depend_list;
 	job_ptr->details->dependency = dependency;
@@ -8175,11 +8178,11 @@ static int _copy_job_desc_to_job_record(job_desc_msg_t *job_desc,
 	job_ptr->derived_ec = 0;
 
 	job_ptr->licenses  = xstrdup(job_desc->licenses);
+	job_ptr->mail_user = _get_mail_user(job_desc->mail_user,
+					    job_ptr->user_id);
 	if (job_desc->mail_type &&
 	    (job_desc->mail_type != NO_VAL16)) {
 		job_ptr->mail_type = job_desc->mail_type;
-		job_ptr->mail_user = _get_mail_user(job_desc->mail_user,
-						    job_ptr->user_id);
 	}
 
 	job_ptr->bit_flags = job_desc->bitflags;
@@ -10619,20 +10622,27 @@ void pack_job(job_record_t *dump_job_ptr, uint16_t show_flags, Buf buffer,
 static void _find_node_config(int *cpu_cnt_ptr, int *core_cnt_ptr)
 {
 	static int max_cpu_cnt = -1, max_core_cnt = -1;
+	static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 	int i;
 	node_record_t *node_ptr = node_record_table_ptr;
+
+	slurm_mutex_lock(&lock);
+	if (max_cpu_cnt == -1) {
+		for (i = 0; i < node_record_count; i++, node_ptr++) {
+			/* Only data from config_record used for scheduling */
+			max_cpu_cnt = MAX(max_cpu_cnt,
+					  node_ptr->config_ptr->cpus);
+			max_core_cnt = MAX(max_core_cnt,
+					   node_ptr->config_ptr->cores);
+		}
+	}
+	slurm_mutex_unlock(&lock);
 
 	*cpu_cnt_ptr  = max_cpu_cnt;
 	*core_cnt_ptr = max_core_cnt;
 
-	if (max_cpu_cnt != -1)
-		return;
+	return;
 
-	for (i = 0; i < node_record_count; i++, node_ptr++) {
-		/* Only data from config_record used for scheduling */
-		max_cpu_cnt = MAX(max_cpu_cnt, node_ptr->config_ptr->cpus);
-		max_core_cnt = MAX(max_core_cnt, node_ptr->config_ptr->cores);
-	}
 }
 
 /* pack default job details for "get_job_info" RPC */
@@ -11260,8 +11270,7 @@ static void _reset_step_bitmaps(job_record_t *job_ptr)
 			error("Invalid step_node_list (%s) for %pS",
 			      step_ptr->step_layout->node_list, step_ptr);
 			delete_step_record (job_ptr, step_ptr->step_id);
-		}
-		if (step_ptr->step_node_bitmap == NULL) {
+		} else if (step_ptr->step_node_bitmap == NULL) {
 			error("Missing node_list for %pS", step_ptr);
 			delete_step_record (job_ptr, step_ptr->step_id);
 		}
@@ -11754,7 +11763,7 @@ static int _update_job(job_record_t *job_ptr, job_desc_msg_t *job_specs,
 	bool tres_changed = false;
 	int tres_pos;
 	uint64_t tres_req_cnt[slurmctld_tres_cnt];
-	bool tres_req_cnt_set = false;
+	bool tres_req_cnt_set = false, valid_licenses = false;
 	List gres_list = NULL;
 	List license_list = NULL;
 	List part_ptr_list = NULL;
@@ -11937,7 +11946,6 @@ static int _update_job(job_record_t *job_ptr, job_desc_msg_t *job_specs,
 	    !xstrcmp(job_specs->partition, job_ptr->partition)) {
 		sched_debug("%s: new partition identical to old partition %pJ",
 			    __func__, job_ptr);
-		xfree(job_specs->partition);
 	} else if (job_specs->partition) {
 		if (!IS_JOB_PENDING(job_ptr)) {
 			error_code = ESLURM_JOB_NOT_PENDING;
@@ -11956,7 +11964,6 @@ static int _update_job(job_record_t *job_ptr, job_desc_msg_t *job_specs,
 			 !xstrcmp(new_part_ptr->name, job_ptr->partition)) {
 			sched_debug("%s: 2 new partition identical to old partition %pJ",
 				    __func__, job_ptr);
-			xfree(job_specs->partition);
 			new_part_ptr = NULL;
 		}
 		if (error_code != SLURM_SUCCESS)
@@ -11966,7 +11973,7 @@ static int _update_job(job_record_t *job_ptr, job_desc_msg_t *job_specs,
 	use_part_ptr = new_part_ptr ? new_part_ptr : job_ptr->part_ptr;
 
 	/* Check the account and the partition as both affect the association */
-	if (job_specs->account || job_specs->partition) {
+	if (job_specs->account || new_part_ptr) {
 		if (!IS_JOB_PENDING(job_ptr))
 			error_code = ESLURM_JOB_NOT_PENDING;
 		else {
@@ -12341,15 +12348,14 @@ static int _update_job(job_record_t *job_ptr, job_desc_msg_t *job_specs,
 					    job_ptr->licenses)) {
 		sched_debug("%s: new licenses identical to old licenses \"%s\"",
 			    __func__, job_ptr->licenses);
-		xfree(job_specs->licenses);
 	} else if (job_specs->licenses) {
-		bool valid, pending = IS_JOB_PENDING(job_ptr);
+		bool pending = IS_JOB_PENDING(job_ptr);
 		license_list = license_validate(job_specs->licenses, true, true,
 						pending ?
 						job_specs->tres_req_cnt : NULL,
-						&valid);
+						&valid_licenses);
 
-		if (!valid) {
+		if (!valid_licenses) {
 			sched_info("%s: invalid licenses: %s",
 				   __func__, job_specs->licenses);
 			error_code = ESLURM_INVALID_LICENSES;
@@ -12509,7 +12515,7 @@ static int _update_job(job_record_t *job_ptr, job_desc_msg_t *job_specs,
 				     new_req_bitmap :
 				     job_ptr->details->req_node_bitmap,
 				     use_part_ptr,
-				     job_specs->partition ?
+				     new_part_ptr ?
 				     part_ptr_list : job_ptr->part_ptr_list,
 				     use_assoc_ptr, use_qos_ptr)))
 				goto fini;
@@ -13683,7 +13689,7 @@ static int _update_job(job_record_t *job_ptr, job_desc_msg_t *job_specs,
 		}
 	}
 
-	if (job_specs->licenses) {
+	if (valid_licenses) {
 		if (IS_JOB_PENDING(job_ptr)) {
 			FREE_NULL_LIST(job_ptr->license_list);
 			job_ptr->license_list = license_list;
@@ -13967,24 +13973,14 @@ static int _update_job(job_record_t *job_ptr, job_desc_msg_t *job_specs,
 
 	if (job_specs->mail_type != NO_VAL16) {
 		job_ptr->mail_type = job_specs->mail_type;
-		if (!job_specs->mail_user) {
-			char *tmp = job_ptr->mail_user;
-			if (job_ptr->mail_type) {
-				job_ptr->mail_user =
-					_get_mail_user(tmp, job_ptr->user_id);
-			}
-			xfree(tmp);
-		}
 		sched_info("%s: setting mail_type to %u for %pJ",
 			   __func__, job_ptr->mail_type, job_ptr);
 	}
 
 	if (job_specs->mail_user) {
 		xfree(job_ptr->mail_user);
-		if (job_ptr->mail_type)
-			job_ptr->mail_user =
-				_get_mail_user(job_specs->mail_user,
-					       job_ptr->user_id);
+		job_ptr->mail_user = _get_mail_user(job_specs->mail_user,
+						    job_ptr->user_id);
 		sched_info("%s: setting mail_user to %s for %pJ",
 			   __func__, job_ptr->mail_user, job_ptr);
 	}
@@ -15656,6 +15652,7 @@ extern void job_completion_logger(job_record_t *job_ptr, bool requeue)
 
 	if (!IS_JOB_RESIZING(job_ptr) &&
 	    !IS_JOB_PENDING(job_ptr)  &&
+	    !IS_JOB_REVOKED(job_ptr)  &&
 	    ((job_ptr->array_task_id == NO_VAL) ||
 	     (job_ptr->mail_type & MAIL_ARRAY_TASKS) ||
 	     (arr_finished = test_job_array_finished(job_ptr->array_job_id)))) {
