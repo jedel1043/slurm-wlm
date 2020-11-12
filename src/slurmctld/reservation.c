@@ -439,7 +439,12 @@ static void _del_resv_rec(void *x)
 	slurmctld_resv_t *resv_ptr = (slurmctld_resv_t *) x;
 
 	if (resv_ptr) {
-		if (resv_ptr->flags & RESERVE_FLAG_PROM)
+		/*
+		 * If shutting down prom_resv_list is already freed, meaning we
+		 * don't need to remove anything from it.
+		 */
+		if (prom_resv_list &&
+		    (resv_ptr->flags & RESERVE_FLAG_PROM))
 			(void)list_remove_first(
 				prom_resv_list, _find_resv_ptr, resv_ptr);
 
@@ -499,7 +504,9 @@ static int _queue_prom_resv(void *x, void *key)
 
 	xassert(resv_ptr->magic == RESV_MAGIC);
 
-	if (!(resv_ptr->flags & RESERVE_FLAG_PROM))
+	if (!(resv_ptr->flags & RESERVE_FLAG_PROM) ||
+	    (_valid_job_access_resv(job_queue_req->job_ptr, resv_ptr) !=
+	     SLURM_SUCCESS))
 		return 0;
 
 	job_queue_req->resv_ptr = resv_ptr;
@@ -2591,6 +2598,8 @@ extern int update_resv(resv_desc_msg_t *resv_desc_ptr)
 			resv_ptr->flags |= RESERVE_FLAG_STATIC;
 		if (resv_desc_ptr->flags & RESERVE_FLAG_NO_STATIC)
 			resv_ptr->flags &= (~RESERVE_FLAG_STATIC);
+		if (resv_desc_ptr->flags & RESERVE_FLAG_FIRST_CORES)
+			resv_ptr->flags |= RESERVE_FLAG_FIRST_CORES;
 		if ((resv_desc_ptr->flags & RESERVE_FLAG_REPLACE) ||
 		    (resv_desc_ptr->flags & RESERVE_FLAG_REPLACE_DOWN)) {
 			if ((resv_ptr->flags & RESERVE_FLAG_SPEC_NODES) ||
@@ -2969,6 +2978,21 @@ static void _clear_job_resv(slurmctld_resv_t *resv_ptr)
 
 	job_iterator = list_iterator_create(job_list);
 	while ((job_ptr = list_next(job_iterator))) {
+		if ((resv_ptr->flags & RESERVE_FLAG_MAINT) &&
+		    (job_ptr->state_reason == WAIT_NODE_NOT_AVAIL) &&
+		    !xstrcmp(job_ptr->state_desc,
+			    "ReqNodeNotAvail, Reserved for maintenance")) {
+			/*
+			 * In case of cluster maintenance many jobs may get this
+			 * state set. If we wait for scheduler to update
+			 * the reason it may take long time after the
+			 * reservation completion. Instead of that clear it
+			 * when MAIN reservation ends.
+			 */
+			job_ptr->state_reason = WAIT_NO_REASON;
+			xfree(job_ptr->state_desc);
+		    }
+
 		if (job_ptr->resv_ptr != resv_ptr)
 			continue;
 		if (!IS_JOB_FINISHED(job_ptr)) {
@@ -4490,9 +4514,14 @@ no_assocs:	if ((resv_ptr->user_cnt == 0) || resv_ptr->user_not)
 	}
 
 end_it:
-	info("Security violation, uid=%u account=%s attempt to use "
-	     "reservation %s",
-	     job_ptr->user_id, job_ptr->account, resv_ptr->name);
+	/*
+	 * If we are trying to run in a magnetic reservation
+	 * (the job didn't request it), don't print a security error.
+	 */
+	if (job_ptr->resv_name)
+		info("Security violation, uid=%u account=%s attempt to use reservation %s",
+		     job_ptr->user_id, job_ptr->account, resv_ptr->name);
+
 	return ESLURM_RESERVATION_ACCESS;
 }
 
@@ -5612,7 +5641,7 @@ static void *_fork_script(void *x)
 	if (cpid == 0) {
 		setpgid(0, 0);
 		execve(argv[0], argv, envp);
-		exit(127);
+		_exit(127);
 	}
 
 	tm = slurm_get_prolog_timeout();
