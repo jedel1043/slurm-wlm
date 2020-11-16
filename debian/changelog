@@ -1,6 +1,6 @@
-slurm-wlm (20.02.5-1) UNRELEASED; urgency=medium
+slurm-wlm (20.02.6-1) UNRELEASED; urgency=medium
 
-  * New upstream release
+  * New upstream release (Closes: #974721, #974722)
   * Refresh miscellanea-manpages and mail-path patches
   * Remove use-python3 patch included upstream
   * Remove smap command
