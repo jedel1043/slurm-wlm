@@ -1,6 +1,7 @@
 slurm-wlm (20.11.2-1) UNRELEASED; urgency=medium
 
   * New upstream release
+  * Remove typos patches
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 15 Jan 2021 22:23:31 +0100
 
