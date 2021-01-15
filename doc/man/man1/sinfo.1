@@ -341,6 +341,9 @@ State/availability of a partition.
 \fBCluster\fR
 Print the cluster name if running in a federation.
 .TP
+\fBComment\fR
+Comment. (Arbitrary descriptive string)
+.TP
 \fBCores\fR
 .RS
 Number of cores per socket.
@@ -554,7 +557,8 @@ default sort value is "N" (increasing node name).
 \fB\-t <states>\fR , \fB\-\-states=<states>\fR
 List nodes only having the given state(s).  Multiple states
 may be comma separated and the comparison is case insensitive.
-Possible values include (case insensitive): ALLOC, ALLOCATED,
+If the states are separated by '&', then the nodes must be in all states.
+Possible values include (case insensitive): ALLOC, ALLOCATED, CLOUD,
 COMP, COMPLETING, DOWN, DRAIN (for node in DRAINING or DRAINED
 states), DRAINED, DRAINING, FAIL, FUTURE, FUTR,
 IDLE, MAINT, MIX, MIXED, NO_RESPOND, NPC, PERFCTRS,

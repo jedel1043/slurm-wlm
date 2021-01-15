@@ -779,6 +779,12 @@ Partition of the job or job step.
 The preempt time for the job.
 (Valid for jobs only)
 .TP
+\fBPendingTime\fR
+The time (in seconds) between start time and submit time of the job.
+If the job has not started yet, then the time (in seconds) between
+now and the submit time of the job.
+(Valid for jobs only)
+.TP
 \fBPriority\fR
 Priority of the job (converted to a floating point number between 0.0 and 1.0).
 Also see \fBprioritylong\fR.

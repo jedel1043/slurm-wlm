@@ -189,6 +189,13 @@ UserUtilizationByWckey, Utilization, WCKeyUtilizationByUser
 .B user
 \- TopUsage
 
+.LP
+\fBNOTE\fR: If \fBOverSubscribe\fR is configured to \fBFORCE\fR or \fBYES\fR
+in your slurm.conf and the system is not configured to use preemption
+(\fBPreemptMode=OFF\fR) accounting can easily grow to values greater than
+the actual utilization. It may be common on such systems to get error messages
+in the slurmdbd log stating: "We have more allocated time than is possible."
+
 .SH "REPORT DESCRIPTION"
 
 .TP
@@ -229,16 +236,16 @@ responding (assuming TrackSlurmctldDown is set in slurmdbd.conf).
 .IP Idle
 Time where nodes had no active jobs or reservations.
 .IP Overcommited
-Time that the nodes were over allocated, either with the \fB-O,
---overcommit\fP flag at submission time or \fBOverSubscribe\fP set to
-FORCE in the slurm.conf. This time is not counted against the total
-reported time.
+Time of eligible jobs waiting in the queue over the Reserved time. Unlike
+Reserved, this has no limit. It is typically useful to determine whether your
+system is overloaded and by how much.
 .IP PlannedDown
 Time that nodes were in use by a reservation created with the MAINT flag
 but not the IGNORE_JOBS flag.
 .IP Reserved
 Time that a node spent idle with eligible jobs in the queue that were
-unable to start due to time or size constraints. If this value is
+unable to start due to time or size constraints. The maximum time is limited
+to the amount of time possible on the system. If this value is
 not of importance for you then the number can be grouped with idle time.
 .IP TresCount
 Configured number of TRES' on the reported nodes. See also the
@@ -286,6 +293,8 @@ specified by the 'grouping=' option.
 .TP
 .B reservation Utilization
 This report will display total usage for reservations on the systems.
+Note: Time requests on this report will not truncate the time the reservation
+used, only the reservations that ran at any time during the period requested.
 
 .TP
 .B user TopUsage
@@ -318,6 +327,8 @@ MMDD[YY] or MM/DD[/YY] or MM.DD[.YY]
 MM/DD[/YY]\-HH:MM[:SS]
 .br
 YYYY\-MM\-DD[THH:MM[:SS]]
+.br
+now[{+|\-}\fIcount\fR[seconds(default)|minutes|hours|days|weeks]]
 
 .TP
 .B Format=<OPT>
@@ -341,6 +352,8 @@ MMDD[YY] or MM/DD[/YY] or MM.DD[.YY]
 MM/DD[/YY]\-HH:MM[:SS]
 .br
 YYYY\-MM\-DD[THH:MM[:SS]]
+.br
+now[{+|\-}\fIcount\fR[seconds(default)|minutes|hours|days|weeks]]
 .ad
 .TP
 .B OPTIONS SPECIFICALLY FOR CLUSTER REPORTS
@@ -461,7 +474,7 @@ Cluster, Login, Proper, TresCount, Used, Wckey
 .in 10
 Utilization:
 .in 14
-Allocated, Cluster, Down, Idle, Overcommited, PlannedDown, Reported, Reserved,
+Allocated, Cluster, Down, Idle, Overcommitted, PlannedDown, Reported, Reserved,
 TresCount, TresName
 
 .TP

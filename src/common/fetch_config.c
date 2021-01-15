@@ -177,7 +177,7 @@ extern config_response_msg_t *fetch_config(char *conf_server, uint32_t flags)
 	}
 
 	_fetch_child(controllers, flags);
-	return NULL;
+	_exit(0);
 }
 
 extern config_response_msg_t *fetch_config_from_controller(uint32_t flags)
@@ -404,7 +404,7 @@ extern void load_config_response_msg(config_response_msg_t *msg, int flags)
 	_load_conf(dir, "plugstack.conf", &msg->plugstack_config);
 	_load_conf(dir, "topology.conf", &msg->topology_config);
 
-	msg->slurmd_spooldir = xstrdup(slurmctld_conf.slurmd_spooldir);
+	msg->slurmd_spooldir = xstrdup(slurm_conf.slurmd_spooldir);
 
 	xfree(dir);
 }
