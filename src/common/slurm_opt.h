@@ -94,6 +94,7 @@ enum {
 	LONG_OPT_DELAY_BOOT,
 	LONG_OPT_ENVIRONMENT, /* only for data */
 	LONG_OPT_EPILOG,
+	LONG_OPT_EXACT,
 	LONG_OPT_EXCLUSIVE,
 	LONG_OPT_EXPORT,
 	LONG_OPT_EXPORT_FILE,
@@ -242,6 +243,7 @@ typedef struct {
 	bool debugger_test;		/* --debugger-test		*/
 	bool disable_status;		/* --disable-status		*/
 	char *epilog;			/* --epilog			*/
+	bool exact;			/* --exact			*/
 	bool exclusive;			/* --exclusive			*/
 	bool interactive;		/* --interactive		*/
 	uint32_t jobid;			/* --jobid			*/
@@ -431,6 +433,13 @@ extern int slurm_process_option(slurm_opt_t *opt, int optval, const char *arg,
 				bool set_by_env, bool early_pass);
 
 /*
+ * Use slurm_process_option and call exit(-1) in case of non-zero return code
+ */
+extern void slurm_process_option_or_exit(slurm_opt_t *opt, int optval,
+					 const char *arg, bool set_by_env,
+					 bool early_pass);
+
+/*
  * Process incoming single component of Job data entry
  * IN opt - options to populate from job chunk
  * IN job - data containing job request
@@ -524,9 +533,8 @@ extern void validate_memory_options(slurm_opt_t *opt);
  * Validate that conflicting optons (--hint, --ntasks-per-core,
  * --nthreads-per-core) are not used together.
  *
- * Based on validate_memory_options()
  */
-extern void validate_hint_option(slurm_opt_t *opt);
+extern int validate_hint_option(slurm_opt_t *opt);
 
 /*
  * Validate options that are common to salloc, sbatch, and srun.

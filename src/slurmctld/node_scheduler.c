@@ -2949,8 +2949,14 @@ extern void launch_prolog(job_record_t *job_ptr)
 	/* At least on a Cray we have to treat this as a real step, so
 	 * this is where to do it.
 	 */
-	if (slurm_conf.prolog_flags & PROLOG_FLAG_CONTAIN)
-		select_g_step_start(build_extern_step(job_ptr));
+	if (slurm_conf.prolog_flags & PROLOG_FLAG_CONTAIN) {
+		step_record_t *step_ptr = build_extern_step(job_ptr);
+		if (step_ptr)
+			select_g_step_start(step_ptr);
+		else
+			error("%s: build_extern_step failure for %pJ",
+			      __func__, job_ptr);
+	}
 
 	/* Launch the RPC via agent */
 	agent_queue_request(agent_arg_ptr);
@@ -3354,21 +3360,11 @@ static int _build_node_list(job_record_t *job_ptr,
 		      (mc_ptr->threads_per_core == NO_VAL16))))
 			job_mc_ok = true;
 		config_filter = !(cpus_ok && mem_ok && disk_ok && job_mc_ok);
-
 		/*
 		 * since nodes can register with more resources than defined
 		 * in the configuration, we want to use those higher values
 		 * for scheduling, but only as needed (slower)
 		 */
-		if (config_filter) {
-			debug2("%s: JobId=%u filtered all nodes (%s): %s",
-			       __func__, job_ptr->job_id, config_ptr->nodes,
-			       err_msg ? *err_msg : NULL);
-			_set_err_msg(cpus_ok, mem_ok, disk_ok,
-				     job_mc_ok, err_msg);
-			continue;
-		}
-
 		node_set_ptr[node_set_inx].my_bitmap =
 			bit_copy(config_ptr->node_bitmap);
 		bit_and(node_set_ptr[node_set_inx].my_bitmap,
@@ -3381,6 +3377,16 @@ static int _build_node_list(job_record_t *job_ptr,
 			bit_set_count(node_set_ptr[node_set_inx].my_bitmap);
 		if (node_set_ptr[node_set_inx].node_cnt == 0) {
 			debug2("%s: JobId=%u matched 0 nodes (%s): %s",
+			       __func__, job_ptr->job_id, config_ptr->nodes,
+			       err_msg ? *err_msg : NULL);
+			FREE_NULL_BITMAP(node_set_ptr[node_set_inx].my_bitmap);
+			continue;
+		}
+
+		if (config_filter) {
+			_set_err_msg(cpus_ok, mem_ok, disk_ok, job_mc_ok,
+				     err_msg);
+			debug2("%s: JobId=%u filtered all nodes (%s): %s",
 			       __func__, job_ptr->job_id, config_ptr->nodes,
 			       err_msg ? *err_msg : NULL);
 			FREE_NULL_BITMAP(node_set_ptr[node_set_inx].my_bitmap);

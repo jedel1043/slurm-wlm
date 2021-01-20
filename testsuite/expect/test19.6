@@ -41,16 +41,17 @@ proc cleanup {} {
 	global bin_rm file_in file_in_fini file_in_time file_in_up file_in_down
 	global file_in_reconfig job_id
 
-	if {$job_id != 0} {
-		cancel_job $job_id
-	}
+	cancel_job $job_id
 	exec $bin_rm -f $file_in $file_in_fini $file_in_time $file_in_up $file_in_down $file_in_reconfig
 }
 
 #
 # get my uid and clear any vestigial triggers
 #
-set uid [stop_root_user]
+set uid [get_my_uid]
+if {$uid == 0} {
+	skip "This test can't be run as user root"
+}
 exec $strigger --clear --quiet --user=$uid
 
 #

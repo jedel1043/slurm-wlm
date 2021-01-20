@@ -2470,13 +2470,13 @@ static void _get_gres_cnt(gres_node_state_t *gres_data, char *orig_config,
 				tmp_gres_cnt = 1;
 			} else if ((mult = suffix_mult(last_num)) != NO_VAL64) {
 				tmp_gres_cnt *= mult;
+				num[0] = '\0';
 			} else {
 				error("Bad GRES configuration: %s", tok);
 				break;
 			}
 
 			gres_config_cnt += tmp_gres_cnt;
-			num[0] = '\0';
 
 			sub_tok = strtok_r(tok, ":", &last_sub_tok);
 			if (sub_tok)	/* Skip GRES name */
@@ -4796,8 +4796,10 @@ static int _test_gres_cnt(gres_job_state_t *job_gres_data,
 			log_flag(GRES, "Failed to validate job spec, gres_per_job < min_nodes (-N)");
 			return -1;
 		}
-		if (job_gres_data->gres_per_job < *max_nodes)
+		if ((*max_nodes != NO_VAL) &&
+		    (job_gres_data->gres_per_job < *max_nodes)) {
 			*max_nodes = job_gres_data->gres_per_job;
+		}
 	}
 
 	return 0;
@@ -8190,7 +8192,7 @@ extern void gres_plugin_job_core_filter3(gres_mc_data_t *mc_ptr,
 	gres_job_state_t *job_specs;
 	int i, j, c, s, sock_cnt = 0, req_cores, rem_sockets, full_socket;
 	int tot_core_cnt = 0, min_core_cnt = 1;
-	uint64_t cnt_avail_sock, cnt_avail_total, max_gres = 0, rem_gres = 0;
+	uint64_t cnt_avail_sock, cnt_avail_total;
 	uint64_t tot_gres_sock, max_tasks;
 	uint32_t task_cnt_incr;
 	bool *req_sock = NULL;	/* Required socket */
@@ -8220,6 +8222,8 @@ extern void gres_plugin_job_core_filter3(gres_mc_data_t *mc_ptr,
 	sock_gres_iter = list_iterator_create(sock_gres_list);
 	while ((sock_gres = (sock_gres_t *) list_next(sock_gres_iter))) {
 		bool sufficient_gres;
+		uint64_t max_gres = 0, rem_gres = 0;
+
 		job_specs = sock_gres->job_specs;
 		if (!job_specs)
 			continue;

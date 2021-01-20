@@ -156,7 +156,9 @@ static int _load_ucx_lib()
 	 * To avoid that we need to disable memory hooks before
 	 * loading UCX library.
 	 */
+#if UCP_API_VERSION < UCP_VERSION(1, 5)
 	setenv("UCX_MEM_MMAP_RELOC", "no", 1);
+#endif
 	setenv("UCX_MEM_MALLOC_HOOKS", "no", 1);
 	setenv("UCX_MEM_MALLOC_RELOC", "no", 1);
 	setenv("UCX_MEM_EVENTS", "no", 1);
@@ -759,7 +761,10 @@ static void _ucx_regio(eio_handle_t *h)
 {
 	eio_obj_t *obj;
 
-	pipe(_service_pipe);
+	if (pipe(_service_pipe) != 0) {
+		error("pipe(): %m");
+		return;
+	}
 	fd_set_nonblocking(_service_pipe[0]);
 	fd_set_nonblocking(_service_pipe[1]);
 	fd_set_close_on_exec(_service_pipe[0]);
