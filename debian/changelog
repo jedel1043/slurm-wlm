@@ -1,4 +1,4 @@
-slurm-wlm (20.11.2-1) UNRELEASED; urgency=medium
+slurm-wlm (20.11.3-1) UNRELEASED; urgency=medium
 
   * New upstream release
   * Remove typos patches
