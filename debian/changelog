@@ -5,6 +5,7 @@ slurm-wlm (20.11.2-1) UNRELEASED; urgency=medium
   * Refresh patches
   * Bump libslurm to soname 36
   * Remove unused overrides
+  * Update d/copyright
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 15 Jan 2021 22:23:31 +0100
 
