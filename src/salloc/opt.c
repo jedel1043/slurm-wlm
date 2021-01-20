@@ -244,7 +244,8 @@ static void _opt_env(void)
 
 	while (e->var) {
 		if ((val = getenv(e->var)) != NULL)
-			slurm_process_option(&opt, e->type, val, true, false);
+			slurm_process_option_or_exit(&opt, e->type, val, true,
+						     false);
 		e++;
 	}
 
@@ -262,7 +263,8 @@ static void _set_options(int argc, char **argv)
 	optind = 0;
 	while ((opt_char = getopt_long(argc, argv, opt_string,
 				       optz, &option_index)) != -1) {
-		slurm_process_option(&opt, opt_char, optarg, false, false);
+		slurm_process_option_or_exit(&opt, opt_char, optarg, false,
+					     false);
 	}
 
 	slurm_option_table_destroy(optz);
@@ -381,8 +383,8 @@ static bool _opt_verify(void)
 		xfree(opt.burst_buffer_file);
 	}
 
-	validate_hint_option(&opt);
-	if (opt.hint) {
+	if (opt.hint &&
+	    !validate_hint_option(&opt)) {
 		xassert(opt.ntasks_per_core == NO_VAL);
 		xassert(opt.threads_per_core == NO_VAL);
 		if (verify_hint(opt.hint,

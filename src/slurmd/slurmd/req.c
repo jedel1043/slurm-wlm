@@ -945,12 +945,19 @@ static int _check_job_credential(launch_tasks_request_msg_t *req,
 	int		tasks_to_launch = req->tasks_to_launch[node_id];
 	uint32_t	job_cpus = 0, step_cpus = 0;
 
-	if (user_ok && (req->flags & LAUNCH_NO_ALLOC)) {
-		/* If we didn't allocate then the cred isn't valid, just skip
-		 * checking.  This is only cool for root or SlurmUser */
-		debug("%s: FYI, user %d is an authorized user running outside of an allocation.",
-		      __func__, auth_uid);
-		return SLURM_SUCCESS;
+	if (req->flags & LAUNCH_NO_ALLOC) {
+		if (user_ok) {
+			/* If we didn't allocate then the cred isn't valid, just
+			 * skip checking. Only cool for root or SlurmUser */
+			debug("%s: FYI, user %u is an authorized user running outside of an allocation",
+			      __func__, auth_uid);
+			return SLURM_SUCCESS;
+		} else {
+			error("%s: User %u is NOT authorized to run a job outside of an allocation",
+			      __func__, auth_uid);
+			slurm_seterrno(ESLURM_ACCESS_DENIED);
+			return SLURM_ERROR;
+		}
 	}
 
 	/*
@@ -1384,6 +1391,13 @@ _rpc_launch_tasks(slurm_msg_t *msg)
 	memcpy(&req->orig_addr, &msg->orig_addr, sizeof(slurm_addr_t));
 
 	super_user = _slurm_authorized_user(req_uid);
+
+	if (req->step_id.step_id == SLURM_INTERACTIVE_STEP) {
+		req->cpu_bind_type = CPU_BIND_NONE;
+		xfree(req->cpu_bind);
+		req->mem_bind_type = MEM_BIND_NONE;
+		xfree(req->mem_bind);
+	}
 
 	if ((super_user == false) && (req_uid != req->uid)) {
 		error("launch task request from uid %u",
@@ -2597,8 +2611,10 @@ _rpc_job_notify(slurm_msg_t *msg)
 	steps = stepd_available(conf->spooldir, conf->node_name);
 	i = list_iterator_create(steps);
 	while ((stepd = list_next(i))) {
+		/* NOTE: Checking against NO_VAL can be removed after 21.08 */
 		if ((stepd->step_id.job_id  != req->step_id.job_id) ||
-		    (stepd->step_id.step_id != SLURM_BATCH_SCRIPT)) {
+		    ((stepd->step_id.step_id != SLURM_BATCH_SCRIPT) &&
+		     (stepd->step_id.step_id != NO_VAL))) {
 			continue;
 		}
 
@@ -3492,7 +3508,9 @@ _get_step_list(void)
 
 		if (step_list)
 			xstrcat(step_list, ", ");
-		if (stepd->step_id.step_id == SLURM_BATCH_SCRIPT) {
+		/* NOTE: Checking against NO_VAL can be removed after 21.08 */
+		if ((stepd->step_id.step_id == SLURM_BATCH_SCRIPT) ||
+		    (stepd->step_id.step_id == NO_VAL)) {
 			snprintf(tmp, sizeof(tmp), "%u",
 				 stepd->step_id.job_id);
 			xstrcat(step_list, tmp);
@@ -4074,7 +4092,7 @@ void file_bcast_purge(void)
 
 static void _rpc_file_bcast(slurm_msg_t *msg)
 {
-	int rc;
+	int rc = SLURM_SUCCESS;
 	int64_t offset, inx;
 	sbcast_cred_arg_t *cred_arg;
 	file_bcast_info_t *file_info;
@@ -4449,11 +4467,13 @@ _kill_all_active_steps(uint32_t jobid, int sig, int flags, bool batch,
 			       __func__, jobid, stepd->step_id.job_id);
 			continue;
 		}
-
+		/* NOTE: Checking against NO_VAL can be removed after 21.08 */
 		if ((sig_all_steps &&
-		     (stepd->step_id.step_id != SLURM_BATCH_SCRIPT)) ||
+		     ((stepd->step_id.step_id != SLURM_BATCH_SCRIPT) &&
+		      (stepd->step_id.step_id != NO_VAL))) ||
 		    (sig_batch_step &&
-		     (stepd->step_id.step_id == SLURM_BATCH_SCRIPT))) {
+		     ((stepd->step_id.step_id == SLURM_BATCH_SCRIPT) ||
+		      (stepd->step_id.step_id == NO_VAL)))) {
 			if (_signal_jobstep(&stepd->step_id, sig,
 			                    flags, req_uid) != SLURM_SUCCESS) {
 				rc = SLURM_ERROR;
@@ -4544,7 +4564,9 @@ _terminate_all_steps(uint32_t jobid, bool batch)
 			continue;
 		}
 
-		if ((stepd->step_id.step_id == SLURM_BATCH_SCRIPT) && (!batch))
+		/* NOTE: Checking against NO_VAL can be removed after 21.08 */
+		if (((stepd->step_id.step_id == SLURM_BATCH_SCRIPT) ||
+		     (stepd->step_id.step_id == NO_VAL)) && !batch)
 			continue;
 
 		step_cnt++;
@@ -5205,7 +5227,7 @@ _rpc_terminate_job(slurm_msg_t *msg)
 	 *    request. We need to send current switch state on AIX
 	 *    systems, so this bypass can not be used.
 	 */
-	if ((nsteps == 0) && !slurm_conf.epilog && !spank_plugin_count()) {
+	if ((nsteps == 0) && !slurm_conf.epilog && !spank_has_epilog()) {
 		debug4("sent ALREADY_COMPLETE");
 		if (msg->conn_fd >= 0) {
 			slurm_send_rc_msg(msg,

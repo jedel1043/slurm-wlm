@@ -168,7 +168,8 @@ static void _opt_early_env(void)
 
 	while (e->var) {
 		if ((val = getenv(e->var)))
-			slurm_process_option(&opt, e->type, val, true, false);
+			slurm_process_option_or_exit(&opt, e->type, val, true,
+						     false);
 		e++;
 	}
 }
@@ -244,7 +245,8 @@ static void _opt_env(void)
 
 	while (e->var) {
 		if ((val = getenv(e->var)) != NULL)
-			slurm_process_option(&opt, e->type, val, true, false);
+			slurm_process_option_or_exit(&opt, e->type, val, true,
+						     false);
 		e++;
 	}
 
@@ -300,7 +302,8 @@ extern char *process_options_first_pass(int argc, char **argv)
 	optind = 0;
 	while ((opt_char = getopt_long(local_argc, local_argv, opt_string,
 				       optz, &option_index)) != -1) {
-		slurm_process_option(&opt, opt_char, optarg, true, true);
+		slurm_process_option_or_exit(&opt, opt_char, optarg, true,
+					     true);
 	}
 	slurm_option_table_destroy(optz);
 	xfree(opt_string);
@@ -470,6 +473,8 @@ extern char *get_argument(const char *file, int lineno, const char *line,
 		memcpy(argument, "      ", 6);
 	}
 
+	argument = NULL;
+
 	/* skip whitespace */
 	while (isspace(*ptr) && *ptr != '\0') {
 		ptr++;
@@ -629,7 +634,8 @@ static int _set_options(int argc, char **argv)
 	optind = 0;
 	while ((opt_char = getopt_long(argc, argv, opt_string,
 				       optz, &option_index)) != -1) {
-		slurm_process_option(&opt, opt_char, optarg, false, false);
+		slurm_process_option_or_exit(&opt, opt_char, optarg, false,
+					     false);
 	}
 
 	slurm_option_table_destroy(optz);
@@ -664,8 +670,8 @@ static bool _opt_verify(void)
 	 * than in salloc/srun, there is not a missing chunk of code here.
 	 */
 
-	validate_hint_option(&opt);
-	if (opt.hint) {
+	if (opt.hint &&
+	    !validate_hint_option(&opt)) {
 		xassert(opt.ntasks_per_core == NO_VAL);
 		xassert(opt.threads_per_core == NO_VAL);
 		if (verify_hint(opt.hint,

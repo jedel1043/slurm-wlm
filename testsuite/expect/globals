@@ -151,6 +151,8 @@ cset qsub        "${slurm_dir}/bin/qsub"
 cset qalter      "${slurm_dir}/bin/qalter"
 cset qrerun      "${slurm_dir}/bin/qrerun"
 
+cset seff        "${slurm_dir}/bin/seff"
+
 cset lsid      	 "${slurm_dir}/bin/lsid"
 cset bjobs     	 "${slurm_dir}/bin/bjobs"
 cset bkill     	 "${slurm_dir}/bin/bkill"
@@ -804,12 +806,10 @@ proc run_command args {
 		}
 	}
 	set start_time [format "%.3f" [expr $start_clock_ms / 1000.000]]
-	set start_hms [format "%s.%03d" [clock format [expr int($start_clock_ms / 1000.000)] -format %H:%M:%S] [expr int(fmod($start_clock_ms, 1000))]]
 	set end_time [format "%.3f" [expr [clock milliseconds] / 1000.000]]
 	set duration [format "%.3f" [expr $end_time - $start_time]]
 
 	log_alias "Command Results:"
-	log_alias "	Start Time: $start_hms"
 	log_alias "	Duration:   $duration"
 	log_alias "	Exit Code:  $exit_status"
 	if {[info exists output]} {
@@ -983,6 +983,9 @@ proc run_command_status args {
 #		1 if jobs are hetjobs and we want to confirm each
 #		component has completed
 #
+# DESCRIPTION
+#	Cancels one or more jobs. A job_id of 0 will be silently ignored.
+#
 # RETURN VALUE
 #	RETURN_SUCCESS if jobs are cancelled, or non-zero value otherwise.
 #
@@ -993,8 +996,7 @@ proc cancel_job { job_id_list {het_job 0}} {
 
 	foreach job_id $job_id_list {
 		if {$job_id == 0} {
-			log_warn "Invalid job_id argument value ($job_id)"
-			return $::RETURN_ERROR
+			continue
 		}
 
 		log_debug "Cancelling $job_id"
@@ -1159,27 +1161,17 @@ proc get_my_user_name {  } {
 #	get_my_uid
 #
 # RETURN VALUE
-#	A non-zero return code indicates a failure.
+#	The uid of the current user, or fails.
 #
 ################################################################
 
 proc get_my_uid {  } {
 	global bin_id number
 
-	set uid -1
-
-	log_user 0
-	spawn $bin_id -u
-	expect {
-		-re "($number)" {
-			set uid $expect_out(1,string)
-			exp_continue
-		}
-		eof {
-			wait
-		}
+	set out [run_command_output -nolog -fail "$bin_id -u"]
+	if {![regexp "($number)" $out - uid]} {
+		fail "Unable to get UID with $bin_id ($out)"
 	}
-	log_user 1
 
 	return $uid
 }
@@ -2839,34 +2831,28 @@ proc get_total_cpus {} {
 
 	set partition [default_partition]
 	set cpu_cnt 0
+	set nodes_matched [list]
 
-	set re_with_cs    "CPUTot=(\\d+).*CoreSpecCount=(\\d+).*ThreadsPerCore=(\\d+)"
-	set re_without_cs "CPUTot=(\\d+)"
+	set re_with_cs    "NodeName=($re_word_str).*CPUTot=(\\d+).*CoreSpecCount=(\\d+).*ThreadsPerCore=(\\d+)"
+	set re_without_cs "NodeName=($re_word_str).*CPUTot=(\\d+)"
 
-	spawn $sinfo -h -o "%P %N" -p $partition --state=idle
-	expect {
-		-re "$partition\\* ($re_word_str)" {
-			set def_hostlist $expect_out(1,string)
-			exp_continue
-		}
-		timeout {
-			fail "sinfo not responding"
-		}
-		eof {
-			wait
-		}
+	set out [run_command_output -fail "$sinfo -h -o \"%P %N\" -p $partition --state=idle"]
+	if {[regexp "$partition\\* ($re_word_str)" $out - def_hostlist] != 1} {
+		fail "Not able to get the hostlist from sinfo"
 	}
-	set fd [open "|$scontrol --oneliner show node $def_hostlist"]
-	while {[gets $fd line] != -1} {
-		if {[regexp $re_with_cs $line frag tmp_cpu_cnt core_spec_cnt threads_per_core] == 1} {
-			set cpu_cnt [expr $cpu_cnt + $tmp_cpu_cnt - $core_spec_cnt * $threads_per_core]
-			continue
-		}
-		if {[regexp $re_without_cs $line frag tmp_cpu_cnt] == 1} {
+
+	set out [run_command_output "$scontrol --oneliner show node $def_hostlist"]
+	foreach {re node_name tmp_cpu_cnt core_spec_cnt threads_per_core} [regexp -all -inline -linestop $re_with_cs $out] {
+		set cpu_cnt [expr $cpu_cnt + $tmp_cpu_cnt - $core_spec_cnt * $threads_per_core]
+		lappend nodes_matched $node_name
+	}
+	foreach {re node_name tmp_cpu_cnt} [regexp -all -inline -linestop $re_without_cs $out] {
+		# Not count nodes already counted
+		if {[lsearch $nodes_matched $node_name] == -1} {
 			set cpu_cnt [expr $cpu_cnt + $tmp_cpu_cnt]
-			continue
 		}
 	}
+
 	return $cpu_cnt
 }
 
@@ -4217,7 +4203,7 @@ proc get_node_cpus {node} {
 	}
 
 	# Get the number of CPUs on a node
-	set my_pid [spawn $scontrol show node $node]
+	set scontrol_pid [spawn $scontrol show node $node]
 	expect {
 		-re "CoresPerSocket=($number)" {
 			set ncores $expect_out(1,string)
@@ -4389,37 +4375,6 @@ proc check_hosts_contiguous { check_hosts_list {partition ""} } {
 }
 
 
-#####################################################################
-#
-# NAME
-#	stop_root_user - detect, warn, and stop root user
-#
-# SYNOPSIS
-#	stop_root_user
-#
-# DESCRIPTION
-#	Detect, warn, and stop root user
-#
-# RETURN VALUE
-#	uid if not root user, exits otherwise
-#
-#####################################################################
-
-proc stop_root_user {} {
-
-	global bin_id number
-
-	set uid [get_my_uid]
-	if {$uid == -1} {
-		fail "Can't get my uid"
-	} elseif {$uid == 0} {
-		skip "Can't run this test as user root"
-	}
-
-	return $uid
-}
-
-
 proc expect_extern_step { } {
 	global scontrol
 	# If PrologFlags=contain is in slurm.conf, then an "extern" step will be
@@ -4506,10 +4461,15 @@ proc get_het_job_ids { jobid {use_offset 0}} {
 #	reconfigure - calls scontrol reconfigure
 #
 # SYNOPSIS
-#	reconfigure ?cluster?
+#	reconfigure ?options? ?cluster?
 #
 # DESCRIPTION
-#	Calls scontrol reconfigure.
+#	Calls scontrol reconfigure. This routine takes the same options as
+#	run_command, passing them to the underlying run_command invocation.
+#	This command waits an additional 5 seconds before returning.
+#
+# OPTIONS
+#	See OPTIONS of run_command proc.
 #
 # ARGUMENTS
 #	cluster
@@ -4520,44 +4480,40 @@ proc get_het_job_ids { jobid {use_offset 0}} {
 #
 ################################################################
 
-proc reconfigure { {cluster ""} } {
-	global scontrol timeout
+proc reconfigure args {
+	global scontrol
 
-	set exit_code $::RETURN_SUCCESS
-	#
-	# Increase timeout just in case we're running under valgrind
-	#
-	set save_timeout $timeout
-	set timeout 20
-	if { $cluster == "" } {
-		spawn $scontrol reconfigure
-	} else {
-		spawn $scontrol -M$cluster reconfigure
-	}
-	expect {
-		-re "slurm_reconfigure error: Invalid user id" {
-			log_error "Invalid user id"
-			set exit_code $::RETURN_ERROR
-			exp_continue
-		}
-		-re "Error|error" {
-			log_error "scontrol reconfigure error"
-			set exit_code $::RETURN_ERROR
-			exp_continue
-		}
-		timeout {
-			fail "scontrol not responding"
-		}
-		eof {
-			wait
+	set options [list]
+	set cluster ""
+
+	while {[llength $args]} {
+		switch -glob -- [lindex $args 0] {
+			-* {
+				lappend options {*}[lrange $args 0 1]
+				set args [lrange $args 2 end]
+			}
+			default break
 		}
 	}
+	set argument_count [llength $args]
+	if {$argument_count > 1}  {
+		fail "Too many arguments ($argument_count): $args"
+	} elseif {$argument_count == 1} {
+		lassign $args cluster
+	}
+
+	set command $scontrol
+	if {$cluster ne ""} {
+		append command " -M$cluster"
+	}
+	append command " reconfigure"
+	set rc [run_command_status {*}$options "$command"]
+
 	#
-	# Wait for reconfigure to complete, then reset timeout and return.
+	# Wait 5 seconds for reconfigure to complete, then return.
 	#
 	sleep 5
-	set timeout $save_timeout
-	return $exit_code
+	return $rc
 }
 
 
@@ -5444,19 +5400,19 @@ proc get_reservations { {resv_name ""} } {
 ################################################################
 #
 # NAME
-#	get_resvation_param - returns a specific parameter value for a specific reservation
+#	get_reservation_param - returns a specific parameter value for a specific reservation
 #
 # SYNOPSIS
-#	get_resvation_param resv_name parameter_name
+#	get_reservation_param resv_name parameter_name
 #
 # DESCRIPTION
-#	Returns a specific parameter value for a specified resvation if the
-#	parameter exists for the resvation, or MISSING if it does not exist.
-#	Specifying an invalid resvation name will result in a failure.
+#	Returns a specific parameter value for a specified reservation if the
+#	parameter exists for the reservation, or MISSING if it does not exist.
+#	Specifying an invalid reservation name will result in a failure.
 #
 ################################################################
 
-proc get_resvation_param { resv_name parameter_name } {
+proc get_reservation_param { resv_name parameter_name } {
 
 	set resvs_dict [get_reservations $resv_name]
 
@@ -6023,7 +5979,7 @@ proc check_reason { job_id reason } {
 #	It accepts all the options of run_command.
 #
 # OPTIONS
-#	It accpets and passes all the options of/to run_command and also:
+#	It accepts and passes all the options of/to run_command and also:
 #	-env env
 #		Prepend $env to the actual sbatch command to set environment
 #		variables. For example "-env 'SLURM_NTASKS_PER_GPU=2'".
@@ -6794,12 +6750,12 @@ proc _test_init {} {
 	global _testproc_included _testproc_excluded argv
 
 	# parse argv to get and remove _testproc_included and _testproc_excluded params
-	set idx [lsearch $argv -i]
+	set idx [expr {[info exists argv] ? [lsearch $argv -i] : -1}]
 	if {$idx >= 0} {
 		set _testproc_included [split [lindex $argv [expr $idx + 1]] ,]
 		set argv [lreplace $argv $idx [expr $idx + 1]]
 	}
-	set idx [lsearch $argv -e]
+	set idx [expr {[info exists argv] ? [lsearch $argv -e] : -1}]
 	if {$idx >= 0} {
 		set _testproc_excluded [split [lindex $argv [expr $idx + 1]] ,]
 		set argv [lreplace $argv $idx [expr $idx + 1]]
@@ -6889,6 +6845,11 @@ rename exit __exit
 
 proc exit { {status 0} } {
 	global test_name
+
+	# To avoid failures when using "expect -c 'source globals'"
+	if {$test_name eq "globals"} {
+		pass
+	}
 
 	#
 	# Minor sanity check to detect if exit was explicitly called (not
