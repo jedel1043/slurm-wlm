@@ -9,6 +9,7 @@ slurm-wlm (20.11.3-1) UNRELEASED; urgency=medium
   * Fix typos
   * Add patch to compile against pmix v4
   * Fix sacct test failure
+  * Add slurmrestd package
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 15 Jan 2021 22:23:31 +0100
 
