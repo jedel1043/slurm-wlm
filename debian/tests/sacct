@@ -20,6 +20,10 @@ PidFile=/run/slurmdbd.pid
 SlurmUser=slurm
 EOF
 
+chmod 600 /etc/slurm/slurmdbd.conf
+
+chown slurm /etc/slurm/slurmdbd.conf
+
 service slurmdbd restart
 
 cat > /etc/slurm/slurm.conf <<EOF
