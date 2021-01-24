@@ -1,4 +1,4 @@
-slurm-wlm (20.11.3-1) UNRELEASED; urgency=medium
+slurm-wlm (20.11.3-1) unstable; urgency=medium
 
   * New upstream release
   * Remove typos patches
@@ -13,7 +13,7 @@ slurm-wlm (20.11.3-1) UNRELEASED; urgency=medium
   * Update configurators
   * Fix packages descriptions
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 15 Jan 2021 22:23:31 +0100
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sun, 24 Jan 2021 18:29:47 +0100
 
 slurm-wlm (20.02.6-2) unstable; urgency=medium
 
