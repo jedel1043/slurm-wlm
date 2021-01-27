@@ -6,7 +6,7 @@ Documentation=man:slurmrestd(8)
 
 [Service]
 Type=simple
-EnvironmentFile=-/etc/sysconfig/slurmrestd
+EnvironmentFile=-/etc/default/slurmrestd
 # Default to local auth via socket
 ExecStart=/usr/sbin/slurmrestd $SLURMRESTD_OPTIONS unix:/run/slurmrestd.socket
 # Uncomment to enable listening mode
