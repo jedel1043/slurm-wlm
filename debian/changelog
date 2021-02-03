@@ -4,7 +4,7 @@ slurm-wlm (20.11.3-2) unstable; urgency=medium
   * Modify slurmrestd EnvironmentFile location
   * Add lintian overrides for slurmrestd
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 26 Jan 2021 10:11:17 +0100
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 28 Jan 2021 03:05:28 +0100
 
 slurm-wlm (20.11.3-1) unstable; urgency=medium
 
