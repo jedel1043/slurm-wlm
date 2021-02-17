@@ -1,3 +1,9 @@
+slurm-wlm (20.11.3-3) UNRELEASED; urgency=medium
+
+  * Pass SUCMD and SLEEP_CMD to configure (Closes: #977319)
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 03 Feb 2021 13:03:32 +0100
+
 slurm-wlm (20.11.3-2) unstable; urgency=medium
 
   * Source only upload for migration to testing
