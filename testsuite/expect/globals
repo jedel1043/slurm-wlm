@@ -101,6 +101,8 @@ set LOG_LEVEL_FATAL   1
 set LOG_LEVEL_ERROR   2
 set LOG_LEVEL_WARNING 3
 set LOG_LEVEL_INFO    4
+set LOG_LEVEL_PASS    4
+set LOG_LEVEL_COMMAND 4
 set LOG_LEVEL_DEBUG   5
 set LOG_LEVEL_TRACE   6
 
@@ -219,6 +221,7 @@ cset bin_sed	"sed"
 cset bin_sleep  "sleep"
 cset bin_sort	"sort"
 cset bin_sum	"sum"
+cset bin_sudo	"sudo"
 cset bin_touch	"touch"
 cset bin_true	"true"
 cset bin_uname	"uname"
@@ -249,6 +252,9 @@ set ::env(LANG)          "en_US.UTF-8"
 # Testsuite level variables
 cset testsuite_shared_dir "[$bin_pwd]"
 
+# Testsuite non-privileged user (set it in globals.local)
+cset testsuite_user ""
+
 # Testsuite log variables
 cset testsuite_log_level $LOG_LEVEL_DEBUG
 cset testsuite_log_format "\[%{timestamp}s.%{msecs}03d] %{loglevel}-7s %{message}s \(%{backtrace}s)"
@@ -260,6 +266,8 @@ cset testsuite_color_fatal     $COLOR_RED
 cset testsuite_color_error     $COLOR_RED_NORMAL
 cset testsuite_color_warn      $COLOR_ORANGE
 cset testsuite_color_info      $COLOR_YELLOW
+cset testsuite_color_pass      $COLOR_GREEN
+cset testsuite_color_command   $COLOR_CYAN
 cset testsuite_color_debug     $COLOR_BLUE
 cset testsuite_color_trace     $COLOR_MAGENTA
 cset testsuite_color_header    $COLOR_NONE
@@ -332,7 +340,7 @@ set gpu_sock_list {}
 #
 set RETURN_SUCCESS 0
 set RETURN_ERROR   1
-set RETURN_TIMEOUT 2
+set RETURN_TIMEOUT 110 ; # ETIMEDOUT
 
 
 ################################################################
@@ -475,7 +483,7 @@ proc subpass args {
 	incr _subtest_pass_count
 	set message [format "Subtest %2d passed" $subtest_count]
 	if {$description ne ""} { append message "  : $description" }
-	log_info $message
+	log_pass $message
 	dict set _subtest_messages $subtest_count [list pass $message]
 }
 
@@ -690,6 +698,143 @@ proc _line_trace {} {
 ################################################################
 #
 # NAME
+#	tolerance - determines whether a value is within a specified tolerance
+#
+# SYNOPSIS
+#	tolerance expected observed tolerance_expression
+#
+# ARGUMENTS
+#	expected
+#		the expected (numeric) value
+#	observed
+#		the observed (numeric) value
+#	tolerance_expression
+#		a string of the form: [~][+|-]<tolerance>[%]
+#
+# DESCRIPTION
+#	tolerance
+#		A numeric tolerance
+#	symmetry
+#		By default the permitted range of values is symetric:
+#			[expected - tolerance, expected + tolerance]
+#		If the + sign is specified, the tolerance is limited to the
+#		the higher side only:
+#			[expected, expected + tolerance]
+#		If the - sign is specified, the tolerance is limited to the
+#		the lower side only:
+#			[expected - tolerance, expected]
+#	percent
+#		By default the permitted range is computed as absolute values:
+#			[expected - tolerance, expected + tolerance]
+#		If % is specified, the permitted range is computed as a
+#		percentage of the expected value:
+#			[expected*(1-tolerance/100), expected*(1+tolerance/100)]
+#	exclusivity
+#		By default the permitted range of values is inclusive, ie
+#		the min and max tolerated values are included in the range:
+#			[expected - tolerance, expected + tolerance]
+#		If ~ (exclusive) is specified, the tolerance limits are
+#		exclusive, ie the min and max tolerated values are excluded:
+#			(expected - tolerance, expected + tolerance)
+#	expression
+#		any combination of symetry, percent and exclusivity is allowed
+#
+# RETURN VALUE
+#	Returns true if the observed value is within the specified tolerance
+#	range of the expected value, otherwise false
+#
+# EXAMPLES
+#	The indicated tolerance_expression is true if:
+#	"5"     expected - 5  <= observed <= expected + 5
+#	"-5"    expected - 5  <= observed <= expected
+#	"+5"    expected      <= observed <= expected + 5
+#	"5%"    expected - 5% <= observed <= expected + 5%
+#	"~5"    expected - 5  <  observed <  expected + 5
+#	"~+5%"  expected      <= observed <  expected + 5%
+#
+################################################################
+
+proc tolerance { expected observed tolerance_expression } {
+	if {![regexp {^(~?)([-+]?)([0-9\.]+)(%?)$} $tolerance_expression {} exclusive sign tolerance percent]} {
+		fail "Invalid tolerance expression ($tolerance_expression)"
+	}
+
+	set lower_bound_expression $observed
+	if {$sign eq "+" || $exclusive ne "~"} {
+		append lower_bound_expression " >="
+	} else {
+		append lower_bound_expression " >"
+	}
+	append lower_bound_expression " $expected"
+	if {$sign eq "-" || $sign eq ""} {
+		if {$percent eq "%"} {
+			append lower_bound_expression " - $tolerance * $expected / 100"
+		} else {
+			append lower_bound_expression " - $tolerance"
+		}
+	}
+
+	set upper_bound_expression $observed
+	if {$sign eq "-" || $exclusive ne "~"} {
+		append upper_bound_expression " <="
+	} else {
+		append upper_bound_expression " <"
+	}
+	append upper_bound_expression " $expected"
+	if {$sign eq "+" || $sign eq ""} {
+		if {$percent eq "%"} {
+			append upper_bound_expression " + $tolerance * $expected / 100"
+		} else {
+			append upper_bound_expression " + $tolerance"
+		}
+	}
+
+	if {[expr $lower_bound_expression] && [expr $upper_bound_expression]} {
+		log_debug "$observed is within tolerance $tolerance_expression of $expected"
+		return true
+	} else {
+		log_warn "$observed is not within tolerance $tolerance_expression of $expected"
+		return false
+	}
+}
+
+
+################################################################
+#
+# NAME
+#	check_run_as_user - check if the caller may run_command as the supplied user
+#
+# SYNOPSIS
+#	check_run_as_user user
+#
+# DESCRIPTION
+#	Note that a proper sudo config needs to be set in orther to pass this
+#	check. Calling user should be permitted to run_commands as the
+#	supplied user using sudo without password.
+#	See the -user option of run_command.
+#
+# RETURN VALUE
+#	Returns a boolean value indicating whether the calling user may
+#	run_command as user.
+#
+################################################################
+
+proc check_run_as_user user {
+	global bin_id
+
+	if {$user eq ""} {
+		return false
+	}
+	if {[run_command_status -none -user $user "$bin_id -un"]} {
+		return false
+	}
+	return true
+}
+
+
+################################################################
+#
+# NAME
 #	run_command - executes a command and returns a dictionary result
 #
 # SYNOPSIS
@@ -697,30 +842,30 @@ proc _line_trace {} {
 #
 # DESCRIPTION
 #	Executes a command and returns a dictionary that includes the output,
-#	exit code, etc. An action can be taken (fail, warn, none)  if the
-#	command's exit code or timeout is unexpected. By default, the action
+#	exit code, etc. An action can be taken (fail, warn, subtest, none) if
+#	the command's exit code is unexpected. By default, the action
 #	will be applied if the command fails. If the -xfail option is
 #	specified, the behavior will be reversed to apply the action if the
 #	command ran successfully.
+#	A timeout is always treated as unexpected, so log_error will be shown
+#	by default, or fail/subfail will be called if -fail/-subtest are used.
 #
 # OPTIONS
 #	-fail
-#		If the exit code or timeout is unexpected, the action that will
+#		If the exit code is unexpected, the action that will
 #		be taken is to fail the test
 #	-subtest
-#		If the exit code or timeout is unexpected, the action that will
+#		If the exit code is unexpected, the action that will
 #		be taken is to subfail, otherwise subpass will be called
 #	-warn
-#		If the exit code or timeout is unexpected, the action that will
+#		If the exit code is unexpected, the action that will
 #		be taken is to log a warning (this is the default)
 #	-none
-#		If the exit code or timeout is unexpected, no action will be
-#		taken
+#		If the exit code is unexpected, no action will be taken
 #	-xfail
-#		If the command exits with zero and does not time out, the
-#		action will be applied. Without this option, the action will
-#		be applied if the command exits with a non-zero exit code or
-#		times out.
+#		If the command exits with zero the action will be applied.
+#		Without this option, the action will be applied if the
+#		command exits with a non-zero exit code.
 #	-timeout <float_number>
 #		Time in seconds to wait for the command to complete before
 #		timing out (default is 60.0)
@@ -728,6 +873,9 @@ proc _line_trace {} {
 #		Logging for this command will occur at trace threshold only
 #	-stdin
 #		Provide standard in to be piped into command
+#	-user <user>
+#		Attempt to execute command as <user>. Note that sudo must be
+#		properly configured to permit the caller to execute as <user>.
 #
 # ARGUMENTS
 #	command
@@ -744,9 +892,11 @@ proc _line_trace {} {
 #
 ################################################################
 proc run_command args {
-	global bin_bash
+	global bin_bash bin_sudo
 
+	set alt_user ""
 	set exit_status 0
+	set timedout false
 	set output ""
 	set action "warn"
 	set timeout 60
@@ -763,6 +913,7 @@ proc run_command args {
 			-xfail   {set expect_failure true; set args [lrange $args 1 end]}
 			-nolog   {set log_at_trace_level true; set args [lrange $args 1 end]}
 			-stdin   {set stdin [lindex $args 1]; set args [lassign $args - stdin]}
+			-user    {set args [lassign $args - alt_user]}
 			-*       {fail "Unknown option: [lindex $args 0]"}
 			default  break
 		}
@@ -773,19 +924,37 @@ proc run_command args {
 		fail "Invalid number of arguments [llength $args]: $args"
 	}
 
+	if {$action eq "subtest"} {
+		if {$expect_failure} {
+			set test_description "Command \"$command\" should fail"
+		} else {
+			set test_description "Command \"$command\" should succeed"
+		}
+	}
+
 	if {$log_at_trace_level} {
-		interp alias {} log_alias {} log_trace
+		interp alias {} log_run     {} log_trace
+		interp alias {} log_details {} log_trace
 	} else {
-		interp alias {} log_alias {} log_debug
+		interp alias {} log_run     {} log_command
+		interp alias {} log_details {} log_debug
 	}
 
 	set orig_log_user [log_user -info]
 	log_user 0
 
-	log_alias "Invoking command \"$command\""
+	if {$alt_user ne ""} {
+		log_run "Run Command as user $alt_user: $command"
+	} else {
+		log_run "Run Command: $command"
+	}
 	set start_clock_ms [clock milliseconds]
 	set stty_init raw ; # Prevent the terminal from inserting \r
-	set expect_pid [spawn -noecho $bin_bash -c "$command"]
+	if {$alt_user ne ""} {
+		set expect_pid [spawn -noecho $bin_sudo -nu $alt_user $bin_bash -c "$command"]
+	} else {
+		set expect_pid [spawn -noecho $bin_bash -c "$command"]
+	}
 	if { $stdin != "" } {
 		exp_send "$stdin"
 		set command "$command <<< $stdin"
@@ -796,9 +965,9 @@ proc run_command args {
 			exp_continue
 		}
 		timeout {
-			set message "Command \"$command\" timed out after $timeout seconds"
 			slow_kill $expect_pid
-			set exit_status 1
+			set exit_status $::RETURN_TIMEOUT
+			set timedout true
 		}
 		eof {
 			lassign [wait] pid spawnid os_error_flag errno
@@ -809,40 +978,45 @@ proc run_command args {
 	set end_time [format "%.3f" [expr [clock milliseconds] / 1000.000]]
 	set duration [format "%.3f" [expr $end_time - $start_time]]
 
-	log_alias "Command Results:"
-	log_alias "	Duration:   $duration"
-	log_alias "	Exit Code:  $exit_status"
+	log_details "Command Results:"
+	log_details "	Duration:   $duration"
+	log_details "	Exit Code:  $exit_status"
 	if {[info exists output]} {
-		log_alias "	Output: $output"
+		log_details "	Output: $output"
 	}
 
-	if {! $expect_failure && $exit_status != 0} {
-		cset message "Command \"$command\" failed with rc=$exit_status"
+	if {$timedout} {
+		set message "Command \"$command\" timed out after $timeout seconds"
+		if {$action eq "fail"} {
+			fail $message
+		} elseif {$action eq "subtest"} {
+			subfail $test_description $message
+		} else {
+			log_error $message
+		}
+	} elseif {! $expect_failure && $exit_status != 0} {
+		set message "Command \"$command\" failed with rc=$exit_status"
 		if {[info exists output] && $output != ""} {
 			append message ": [string trimright $output]"
 		}
 		if {$action eq "warn"} {
 			log_warn $message
 		} elseif {$action eq "subtest"} {
-			subfail "Command \"$command\" should succeed (rc = $exit_status)"
+			subfail $test_description $message
 		} elseif {$action eq "fail"} {
 			fail $message
 		}
 	} elseif {$expect_failure && $exit_status == 0} {
-		cset message "Command \"$command\" was expected to fail but succeeeded"
+		set message "Command \"$command\" was expected to fail but succeeeded"
 		if {$action eq "warn"} {
 			log_warn $message
 		} elseif {$action eq "subtest"} {
-			subfail "Command \"$command\" should fail (rc = $exit_status)"
+			subfail $test_description $message
 		} elseif {$action eq "fail"} {
 			fail $message
 		}
 	} elseif {$action eq "subtest"} {
-		if {!$expect_failure} {
-			subpass "Command \"$command\" should succeed"
-		} else {
-			subpass "Command \"$command\" should fail"
-		}
+		subpass $test_description
 	}
 	log_user $orig_log_user
 
@@ -2302,18 +2476,38 @@ proc wait_job_reason args {
 #	get_config - returns a dictionary of slurm configuration parameters
 #
 # SYNOPSIS
-#	get_config
+#	get_config ?options?
 #
-# DESCRIPTION
-#	Uses `scontrol show config` to return the slurm configuration as
-#	a dictionary of parameter values.
+# OPTIONS
+#	-dbd
+#		uses `sacctmgr show config` to return slurmdbd configuration
+#		parameters
+#	-slurm
+#		uses `scontrol show config` to return slurm configuration
+#		parameters (this is the default)
+#
+# RETURN VALUE
+#	Returns a dictionary of parameter values
 #
 ################################################################
 
-proc get_config { } {
-	global scontrol
+proc get_config args {
+	global sacctmgr scontrol
 
-	set output [run_command_output -fail -nolog "$scontrol show config"]
+	set command "$scontrol"
+	while {[llength $args]} {
+		switch -glob -- [lindex $args 0] {
+			-slurm  {set command "$scontrol"; set args [lrange $args 1 end]}
+			-dbd    {set command "$sacctmgr"; set args [lrange $args 1 end]}
+			-*      {fail "Unknown option: [lindex $args 0]"}
+			default break
+		}
+	}
+	if {[llength $args] > 0} {
+		fail "[lindex [info level 0] 0]: No arguments allowed: $args"
+	}
+
+	set output [run_command_output -fail -nolog "$command show config"]
 
 	foreach line [split $output "\n"] {
 		if {[regexp {^(\S+) += (.*)$} $line {} param_name param_value] == 1} {
@@ -2328,10 +2522,22 @@ proc get_config { } {
 ################################################################
 #
 # NAME
-#	get_config_param - returns a slurm configuration parameter
+#	get_config_param - returns a slurm configuration parameter value
 #
 # SYNOPSIS
-#	get_config_param parameter_name
+#	get_config_param ?options? parameter_name
+#
+# OPTIONS
+#	-dbd
+#		uses `sacctmgr show config` to return the specified slurmdbd
+#		configuration parameter value
+#	-slurm
+#		uses `scontrol show config` to return the specified slurm
+#		configuration parameter value (this is the default)
+#
+# ARGUMENTS
+#	parameter_name
+#		the parameter to return the value for
 #
 # DESCRIPTION
 #	Returns a specific configuration parameter value.
@@ -2342,9 +2548,25 @@ proc get_config { } {
 #
 ################################################################
 
-proc get_config_param { parameter_name } {
+proc get_config_param args {
 
-	set config_dict [get_config]
+	set options [list]
+	while {[llength $args]} {
+		switch -glob -- [lindex $args 0] {
+			-* {
+				lappend options [lindex $args 0]
+				set args [lrange $args 1 end]
+			}
+			default break
+		}
+	}
+	if {[llength $args] == 1} {
+		lassign $args parameter_name
+	} else {
+		fail "[lindex [info level 0] 0]: Invalid number of arguments ([llength $args]): $args"
+	}
+
+	set config_dict [get_config {*}$options]
 
 	if [dict exists $config_dict $parameter_name] {
 		return [dict get $config_dict $parameter_name]
@@ -2593,45 +2815,6 @@ proc get_bb_types { } {
 
 	log_user 1
 	return $bb_types
-}
-
-
-################################################################
-#
-# NAME
-#	priority_type - gets the priority plugin type
-#
-# SYNOPSIS
-#	priority_type
-#
-# DESCRIPTION
-#	Use scontrol to determine the priority plugin
-#
-# RETURN VALUE
-#	Name of priority type
-#
-################################################################
-
-proc priority_type {} {
-	global scontrol
-
-	log_user 0
-	set name ""
-	set fd [open "|$scontrol show config"]
-	while {[gets $fd line] != -1} {
-		if {[regexp {^PriorityType *= priority/(\w+)} $line frag name]
-				== 1} {
-			break
-		}
-	}
-	catch {close $fd}
-	log_user 1
-
-	if {[string length $name] == 0} {
-		log_error "Could not identify the Priority Type"
-	}
-
-	return $name
 }
 
 
@@ -3110,43 +3293,6 @@ proc default_part_exclusive {} {
 	} else {
 		return 0
 	}
-}
-
-
-################################################################
-#
-# NAME
-#	switch_type - determines the switch type
-#
-# SYNOPSIS
-#	switch_type
-#
-# DESCRIPTION
-#	Use scontrol to determine the switch type
-#
-# RETURN VALUE
-#	Name of SwitchType
-#
-################################################################
-
-proc switch_type {} {
-	global scontrol
-
-	set name ""
-	set fd [open "|$scontrol show config"]
-	while {[gets $fd line] != -1} {
-		if {[regexp {^SwitchType *= switch/(\w+)} $line frag name]
-				== 1} {
-			break
-		}
-	}
-	catch {close $fd}
-
-	if {[string length $name] == 0} {
-		log_error "Could not identify the switch type"
-	}
-
-	return $name
 }
 
 
@@ -4375,32 +4521,6 @@ proc check_hosts_contiguous { check_hosts_list {partition ""} } {
 }
 
 
-proc expect_extern_step { } {
-	global scontrol
-	# If PrologFlags=contain is in slurm.conf, then an "extern" step will be
-	# launched on each node, so we need to check for 3 steps per
-	# job instead of 2.
-
-	log_user 0
-	set extern_step 0
-	set scon_pid [spawn -noecho $scontrol show config]
-	expect {
-		-re "PrologFlags\\s*=\\s*\[A-z/,\]*Contain" {
-			set extern_step 1
-		}
-		timeout {
-			fail "scontrol show config not responding"
-		}
-		eof {
-			wait
-		}
-	}
-	log_user 1
-
-	return $extern_step
-}
-
-
 ################################################################
 #
 # NAME
@@ -4601,6 +4721,50 @@ proc log_info {message} {
 
 	if {$testsuite_log_level >= $LOG_LEVEL_INFO} {
 		_log_format "info" "$message"
+	}
+}
+
+
+#####################################################################
+#
+# NAME
+#	log_pass - prints a pass level message
+#
+# SYNOPSIS
+#	log_pass message
+#
+# SEE ALSO
+#	_log_format for options governing the message format and colorization
+#
+#####################################################################
+
+proc log_pass {message} {
+	global testsuite_log_level LOG_LEVEL_PASS
+
+	if {$testsuite_log_level >= $LOG_LEVEL_PASS} {
+		_log_format "pass" "$message"
+	}
+}
+
+
+#####################################################################
+#
+# NAME
+#	log_command - prints a command level message
+#
+# SYNOPSIS
+#	log_command message
+#
+# SEE ALSO
+#	_log_format for options governing the message format and colorization
+#
+#####################################################################
+
+proc log_command {message} {
+	global testsuite_log_level LOG_LEVEL_COMMAND
+
+	if {$testsuite_log_level >= $LOG_LEVEL_COMMAND} {
+		_log_format "command" "$message"
 	}
 }
 
@@ -6435,7 +6599,8 @@ proc _log_format { log_level message } {
 	global testsuite_colorize testsuite_log_format testsuite_time_format
 	global COLOR_NONE
 	global testsuite_color_fatal testsuite_color_error testsuite_color_warn
-	global testsuite_color_info testsuite_color_debug testsuite_color_trace
+	global testsuite_color_info testsuite_color_pass testsuite_color_command
+	global testsuite_color_debug testsuite_color_trace
 
 	set format_string $testsuite_log_format
 	set milliseconds_since_epoch [clock milliseconds]
@@ -6475,6 +6640,8 @@ proc _log_format { log_level message } {
 			error   { append output $testsuite_color_error }
 			warning { append output $testsuite_color_warn }
 			info    { append output $testsuite_color_info }
+			pass    { append output $testsuite_color_pass }
+			command { append output $testsuite_color_command }
 			debug   { append output $testsuite_color_debug }
 			trace   { append output $testsuite_color_trace }
 		}
