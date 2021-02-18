@@ -42,6 +42,8 @@ testsuite_subtest_details:    add details of subtest in the summary [fail]
                               possible values: all, fail, fail_skip or none
 testsuite_testproc_details:   add details of testprocs in the summary [fail]
                               possible values: all, fail, fail_skip or none
+testsuite_user:               username that may be used when an admin user
+                              such as slurm or root is not desired
 
 The testsuite needs at least one cluster-wide shared file system.
 By default, we assume that it's the testsuite/expect directory (i.e. ".").
@@ -396,11 +398,11 @@ test7.19   Test sbatch/srun/salloc path resolving
 test7.20   Test lua JobSubmitPlugin
 test7.21   Test SPANK plugins that link against libslurm
 test7.22   Test basic functionality of backfill scheduler
-test7.23   Test time_str2secs parsing of different formats
 
 test8.#    Testing of advanced reservation functionality.
 =========================================================
 test8.12   Test reservation with flags=FLEX
+test8.13   Test user_resv_delete parameter
 
 test9.#    System stress testing. Exercises all commands and daemons.
 =====================================================================
