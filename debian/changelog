@@ -1,3 +1,9 @@
+slurm-wlm (20.11.4-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 18 Feb 2021 23:57:54 +0100
+
 slurm-wlm (20.11.3-3) unstable; urgency=medium
 
   * Pass SUCMD and SLEEP_CMD to configure (Closes: #977319)
