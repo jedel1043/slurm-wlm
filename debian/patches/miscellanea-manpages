@@ -34,7 +34,7 @@ Last-Update: 2020-11-05
  	sreport.1 \
 --- a/doc/man/man5/slurm.conf.5
 +++ b/doc/man/man5/slurm.conf.5
-@@ -1687,7 +1687,7 @@
+@@ -1689,7 +1689,7 @@
  be called before and/or after execution of each task spawned as
  part of a user's job step.  Default location is "plugstack.conf"
  in the same directory as the system slurm.conf. For more information
@@ -43,7 +43,7 @@ Last-Update: 2020-11-05
  
  .TP
  \fBPowerParameters\fR
-@@ -5961,4 +5961,4 @@
+@@ -5982,4 +5982,4 @@
  \fBgetrlimit\fR(2), \fBgres.conf\fR(5), \fBgroup\fR(5), \fBhostname\fR(1),
  \fBscontrol\fR(1), \fBslurmctld\fR(8), \fBslurmd\fR(8),
  \fBslurmdbd\fR(8), \fBslurmdbd.conf\fR(5), \fBsrun\fR(1),
