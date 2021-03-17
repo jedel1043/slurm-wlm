@@ -1950,6 +1950,7 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 		safe_unpack32(&job_ptr->bit_flags, buffer);
 		job_ptr->bit_flags &= ~BACKFILL_TEST;
 		job_ptr->bit_flags &= ~BF_WHOLE_NODE_TEST;
+		job_ptr->bit_flags &= ~CRON_JOB;
 		safe_unpackstr_xmalloc(&tres_alloc_str,
 				       &name_len, buffer);
 		safe_unpackstr_xmalloc(&tres_fmt_alloc_str,
@@ -2195,6 +2196,7 @@ static int _load_job_state(Buf buffer, uint16_t protocol_version)
 		safe_unpack32(&job_ptr->bit_flags, buffer);
 		job_ptr->bit_flags &= ~BACKFILL_TEST;
 		job_ptr->bit_flags &= ~BF_WHOLE_NODE_TEST;
+		job_ptr->bit_flags &= ~CRON_JOB;
 		safe_unpackstr_xmalloc(&tres_alloc_str,
 				       &name_len, buffer);
 		safe_unpackstr_xmalloc(&tres_fmt_alloc_str,
@@ -5558,6 +5560,7 @@ extern int job_signal(job_record_t *job_ptr, uint16_t signal,
 		job_ptr->job_state      = JOB_CANCELLED | JOB_COMPLETING;
 		if (flags & KILL_FED_REQUEUE)
 			job_ptr->job_state |= JOB_REQUEUE;
+		track_script_flush_job(job_ptr->job_id);
 		build_cg_bitmap(job_ptr);
 		job_completion_logger(job_ptr, false);
 		deallocate_nodes(job_ptr, false, false, false);
@@ -5576,6 +5579,7 @@ extern int job_signal(job_record_t *job_ptr, uint16_t signal,
 		job_ptr->start_time	= now;
 		job_ptr->end_time	= now;
 		srun_allocate_abort(job_ptr);
+		track_script_flush_job(job_ptr->job_id);
 		job_completion_logger(job_ptr, false);
 		if (flags & KILL_FED_REQUEUE) {
 			job_ptr->job_state &= (~JOB_REQUEUE);
@@ -6312,7 +6316,8 @@ static int _job_complete(job_record_t *job_ptr, uid_t uid, bool requeue,
 	}
 
 	/* Check for and cleanup stuck scripts */
-	if (job_ptr->details && job_ptr->details->prolog_running)
+	if (IS_JOB_PENDING(job_ptr) || IS_JOB_CONFIGURING(job_ptr) ||
+	    (job_ptr->details && job_ptr->details->prolog_running))
 		track_script_flush_job(job_ptr->job_id);
 
 	info("%s: %pJ done", __func__, job_ptr);
@@ -6422,7 +6427,8 @@ static int _alt_part_test(part_record_t *part_ptr, part_record_t **part_ptr_new)
  */
 static int _part_access_check(part_record_t *part_ptr, job_desc_msg_t *job_desc,
 			      bitstr_t *req_bitmap, uid_t submit_uid,
-			      slurmdb_qos_rec_t *qos_ptr, char *acct)
+			      slurmdb_qos_rec_t *qos_ptr, char *acct,
+			      char *assoc_partition)
 {
 	uint32_t total_nodes, min_nodes_tmp, max_nodes_tmp;
 	uint32_t job_min_nodes, job_max_nodes;
@@ -6551,6 +6557,18 @@ static int _part_access_check(part_record_t *part_ptr, job_desc_msg_t *job_desc,
 		if ((rc = part_policy_valid_qos(part_ptr, qos_ptr, NULL))
 		    != SLURM_SUCCESS)
 			goto fini;
+	}
+
+	/*
+	 * If a partition is part of the association, check if the association's
+	 * partition matches the current partition.
+	 */
+	if ((accounting_enforce & ACCOUNTING_ENFORCE_ASSOCS) &&
+	    assoc_partition && xstrcmp(assoc_partition, part_ptr->name)) {
+		rc = ESLURM_PARTITION_ASSOC;
+		debug2("%s: uid %u access to partition %s denied, it does not match association partition %s",
+		       __func__, submit_uid, part_ptr->name, assoc_partition);
+		goto fini;
 	}
 
 fini:
@@ -6687,43 +6705,32 @@ static int _valid_job_part(job_desc_msg_t *job_desc, uid_t submit_uid,
 {
 	int rc = SLURM_SUCCESS;
 	part_record_t *part_ptr_tmp;
-	slurmdb_assoc_rec_t assoc_rec;
 	uint32_t min_nodes_orig = INFINITE, max_nodes_orig = 1;
 	uint32_t max_time = 0;
 	bool any_check = false;
+	char *assoc_acct, *assoc_part;
 
 	/* Change partition pointer(s) to alternates as needed */
 	if (part_ptr_list) {
-		int fail_rc = SLURM_SUCCESS;
-		ListIterator iter = list_iterator_create(part_ptr_list);
+		int fail_rc;
+		ListIterator iter;
+
+		fail_rc = SLURM_SUCCESS;
+		iter = list_iterator_create(part_ptr_list);
 
 		while ((part_ptr_tmp = list_next(iter))) {
-			/*
-			 * FIXME: When dealing with multiple partitions we
-			 * currently can't deal with partition based
-			 * associations.
-			 */
-			memset(&assoc_rec, 0, sizeof(assoc_rec));
-			if (assoc_ptr) {
-				assoc_rec.acct      = assoc_ptr->acct;
-				assoc_rec.partition = part_ptr_tmp->name;
-				assoc_rec.uid       = job_desc->user_id;
-				(void) assoc_mgr_fill_in_assoc(
-					acct_db_conn, &assoc_rec,
-					accounting_enforce, NULL, false);
-			}
 
-			if (assoc_ptr && assoc_rec.id != assoc_ptr->id) {
-				info("%s: can't check multiple "
-				     "partitions with partition based "
-				     "associations", __func__);
-				rc = SLURM_ERROR;
+			if (assoc_ptr) {
+				assoc_acct = assoc_ptr->acct;
+				assoc_part = assoc_ptr->partition;
 			} else {
-				rc = _part_access_check(part_ptr_tmp, job_desc,
-							req_bitmap, submit_uid,
-							qos_ptr, assoc_ptr ?
-							assoc_ptr->acct : NULL);
+				assoc_acct = NULL;
+				assoc_part = NULL;
 			}
+			rc = _part_access_check(part_ptr_tmp, job_desc,
+						req_bitmap, submit_uid,
+						qos_ptr, assoc_acct,
+						assoc_part);
 			if ((rc != SLURM_SUCCESS) &&
 			    ((rc == ESLURM_ACCESS_DENIED) ||
 			     (rc == ESLURM_USER_ID_MISSING) ||
@@ -6767,12 +6774,19 @@ static int _valid_job_part(job_desc_msg_t *job_desc, uid_t submit_uid,
 		}
 		rc = SLURM_SUCCESS;	/* At least some partition usable */
 	} else {
+		if (assoc_ptr) {
+			assoc_acct = assoc_ptr->acct;
+			assoc_part = assoc_ptr->partition;
+		} else {
+			assoc_acct = NULL;
+			assoc_part = NULL;
+		}
 		min_nodes_orig = part_ptr->min_nodes_orig;
 		max_nodes_orig = part_ptr->max_nodes_orig;
 		max_time = part_ptr->max_time;
 		rc = _part_access_check(part_ptr, job_desc, req_bitmap,
-					submit_uid, qos_ptr,
-					assoc_ptr ? assoc_ptr->acct : NULL);
+					submit_uid, qos_ptr, assoc_acct,
+					assoc_part);
 		if ((rc != SLURM_SUCCESS) &&
 		    ((rc == ESLURM_ACCESS_DENIED) ||
 		     (rc == ESLURM_USER_ID_MISSING) ||
@@ -6921,6 +6935,7 @@ extern int job_limits_check(job_record_t **job_pptr, bool check_min_time)
 	job_record_t *job_ptr = NULL;
 	slurmdb_qos_rec_t  *qos_ptr;
 	slurmdb_assoc_rec_t *assoc_ptr;
+	char *partition_name = NULL;
 	job_desc_msg_t job_desc;
 	int rc;
 
@@ -6956,10 +6971,11 @@ extern int job_limits_check(job_record_t **job_pptr, bool check_min_time)
 		job_desc.time_limit = job_ptr->time_min;
 	else
 		job_desc.time_limit = job_ptr->time_limit;
+	partition_name = assoc_ptr ? assoc_ptr->partition : NULL;
 
 	if ((rc = _part_access_check(part_ptr, &job_desc, NULL,
 				     job_ptr->user_id, qos_ptr,
-				     job_ptr->account))) {
+				     job_ptr->account, partition_name))) {
 		debug2("%pJ can't run in partition %s: %s",
 		       job_ptr, part_ptr->name, slurm_strerror(rc));
 		switch (rc) {
@@ -17734,10 +17750,18 @@ extern bool job_hold_requeue(job_record_t *job_ptr)
 	_set_job_requeue_exit_value(job_ptr);
 
 	/* handle crontab jobs */
-	if (job_ptr->bit_flags & CRON_JOB) {
+	if ((job_ptr->bit_flags & CRON_JOB) &&
+	    job_ptr->details->crontab_entry) {
 		job_ptr->job_state |= JOB_REQUEUE;
 		job_ptr->details->begin_time =
 			calc_next_cron_start(job_ptr->details->crontab_entry);
+	} else if (job_ptr->bit_flags & CRON_JOB) {
+		/*
+		 * Skip requeuing this instead of crashing.
+		 */
+		error("Missing cron details for %pJ. This should never happen. Clearing CRON_JOB flag and skipping requeue.",
+		      job_ptr);
+		job_ptr->bit_flags &= ~CRON_JOB;
 	}
 
 	state = job_ptr->job_state;
@@ -18389,6 +18413,9 @@ extern void send_job_warn_signal(job_record_t *job_ptr, bool ignore_time)
 		 */
 		if (!(job_ptr->warn_flags & KILL_JOB_BATCH))
 			job_ptr->warn_flags |= KILL_STEPS_ONLY;
+
+		/* send SIGCONT first */
+		job_signal(job_ptr, SIGCONT, job_ptr->warn_flags, 0, false);
 
 		debug("%s: warning signal %u to %pJ",
 		      __func__, job_ptr->warn_signal, job_ptr);

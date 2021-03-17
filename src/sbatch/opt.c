@@ -924,9 +924,9 @@ static bool _opt_verify(void)
 		exit(error_exit);
 	}
 
-	if (sbopt.open_mode) {
+	if (opt.open_mode) {
 		/* Propage mode to spawned job using environment variable */
-		if (sbopt.open_mode == OPEN_MODE_APPEND)
+		if (opt.open_mode == OPEN_MODE_APPEND)
 			setenvf(NULL, "SLURM_OPEN_MODE", "a");
 		else
 			setenvf(NULL, "SLURM_OPEN_MODE", "t");
@@ -1238,12 +1238,16 @@ static void _help(void)
 "                              --mem >= --mem-per-cpu if --mem is specified.\n"
 "\n"
 "Affinity/Multi-core options: (when the task/affinity plugin is enabled)\n"
-"  -B  --extra-node-info=S[:C[:T]]            Expands to:\n"
-"       --sockets-per-node=S   number of sockets per node to allocate\n"
-"       --cores-per-socket=C   number of cores per socket to allocate\n"
-"       --threads-per-core=T   number of threads per core to allocate\n"
-"                              each field can be 'min' or wildcard '*'\n"
-"                              total cpus requested = (N x S x C x T)\n"
+"                              For the following 4 options, you are\n"
+"                              specifying the minimum resources available for\n"
+"                              the node(s) allocated to the job.\n"
+"      --sockets-per-node=S    number of sockets per node to allocate\n"
+"      --cores-per-socket=C    number of cores per socket to allocate\n"
+"      --threads-per-core=T    number of threads per core to allocate\n"
+"  -B  --extra-node-info=S[:C[:T]]  combine request of sockets per node,\n"
+"                              cores per socket and threads per core.\n"
+"                              Specify an asterisk (*) as a placeholder,\n"
+"                              a minimum value, or a min-max range.\n"
 "\n"
 "      --ntasks-per-core=n     number of tasks to invoke on each core\n"
 "      --ntasks-per-socket=n   number of tasks to invoke on each socket\n");

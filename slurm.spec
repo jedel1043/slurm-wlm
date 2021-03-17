@@ -1,5 +1,5 @@
 Name:		slurm
-Version:	20.11.4
+Version:	20.11.5
 %define rel	1
 Release:	%{rel}%{?dist}
 Summary:	Slurm Workload Manager
@@ -410,6 +410,8 @@ install -D -m644 etc/slurmrestd.service  %{buildroot}/%{_unitdir}/slurmrestd.ser
 %endif
 
 install -D -m644 etc/cgroup.conf.example %{buildroot}/%{_sysconfdir}/cgroup.conf.example
+install -D -m644 etc/prolog.example %{buildroot}/%{_sysconfdir}/prolog.example
+install -D -m644 etc/job_submit.lua.example %{buildroot}/%{_sysconfdir}/job_submit.lua.example
 install -D -m644 etc/slurm.conf.example %{buildroot}/%{_sysconfdir}/slurm.conf.example
 install -D -m600 etc/slurmdbd.conf.example %{buildroot}/%{_sysconfdir}/slurmdbd.conf.example
 install -D -m644 etc/cli_filter.lua.example %{buildroot}/%{_sysconfdir}/cli_filter.lua.example
@@ -539,6 +541,8 @@ rm -rf %{buildroot}
 %config %{_sysconfdir}/slurm.conf.template
 %endif
 %config %{_sysconfdir}/cgroup.conf.example
+%config %{_sysconfdir}/job_submit.lua.example
+%config %{_sysconfdir}/prolog.example
 %config %{_sysconfdir}/slurm.conf.example
 %config %{_sysconfdir}/slurmdbd.conf.example
 %config %{_sysconfdir}/cli_filter.lua.example
