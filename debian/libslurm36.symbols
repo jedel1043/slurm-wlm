@@ -1112,6 +1112,7 @@ libslurm.so.36 libslurm36 #MINVER#
  slurm_stepd_connect@Base 15.08.0
 #MISSING: 20.11.2# slurm_stepd_connect_nss@Base 20.02.5
  slurm_stepd_get_info@Base 19.05.2
+ slurm_stepd_get_namespace_fd@Base 20.11.5
  slurm_stepd_get_uid@Base 15.08.0
 #MISSING: 17.02.0# slurm_strcasestr@Base 2.0.0
  slurm_stepd_get_x11_display@Base 17.11.2
