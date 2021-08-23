@@ -1,3 +1,9 @@
+slurm-wlm (20.11.8-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 23 Aug 2021 08:48:33 +0200
+
 slurm-wlm (20.11.7-1) unstable; urgency=medium
 
   * New upstream release fixes CVE-2021-31215 (Closes: #988439)
