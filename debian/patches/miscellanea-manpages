@@ -114,8 +114,8 @@ index 4609dbf9..91d0996d 100644
 --- a/doc/man/man8/spank.8
 +++ b/doc/man/man7/spank.7
 @@ -1,4 +1,4 @@
--.TH SPANK "8" "Slurm Component" "April 2021" "Slurm Component"
-+.TH SPANK "7" "Slurm Component" "April 2021" "Slurm Component"
+-.TH SPANK "8" "Slurm Component" "June 2021" "Slurm Component"
++.TH SPANK "7" "Slurm Component" "June 2021" "Slurm Component"
  
  .SH "NAME"
  \fBSPANK\fR \- Slurm Plug\-in Architecture for Node and job (K)control
