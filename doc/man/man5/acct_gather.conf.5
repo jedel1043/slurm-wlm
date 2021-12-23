@@ -1,4 +1,4 @@
-.TH "acct_gather.conf" "5" "Slurm Configuration File" "April 2021" "Slurm Configuration File"
+.TH "acct_gather.conf" "5" "Slurm Configuration File" "June 2021" "Slurm Configuration File"
 
 .SH "NAME"
 \fBacct_gather.conf\fR \- Slurm configuration file for the acct_gather plugins
@@ -12,7 +12,7 @@ DEFAULT_SLURM_CONF parameter or at execution time by setting the SLURM_CONF
 environment variable. The file will always be located in the
 same directory as the \fBslurm.conf\fP file.
 .LP
-Parameter names are case insensitive but parameter values are case sensistive.
+Parameter names are case insensitive but parameter values are case sensitive.
 Any text following a "#" in the configuration file is treated
 as a comment through the end of that line.
 The size of each line in the file is limited to 1024 characters.
@@ -43,12 +43,20 @@ appear to be unknown by Slurm and silently ignored. If you decide to change
 plugin types you may also have to change the related options.
 
 .SH acct_gather_energy/IPMI
+Required entry in slurm.conf:
+.RS
+.nf
+AcctGatherEnergyType=acct_gather_energy/ipmi
+.fi
+.RE
+
 Options used for acct_gather_energy/ipmi are as follows:
 
 .RS
 .TP 10
 \fBEnergyIPMIFrequency\fR=<number>
 This parameter is the number of seconds between BMC access samples.
+.IP
 
 .TP
 \fBEnergyIPMICalcAdjustment\fR=<yes|no>
@@ -58,6 +66,7 @@ The adjustment is made at the step start and each time the
 consumption is updated, including the step end. The approximations are not
 accumulated, only the first and last adjustments are used to calculated the
 consumption. The default is "no".
+.IP
 
 .TP
 \fBEnergyIPMIPowerSensors\fR=<key=values>\fR
@@ -71,7 +80,7 @@ These keys are useful only when profile is activated for energy to store power
 <values> are integers, multiple values can be set with "," separators.
 The sum of the listed sensors is used for each key.
 EnergyIPMIPowerSensors is optional, default value is "Node=number" where
-"number" is the id of the first power sensor returned by ipmi-sensors.
+"number" is the id of the first power sensor returned by ipmi\-sensors.
 .br
 i.e.
 .br
@@ -90,14 +99,23 @@ IPMI config default values for libipmiconsole.
 .TP 10
 \fBEnergyIPMIUsername\fR=\fIUSERNAME\fR
 Specify BMC Username.
+.IP
 
 .TP
 \fBEnergyIPMIPassword\fR=\fIPASSWORD\fR
 Specify BMC Password.
 .RE
+.IP
 
 .SH acct_gather_energy/XCC
-Options used for acct_gather_energy/xcc include only in-band communications
+Required entry in slurm.conf:
+.RS
+.nf
+AcctGatherEnergyType=acct_gather_energy/xcc
+.fi
+.RE
+
+Options used for acct_gather_energy/xcc include only in\-band communications
 with XClarity Controller, thus a reduced set of configurations is supported:
 
 .RS
@@ -105,14 +123,23 @@ with XClarity Controller, thus a reduced set of configurations is supported:
 \fBEnergyIPMIFrequency\fR=<number>
 This parameter is the number of seconds between XCC access samples.
 Default is 30 seconds.
+.IP
 
 .TP
 \fBEnergyIPMITimeout\fR=<number>
 Timeout, in seconds, for initializing the IPMI XCC context for a new gathering
 thread. Default is 10 seconds.
 .RE
+.IP
 
 .SH acct_gather_profile/HDF5
+Required entry in slurm.conf:
+.RS
+.nf
+AcctGatherProfileType=acct_gather_profile/hdf5
+.fi
+.RE
+
 Options used for acct_gather_profile/hdf5 are as follows:
 
 .RS
@@ -122,44 +149,57 @@ This parameter is the path to the shared folder into which the
 acct_gather_profile plugin will write detailed data (usually as an HDF5 file).
 The directory is assumed to be on a file system shared by the controller and
 all compute nodes. This is a required parameter.
+.IP
 
 .TP
 \fBProfileHDF5Default\fR
-A comma delimited list of data types to be collected for each job submission.
+A comma\-delimited list of data types to be collected for each job submission.
 Allowed values are:
-
 .RS
 .TP 8
 \fBAll\fR
 All data types are collected. (Cannot be combined with other values.)
+.IP
 
 .TP
 \fBNone\fR
 No data types are collected. This is the default.
 (Cannot be combined with other values.)
+.IP
 
 .TP
 \fBEnergy\fR
 Energy data is collected.
+.IP
 
 .TP
 \fBFilesystem\fR
 File system (Lustre) data is collected.
+.IP
 
 .TP
 \fBNetwork\fR
 Network (InfiniBand) data is collected.
+.IP
 
 .TP
 \fBTask\fR
 Task (I/O, Memory, ...) data is collected.
+.IP
 
 .SH acct_gather_profile/InfluxDB
+Required entry in slurm.conf:
+.RS
+.nf
+AcctGatherProfileType=acct_gather_profile/influxdb
+.fi
+.RE
+
 The InfluxDB plugin provides the same information as the HDF5 plugin but will
 instead send information to the configured InfluxDB server.
 .P
 The InfluxDB plugin is designed against 1.x protocol of InfluxDB. Any site
-running a v2.x InfluxDB server will need to configure a v1.x compatiblity
+running a v2.x InfluxDB server will need to configure a v1.x compatibility
 endpoint along with the correct user and password authorization. Token
 authentication is not currently supported.
 .SS
@@ -168,60 +208,71 @@ Options:
 \fBProfileInfluxDBDatabase\fR
 InfluxDB v1.x database name where profiling information is to be written.
 InfluxDB v2.x bucket name where profiling information is to be written.
+.IP
 
 .TP
 \fBProfileInfluxDBDefault\fR
-A comma delimited list of data types to be collected for each job submission.
+A comma\-delimited list of data types to be collected for each job submission.
 Allowed values are:
-
+.IP
 .RS
 .TP 10
 \fBAll\fR
 All data types are collected. Cannot be combined with other values.
+.IP
 
 .TP
 \fBNone\fR
 No data types are collected. This is the default.
 Cannot be combined with other values.
+.IP
 
 .TP
 \fBEnergy\fR
 Energy data is collected.
+.IP
 
 .TP
 \fBFilesystem\fR
 File system (Lustre) data is collected.
+.IP
 
 .TP
 \fBNetwork\fR
 Network (InfiniBand) data is collected.
+.IP
 
 .TP
 \fBTask\fR
 Task (I/O, Memory, ...) data is collected.
 .RE
+.IP
 
 .TP
 \fBProfileInfluxDBHost\fR=<hostname>:<port>
-The hostname of the machine where the \fIinfluxd\fR instance is executed and
+The hostname of the machine where the \fIInfluxDB\fR instance is executed and
 the port used by the HTTP API. The port used by the HTTP API is the one
-configured through the bind-address influxdb.conf option in the [http] section.
+configured through the bind\-address influxdb.conf option in the [http] section.
 .BR
 Example:
 .nf
 ProfileInfluxDBHost=myinfluxhost:8086
 .fi
 .in -2
+.IP
+
 .TP
 \fBProfileInfluxDBPass\fR
 Password for username configured in ProfileInfluxDBUser. Required in v2.x and
 optional in v1.x InfluxDB.
+.IP
 
 .TP
 \fBProfileInfluxDBRTPolicy\fR
 The InfluxDB v1.x retention policy name for the database configured in
 ProfileInfluxDBDatabase option. The InfluxDB v2.x retention policy bucket name
 for the database configured in ProfileInfluxDBDatabase option.
+.IP
 
 .TP
 \fBProfileInfluxDBUser\fR
@@ -230,6 +281,8 @@ in ProfileInfluxDBDatabase. Required in v2.x and optional in v1.x InfluxDB.
 This is only needed if InfluxDB v1.x is configured with authentication enabled
 in the [http] config section and a user has been granted at least WRITE access
 to the database. See also \fBProfileInfluxDBPass\fR.
+.IP
+
 .SS
 NOTES:
 .LP
@@ -240,8 +293,8 @@ Information on how to install and configure InfluxDB and manage databases,
 retention policies and such is available on the official webpage.
 .LP
 Collected information is written from every compute node where a job runs to
-the \fIinfluxd\fR instance listening on the ProfileInfluxDBHost. In order to
-avoid overloading the \fIinfluxd\fR instance with incoming connection requests,
+the \fIInfluxDB\fR instance listening on the ProfileInfluxDBHost. In order to
+avoid overloading the \fIInfluxDB\fR instance with incoming connection requests,
 the plugin uses an internal buffer which is filled with samples. Once the buffer
 is full, a HTTP API write request is performed and the buffer is emptied to hold
 subsequent samples. A final request is also performed when a task ends even if
@@ -249,7 +302,7 @@ the buffer isn't full.
 .LP
 Failed HTTP API write requests are silently discarded. This means that collected
 profile information in the plugin buffer is lost if it can't be written to the
-\fIinfluxd\fR database for any reason.
+\fIInfluxDB\fR database for any reason.
 .LP
 Plugin messages are logged along with the slurmstepd logs to SlurmdLogFile. In
 order to troubleshoot any issues, it is recommended to temporarily increase
@@ -261,8 +314,14 @@ Grafana can be used to create charts based on the data held by InfluxDB.
 This kind of tool permits one to create dashboards, tables and other graphics
 using the stored time series.
 
-.RS
 .SH acct_gather_interconnect/OFED
+Required entry in slurm.conf:
+.RS
+.nf
+AcctGatherInterconnectType=acct_gather_interconnect/ofed
+.fi
+.RE
+
 Options used for acct_gather_interconnect/ofed are as follows:
 
 .RS
@@ -272,6 +331,7 @@ This parameter represents the port number of the local Infiniband card that we a
 The default port is 1.
 .RE
 .RE
+
 .SH "EXAMPLE"
 .nf
 ###
@@ -288,7 +348,8 @@ InfinibandOFEDPort=1
 .fi
 
 .SH "COPYING"
-Copyright (C) 2012-2013 Bull.
+Copyright (C) 2012\-2013 Bull.
+Copyright (C) 2012\-2021 SchedMD LLC.
 Produced at Bull (cf, DISCLAIMER).
 .LP
 This file is part of Slurm, a resource management program.
