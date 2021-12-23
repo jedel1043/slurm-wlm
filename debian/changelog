@@ -3,6 +3,7 @@ slurm-wlm (21.08.5-1) UNRELEASED; urgency=medium
   * New upstream major release
   * Refresh patches and drop changes included upstream
   * Bump libslurm to soname 37
+  * Update d/copyright
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 18 Nov 2021 18:40:06 +0100
 
