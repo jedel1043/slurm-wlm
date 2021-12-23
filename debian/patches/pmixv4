@@ -7,7 +7,7 @@ Last-Update: 2021-01-23
 
 --- a/auxdir/x_ac_pmix.m4
 +++ b/auxdir/x_ac_pmix.m4
-@@ -181,7 +181,8 @@
+@@ -201,7 +201,8 @@
  
    AM_CONDITIONAL(HAVE_PMIX, [test $_x_ac_pmix_v1_found = "1"] ||
                  [test $_x_ac_pmix_v2_found = "1"] ||
