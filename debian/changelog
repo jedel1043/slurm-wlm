@@ -1,3 +1,9 @@
+slurm-wlm (21.08.5-1) UNRELEASED; urgency=medium
+
+  * New upstream major release
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 18 Nov 2021 18:40:06 +0100
+
 slurm-wlm (20.11.8-1) unstable; urgency=medium
 
   * New upstream release
