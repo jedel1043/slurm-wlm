@@ -5,6 +5,7 @@ slurm-wlm (21.08.5-1) UNRELEASED; urgency=medium
   * Bump libslurm to soname 37
   * Update d/copyright
   * Remove man3 section dropped upstream
+  * Remove pmix support
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 18 Nov 2021 18:40:06 +0100
 
