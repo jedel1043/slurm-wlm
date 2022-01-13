@@ -9,7 +9,7 @@ slurm-wlm (21.08.5-1) UNRELEASED; urgency=medium
   * Remove defaults and old parameters in tests configuration files
   * Explicitly use the 1.8 HDF5 API
   * Update configurators
-  * Update simple example
+  * Update simple and cgroup example
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 18 Nov 2021 18:40:06 +0100
 
