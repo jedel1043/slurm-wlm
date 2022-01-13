@@ -10,6 +10,7 @@ slurm-wlm (21.08.5-1) UNRELEASED; urgency=medium
   * Explicitly use the 1.8 HDF5 API
   * Update configurators
   * Update simple and cgroup example
+  * Add slurm.conf with cgroup example
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 18 Nov 2021 18:40:06 +0100
 
