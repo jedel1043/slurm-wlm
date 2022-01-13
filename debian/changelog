@@ -1,4 +1,4 @@
-slurm-wlm (21.08.5-1) UNRELEASED; urgency=medium
+slurm-wlm (21.08.5-1) unstable; urgency=medium
 
   * New upstream major release
   * Refresh patches and drop changes included upstream
@@ -17,7 +17,7 @@ slurm-wlm (21.08.5-1) UNRELEASED; urgency=medium
   * Add bash completion
   * Bump standard version to 4.6.0 (no changes)
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 18 Nov 2021 18:40:06 +0100
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 13 Jan 2022 16:30:47 +0100
 
 slurm-wlm (20.11.8-1) unstable; urgency=medium
 
