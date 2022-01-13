@@ -11,6 +11,8 @@ slurm-wlm (21.08.5-1) UNRELEASED; urgency=medium
   * Update configurators
   * Update simple and cgroup example
   * Add slurm.conf with cgroup example
+  * Change AccountingStoreJobComment into AccountingStoreFlags in
+    slurm-wlm-basic-plugins postinst
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 18 Nov 2021 18:40:06 +0100
 
