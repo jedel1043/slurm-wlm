@@ -3,9 +3,9 @@ Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
 Forwarded: https://bugs.schedmd.com/show_bug.cgi?id=13103
 Last-Update: 2021-12-29
 
---- slurm-wlm-21.08.5.orig/doc/man/man1/sacct.1
-+++ slurm-wlm-21.08.5/doc/man/man1/sacct.1
-@@ -317,7 +317,7 @@ changes the default \-S and \-E options.
+--- a/doc/man/man1/sacct.1
++++ b/doc/man/man1/sacct.1
+@@ -317,7 +317,7 @@
  
  .TP
  \fB\-\-json\fR
@@ -14,7 +14,7 @@ Last-Update: 2021-12-29
  .IP
  
  .TP
-@@ -531,7 +531,7 @@ leader.
+@@ -531,7 +531,7 @@
  
  .TP
  \fB\-\-yaml\fR
@@ -23,9 +23,9 @@ Last-Update: 2021-12-29
  .IP
  
  .SS "Job Accounting Fields"
---- slurm-wlm-21.08.5.orig/doc/man/man1/sinfo.1
-+++ slurm-wlm-21.08.5/doc/man/man1/sinfo.1
-@@ -448,7 +448,7 @@ Size of temporary disk space per node in
+--- a/doc/man/man1/sinfo.1
++++ b/doc/man/man1/sinfo.1
+@@ -448,7 +448,7 @@
  
  .TP
  \fBExtra\fR
@@ -34,7 +34,7 @@ Last-Update: 2021-12-29
  .IP
  
  .TP
-@@ -658,7 +658,7 @@ By default prints a time stamp with the
+@@ -658,7 +658,7 @@
  
  .TP
  \f3\-\-json\fP
@@ -43,7 +43,7 @@ Last-Update: 2021-12-29
  be ignored.
  .IP
  
-@@ -799,7 +799,7 @@ Print version information and exit.
+@@ -799,7 +799,7 @@
  
  .TP
  \f3\-\-yaml\fP
@@ -52,9 +52,9 @@ Last-Update: 2021-12-29
  be ignored.
  .IP
  
---- slurm-wlm-21.08.5.orig/doc/man/man1/squeue.1
-+++ slurm-wlm-21.08.5/doc/man/man1/squeue.1
-@@ -1336,7 +1336,7 @@ Use the environment variable SLURM_BITST
+--- a/doc/man/man1/squeue.1
++++ b/doc/man/man1/squeue.1
+@@ -1336,7 +1336,7 @@
  
  .TP
  \f3\-\-json\fP
@@ -63,7 +63,7 @@ Last-Update: 2021-12-29
  be ignored.
  .IP
  
-@@ -1499,7 +1499,7 @@ Print version information and exit.
+@@ -1499,7 +1499,7 @@
  
  .TP
  \f3\-\-yaml\fP
@@ -72,9 +72,9 @@ Last-Update: 2021-12-29
  be ignored.
  .IP
  
---- slurm-wlm-21.08.5.orig/doc/man/man5/slurm.conf.5
-+++ slurm-wlm-21.08.5/doc/man/man5/slurm.conf.5
-@@ -4415,7 +4415,7 @@ time.
+--- a/doc/man/man5/slurm.conf.5
++++ b/doc/man/man5/slurm.conf.5
+@@ -4415,7 +4415,7 @@
  Percentage of memory a node is allowed to register with without being marked as
  invalid with low memory. Default is 100. For State=CLOUD nodes, the default is
  90. To disable this for cloud nodes set it to 100. \fIconfig_overrides\fR takes
@@ -83,9 +83,9 @@ Last-Update: 2021-12-29
  
  It's recommended that \fItask/cgroup\fR with \fIConstrainRamSpace\fR is
  configured. A memory cgroup limit won't be set more than the actual memory on
---- slurm-wlm-21.08.5.orig/src/bcast/file_bcast.c
-+++ slurm-wlm-21.08.5/src/bcast/file_bcast.c
-@@ -565,7 +565,7 @@ static List _fill_in_excluded_paths(stru
+--- a/src/bcast/file_bcast.c
++++ b/src/bcast/file_bcast.c
+@@ -565,7 +565,7 @@
  	tok = strtok_r(tmp_str, ",", &saveptr);
  	while (tok) {
  		if (tok[0] != '/')
@@ -94,9 +94,9 @@ Last-Update: 2021-12-29
  			      tok);
  		else
  			list_append(excl_paths, xstrdup(tok));
---- slurm-wlm-21.08.5.orig/src/slurmctld/backup.c
-+++ slurm-wlm-21.08.5/src/slurmctld/backup.c
-@@ -445,7 +445,7 @@ static int _background_process_msg(slurm
+--- a/src/slurmctld/backup.c
++++ b/src/slurmctld/backup.c
+@@ -445,7 +445,7 @@
  			 * to the correct controller.  This usually indicates a
  			 * configuration issue.
  			 */

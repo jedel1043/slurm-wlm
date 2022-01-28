@@ -4,9 +4,9 @@ Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
 Forwarded: https://bugs.schedmd.com/show_bug.cgi?id=13104
 Last-Update: 2022-01-03
 
---- slurm-wlm-21.08.5.orig/configure.ac
-+++ slurm-wlm-21.08.5/configure.ac
-@@ -221,7 +221,7 @@ AM_CONDITIONAL(BUILD_HDF5, test "$with_h
+--- a/configure.ac
++++ b/configure.ac
+@@ -221,7 +221,7 @@
  # --with-default-api-version=v16 which creates problems for slurm
  # because slurm uses the 1.8 API. By defining this CPP macro we get
  # the 1.8 API.
