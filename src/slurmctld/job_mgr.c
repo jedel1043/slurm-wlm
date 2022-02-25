@@ -900,10 +900,10 @@ int dump_all_job_state(void)
 		      new_file);
 		error_code = errno;
 	} else {
-		int pos = 0, nwrite, amount, rc;
+		int pos = 0, amount, rc;
 		char *data;
+		uint32_t nwrite = get_buf_offset(buffer);
 
-		nwrite = get_buf_offset(buffer);
 		data = (char *)get_buf_data(buffer);
 		high_buffer_size = MAX(nwrite, high_buffer_size);
 		while (nwrite > 0) {
@@ -3579,6 +3579,21 @@ static void _rebuild_part_name_list(job_record_t *job_ptr)
 }
 
 /*
+ * Set a requeued job to PENDING and COMPLETING if all the nodes are completed
+ * and the EpilogSlurmctld is not running
+ */
+static void _set_requeued_job_pending_completing(job_record_t *job_ptr)
+{
+	/* do this after the epilog complete, setting it here is too early */
+	//job_ptr->db_index = 0;
+	//job_ptr->details->submit_time = now;
+
+	job_ptr->job_state = JOB_PENDING;
+	if (job_ptr->node_cnt || job_ptr->epilog_running)
+		job_ptr->job_state |= JOB_COMPLETING;
+}
+
+/*
  * Kill job or job step
  *
  * IN job_step_kill_msg - msg with specs on which job/step to cancel.
@@ -3924,14 +3939,7 @@ extern int kill_job_by_front_end_name(char *node_name)
 				deallocate_nodes(job_ptr, false, suspended,
 						 false);
 
-				/* do this after the epilog complete,
-				 * setting it here is too early */
-				//job_ptr->db_index = 0;
-				//job_ptr->details->submit_time = now;
-
-				job_ptr->job_state = JOB_PENDING;
-				if (job_ptr->node_cnt)
-					job_ptr->job_state |= JOB_COMPLETING;
+				_set_requeued_job_pending_completing(job_ptr);
 
 				job_ptr->restart_cnt++;
 
@@ -4192,14 +4200,7 @@ extern int kill_running_job_by_node_name(char *node_name)
 				deallocate_nodes(job_ptr, false, suspended,
 						 false);
 
-				/* do this after the epilog complete,
-				 * setting it here is too early */
-				//job_ptr->db_index = 0;
-				//job_ptr->details->submit_time = now;
-
-				job_ptr->job_state = JOB_PENDING;
-				if (job_ptr->node_cnt)
-					job_ptr->job_state |= JOB_COMPLETING;
+				_set_requeued_job_pending_completing(job_ptr);
 
 				job_ptr->restart_cnt++;
 
@@ -4672,6 +4673,7 @@ extern job_record_t *job_array_split(job_record_t *job_ptr)
 		job_ptr_pend->array_task_id = NO_VAL;
 	}
 
+	job_ptr_pend->batch_features = xstrdup(job_ptr->batch_features);
 	job_ptr_pend->batch_host = NULL;
 	job_ptr_pend->burst_buffer = xstrdup(job_ptr->burst_buffer);
 	job_ptr_pend->burst_buffer_state = xstrdup(job_ptr->burst_buffer_state);
@@ -4717,6 +4719,8 @@ extern job_record_t *job_array_split(job_record_t *job_ptr)
 		       job_ptr->priority_array, i);
 	}
 	job_ptr_pend->resv_name = xstrdup(job_ptr->resv_name);
+	if (job_ptr->resv_list)
+		job_ptr_pend->resv_list = list_shallow_copy(job_ptr->resv_list);
 	job_ptr_pend->resp_host = xstrdup(job_ptr->resp_host);
 	if (job_ptr->select_jobinfo) {
 		job_ptr_pend->select_jobinfo =
@@ -12543,8 +12547,25 @@ static int _update_job(job_record_t *job_ptr, job_desc_msg_t *job_specs,
 		if (!IS_JOB_PENDING(job_ptr) || !detail_ptr) {
 			error_code = ESLURM_JOB_NOT_PENDING;
 			goto fini;
-		} else
+		} else if (detail_ptr->accrue_time) {
+			uint64_t bit_flags = job_ptr->bit_flags;
 			acct_policy_remove_accrue_time(job_ptr, false);
+			/*
+			 * Set the accrue_time to 'now' since we are not
+			 * removing this job, but resetting the time
+			 * instead. Since acct_policy_remove_accrue_time()
+			 * will set this to 0 which will cause the next time
+			 * through acct_policy_handle_accrue_time() to set
+			 * things back to the original time thus making it as if
+			 * nothing happened here.
+			 *
+			 * We also reset the bit_flags to be the same as it was
+			 * before so we don't loose JOB_ACCRUE_OVER if set
+			 * beforehand.
+			 */
+			job_ptr->bit_flags = bit_flags;
+			detail_ptr->accrue_time = now;
+		}
 	}
 
 	/*
@@ -17311,13 +17332,7 @@ static int _job_requeue_op(uid_t uid, job_record_t *job_ptr, bool preempt,
 		job_ptr->job_state &= (~JOB_COMPLETING);
 	}
 
-	/* do this after the epilog complete, setting it here is too early */
-	//job_ptr->db_index = 0;
-	//job_ptr->details->submit_time = now;
-
-	job_ptr->job_state = JOB_PENDING;
-	if (job_ptr->node_cnt)
-		job_ptr->job_state |= JOB_COMPLETING;
+	_set_requeued_job_pending_completing(job_ptr);
 
 	/*
 	 * Mark the origin job as requeuing. Will finish requeuing fed job

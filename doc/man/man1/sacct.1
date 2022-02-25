@@ -1,4 +1,4 @@
-.TH sacct "1" "Slurm Commands" "September 2021" "Slurm Commands"
+.TH sacct "1" "Slurm Commands" "February 2022" "Slurm Commands"
 
 .SH "NAME"
 sacct \- displays accounting data for all jobs and job steps in the
@@ -317,7 +317,7 @@ changes the default \-S and \-E options.
 
 .TP
 \fB\-\-json\fR
-Dump job information as JSON. All other formating arugments will be ignored.
+Dump job information as JSON. All other formatting arguments will be ignored.
 .IP
 
 .TP
@@ -531,11 +531,14 @@ leader.
 
 .TP
 \fB\-\-yaml\fR
-Dump job information as YAML. All other formating arugments will be ignored.
+Dump job information as YAML. All other formatting arguments will be ignored.
 .IP
 
 .SS "Job Accounting Fields"
-The following describes each job accounting field:
+Descriptions of each job accounting field can be found below.
+Note that the Ave*, Max* and Min* accounting fields look at the values for
+all the tasks of each step in a job and return the average, maximum or minimum
+values for the job step.
 .RS
 .TP "10"
 \f3ALL\fP
@@ -689,13 +692,13 @@ seconds
 
 .TP
 \f3Eligible\fP
-When the job became eligible to run in the same format as \f3End\fP.
+When the job became eligible to run. In the same format as \f3End\fP.
 .IP
 
 .TP
 \f3End\fP
-Termination time of the job. Format output is, YYYY\-MM\-DDTHH:MM:SS, unless
-changed through the SLURM_TIME_FORMAT environment variable.
+Termination time of the job. The output is of the format YYYY\-MM\-DDTHH:MM:SS,
+unless changed through the SLURM_TIME_FORMAT environment variable.
 .IP
 
 .TP
@@ -973,7 +976,7 @@ in processor seconds.
 
 .TP
 \f3Start\fP
-Initiation time of the job in the same format as \f3End\fP.
+Initiation time of the job. In the same format as \f3End\fP.
 .IP
 
 .TP
@@ -998,7 +1001,7 @@ state(s) without the RUNNING state.
 
 .TP
 \f3Submit\fP
-The time the job was submitted in the same format as \f3End\fP.
+The time the job was submitted. In the same format as \f3End\fP.
 
 NOTE: If a job is requeued, the submit time is reset.  To obtain the
 original submit time it is necessary to use the \-D or \-\-duplicate option
@@ -1495,7 +1498,7 @@ Copyright (C) 2005\-2007 Copyright Hewlett\-Packard Development Company L.P.
 Copyright (C) 2008\-2010 Lawrence Livermore National Security.
 Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
 .br
-Copyright (C) 2010\-2021 SchedMD LLC.
+Copyright (C) 2010\-2022 SchedMD LLC.
 .LP
 This file is part of Slurm, a resource management program.
 For details, see <https://slurm.schedmd.com/>.

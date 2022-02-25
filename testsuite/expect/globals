@@ -178,10 +178,8 @@ cset totalviewcli	"/usr/local/bin/totalviewcli"
 # Set if using "--enable-memory-leak-debug" configuration option
 cset enable_memory_leak_debug 0
 
-# test_prompt: to be used as prompt for interactive shells
+# test_prompt: to be used as prompt for interactive shells (see proc reset_bash_prompt)
 set test_prompt  "TEST_PROMPT: "
-# reset_bash_prompt: to be used as command on scripts or interactive jobs
-set reset_bash_prompt "unset PROMPT_COMMAND; unset PS0; export PS1=\"$test_prompt\""
 
 #
 # Specify locations of other executable files used
@@ -646,6 +644,57 @@ proc get_subtest_fail_count {} {
 	global _subtest_fail_count
 
 	return $_subtest_fail_count
+}
+
+
+################################################################
+#
+# NAME
+#	reset_bash_prompt - used in expect body to reset bash prompt
+#
+# SYNOPSIS
+#	reset_bash_prompt
+#
+# DESCRIPTION
+#	The procedure will normally be called within an expect body to
+#	reset the bash prompt to the $test_prompt.
+#
+# EXAMPLE
+#	spawn $salloc $bin_bash
+#	expect {
+#		-re "Granted job allocation ($number)" {
+#			set job_id $expect_out(1,string)
+#			reset_bash_prompt
+#			exp_continue
+#		}
+#		-re $test_prompt {}; # Expect initial test prompt from bash
+#		timeout {
+#			fail "salloc not responding or prompt not recognized"
+#		}
+#	}
+#
+################################################################
+
+proc reset_bash_prompt {} {
+	global eol test_prompt
+
+	send "unset PROMPT_COMMAND\r"
+	send "unset PS0\r"
+	send "export PS1=\"$test_prompt\"\r"
+	expect {
+		# Some callers may expect/wait for an initial $test_prompt
+		# after this proc, but undesired $test_prompt strings surrounded
+		# by quotes may be echoed back once or twice depending on
+		# whether the original bash prompt returns before or after the
+		# send command above.
+		# So, we wait for the $test_prompt without quotes to skip the
+		# undesired quoted echoes from the caller, but also using a
+		# positive lookahead match to avoid consuming it from the
+		# expect buffer leaving it there for the caller in case they
+		# need it.
+		-re "${eol}(?=$test_prompt)" {}
+		timeout { fail "Failed to reset bash prompt" }
+	}
 }
 
 
@@ -6426,7 +6475,7 @@ proc testproc_alias {alias args} {
 	global _subtest_fail_count
 
 	# Avoid integer alias to avoid confusions with testproc_id
-	if {[llength $alias] && [string is entier $alias]} {
+	if {[llength $alias] && [string is integer -strict $alias]} {
 		fail "testproc_alias doesn't support integer alias, use alphanumeric"
 	}
 

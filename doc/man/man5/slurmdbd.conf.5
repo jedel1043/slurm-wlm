@@ -1,4 +1,4 @@
-.TH "slurmdbd.conf" "5" "Slurm Configuration File" "June 2021" "Slurm Configuration File"
+.TH "slurmdbd.conf" "5" "Slurm Configuration File" "January 2022" "Slurm Configuration File"
 
 .SH "NAME"
 slurmdbd.conf \- Slurm Database Daemon (SlurmDBD) configuration file
@@ -6,9 +6,7 @@ slurmdbd.conf \- Slurm Database Daemon (SlurmDBD) configuration file
 .SH "DESCRIPTION"
 \fBslurmdbd.conf\fP is an ASCII file which describes Slurm Database
 Daemon (SlurmDBD) configuration information.
-The file location can be modified at system build time using the
-DEFAULT_SLURM_CONF parameter or at execution time by setting the SLURM_CONF
-environment variable.
+The file will always be located in the same directory as the \fBslurm.conf\fR.
 .LP
 The contents of the file are case insensitive except for the names of nodes
 and files. Any text following a "#" in the configuration file is treated
@@ -457,6 +455,12 @@ Log errors and verbose informational messages and even more debugging messages
 Log errors and verbose informational messages and even more debugging messages
 .RE
 .IP
+\fBNOTE\fR: By default, Slurm's systemd service files start daemons in the
+foreground with the -D option. This means that systemd will capture
+stdout/stderr output and print that to syslog, independent of Slurm printing to
+syslog directly. To prevent systemd from doing this, add "StandardOutput=null"
+and "StandardError=null" to the respective service files or override files.
+.IP
 
 .TP
 \fBDefaultQOS\fR
@@ -685,14 +689,16 @@ If not set (default), then usage records are never purged.
 .TP
 \fBSlurmUser\fR
 The name of the user that the \fBslurmdbd\fR daemon executes as.
-This user must exist on the machine executing the Slurm Database Daemon
-and have the same UID as the hosts on which \fBslurmctld\fR execute.
+This user should match the SlurmUser used for all instances of slurmctld that
+report to slurmdbd. It must exist on the machine executing the Slurm Database
+Daemon and have the same UID as the hosts on which \fBslurmctld\fR executes.
 For security purposes, a user other than "root" is recommended.
-The default value is "root". This name should also be the same SlurmUser
-on all clusters reporting to the SlurmDBD.
-NOTE: If this user is different from the one set for \fBslurmctld\fR and is not
-root, it must be added to accounting with AdminLevel=Admin and \fBslurmctld\fR
-must be restarted.
+The default value is "root".
+
+\fBNOTE\fR: If the SlurmUser defined for \fBslurmctld\fR is not root and is
+different than the SlurmUser defined for \fBslurmdbd\fR, the user used for
+\fBslurmctld\fR must be added to accounting with AdminLevel=Admin and
+\fBslurmctld\fR must be restarted.
 .IP
 
 .TP
@@ -836,7 +842,7 @@ StorageUser=database_mgr
 Copyright (C) 2008\-2010 Lawrence Livermore National Security.
 Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
 .br
-Copyright (C) 2010\-2021 SchedMD LLC.
+Copyright (C) 2010\-2022 SchedMD LLC.
 .LP
 This file is part of Slurm, a resource management program.
 For details, see <https://slurm.schedmd.com/>.

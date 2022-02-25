@@ -1,4 +1,4 @@
-.TH "slurm.conf" "5" "Slurm Configuration File" "December 2021" "Slurm Configuration File"
+.TH "slurm.conf" "5" "Slurm Configuration File" "February 2022" "Slurm Configuration File"
 
 .SH "NAME"
 slurm.conf \- Slurm configuration file
@@ -10,8 +10,7 @@ how those nodes are grouped into partitions, and various scheduling
 parameters associated with those partitions. This file should be
 consistent across all nodes in the cluster.
 .LP
-The file location can be modified at system build time using the
-DEFAULT_SLURM_CONF parameter or at execution time by setting the SLURM_CONF
+The file location can be modified at execution time by setting the SLURM_CONF
 environment variable. The Slurm daemons also allow you to override
 both the built\-in and environment\-provided location using the "\-f"
 option on the command line.
@@ -595,9 +594,36 @@ plugin was developed to provide system administrators with a way to do any task
 \fBCliFilterPlugins\fR
 A comma\-delimited list of command line interface option filter/modification
 plugins. The specified plugins will be executed in the order listed.
-These are intended to be site\-specific plugins which can be used to set
-default job parameters and/or logging events.
-No cli_filter plugins are used by default.
+No cli_filter plugins are used by default. Acceptable values at present are:
+.IP
+.RS
+.TP
+\fBcli_filter/lua\fR
+This plugin allows you to write your own implementation of a cli_filter
+using lua.
+.IP
+
+.TP
+\fBcli_filter/syslog\fR
+This plugin enables logging of job submission activities performed. All the
+salloc/sbatch/srun options are logged to syslog together with environment
+variables in JSON format. If the plugin is not the last one in the list it may
+log values different than what was actually sent to slurmctld.
+.IP
+
+.TP
+\fBcli_filter/user_defaults\fR
+This plugin looks for the file $HOME/.slurm/defaults and reads every line of it
+as a \fIkey\fR=\fIvalue\fR pair, where \fIkey\fR is any of the job submission
+options available to salloc/sbatch/srun and \fIvalue\fR is a default value
+defined by the user. For instance:
+.nf
+time=1:30
+mem=2048
+.fi
+The above will result in a user defined default for each of their jobs of
+"\-t 1:30" and "\-\-mem=2048".
+.RE
 .IP
 
 .TP
@@ -1378,7 +1404,7 @@ steps may run in parallel with the interactive step.
 \fBJobAcctGatherType\fR
 The job accounting mechanism type.
 Acceptable values at present include "jobacct_gather/linux" (for Linux
-systems) and is the recommended one, "jobacct_gather/cgroup" and
+systems), "jobacct_gather/cgroup" and
 "jobacct_gather/none" (no accounting data collected).
 The default value is "jobacct_gather/none".
 "jobacct_gather/cgroup" is a plugin for the Linux operating system
@@ -1462,7 +1488,7 @@ Users can independently override each interval on a per job basis using the
 
 .TP
 \fBJobAcctGatherParams\fR
-Arbitrary parameters for the job account gather plugin
+Arbitrary parameters for the job account gather plugin.
 Acceptable values at present include:
 .IP
 .RS
@@ -1632,9 +1658,9 @@ By default, any existing file is truncated.
 This option controls the default ability for batch jobs to be requeued.
 Jobs may be requeued explicitly by a system administrator, after node
 failure, or upon preemption by a higher priority job.
-If \fBJobRequeue\fR is set to a value of 1, then batch job may be requeued
+If \fBJobRequeue\fR is set to a value of 1, then batch jobs may be requeued
 unless explicitly disabled by the user.
-If \fBJobRequeue\fR is set to a value of 0, then batch job will not be requeued
+If \fBJobRequeue\fR is set to a value of 0, then batch jobs will not be requeued
 unless explicitly enabled by the user.
 Use the \fBsbatch\fR \fI\-\-no\-requeue\fR or \fI\-\-requeue\fR
 option to change the default behavior for individual jobs.
@@ -2328,7 +2354,7 @@ preemptor job, even if the preemptor job requested fewer resources than that.
 These reserved nodes aren't available to other jobs during that backfill
 cycle, even if the other jobs could fit on the nodes. Therefore, jobs may
 preempt more resources during a single backfill iteration than they requested.
-
+.br
 \fBNOTE:\fR
 For heterogeneous job to be considered for preemption all components
 must be eligible for preemption. When a heterogeneous job is to be preempted
@@ -2376,7 +2402,7 @@ Heterogeneous jobs are excluded from GANG scheduling operations.
 \fBREQUEUE\fR
 Preempts jobs by requeuing them (if possible) or canceling them.
 For jobs to be requeued they must have the \-\-requeue sbatch option set
-or the cluster wide JobRequeue parameter in slurm.conf must be set to one.
+or the cluster wide JobRequeue parameter in slurm.conf must be set to \fB1\fR.
 .IP
 
 .TP
@@ -2386,6 +2412,12 @@ them. Therefore the \fBSUSPEND\fR preemption mode always needs the \fBGANG\fR
 option to be specified at the cluster level. Also, because the suspended jobs
 will still use memory on the allocated nodes, Slurm needs to be able to track
 memory resources to be able to suspend jobs.
+.br
+If \fBPreemptType=preempt/qos\fR is configured and if the preempted job(s) and
+the preemptor job are on the same partition, then they will share resources with
+the Gang scheduler (time\-slicing). If not (i.e. if the preemptees and preemptor
+are on different partitions) then the preempted jobs will remain suspended until
+the preemptor ends.
 
 \fBNOTE:\fR Because gang scheduling is performed independently for each
 partition, if using \fBPreemptType=preempt/partition_prio\fR then jobs in
@@ -2393,15 +2425,8 @@ higher PriorityTier partitions will suspend jobs in lower PriorityTier
 partitions to run on the released resources. Only when the preemptor job ends
 will the suspended jobs will be resumed by the Gang scheduler.
 .br
-
 \fBNOTE:\fR Suspended jobs will not release GRES. Higher priority jobs will not
 be able to preempt to gain access to GRES.
-.br
-If \fBPreemptType=preempt/qos\fR is configured and if the preempted job(s) and
-the preemptor job are on the same partition, then they will share resources with
-the Gang scheduler (time\-slicing). If not (i.e. if the preemptees and preemptor
-are on different partitions) then the preempted jobs will remain suspended until
-the preemptor ends.
 .RE
 .IP
 
@@ -2513,8 +2538,8 @@ running and suspended jobs.
 .TP
 \fBDEPTH_OBLIVIOUS\fR
 If set, priority will be calculated based similar to the normal multifactor
-calculation, but depth of the associations in the tree do not adversely effect
-their priority. This option automatically enables NO_FAIR_TREE.
+calculation, but depth of the associations in the tree does not adversely
+affect their priority. This option automatically enables NO_FAIR_TREE.
 .IP
 
 .TP
@@ -2560,7 +2585,7 @@ If set, the QOS factor is not normalized against the highest qos priority.
 
 .TP
 \fBNO_NORMAL_TRES\fR
-If set, the QOS factor is not normalized against the job's partition TRES
+If set, the TRES factor is not normalized against the job's partition TRES
 counts.
 .IP
 
@@ -3559,7 +3584,7 @@ The backfill and main scheduling logic will not reserve resources for pending
 jobs unless they have a priority equal to or higher than the specified value.
 In addition, jobs with a lower priority will not prevent a newly submitted job
 from starting immediately, even if the newly submitted job has a lower priority.
-This can be valuable if one wished to maximum system utilization without regard
+This can be valuable if one wished to maximize system utilization without regard
 for job priority below a certain threshold.
 The default value is zero, which will reserve resources for any pending job
 and delay initiation of lower priority jobs.
@@ -4035,12 +4060,6 @@ An exception is made for jobs that can not run due to partition constraints
 (e.g. the time limit) or down/drained nodes.
 In that case, lower priority jobs can be initiated and not impact the higher
 priority job.
-.IP
-
-.TP
-\fBsched/hold\fR
-To hold all newly arriving jobs if a file "/etc/slurm.hold"
-exists otherwise use the built\-in FIFO scheduler
 .RE
 .IP
 
@@ -4415,7 +4434,7 @@ time.
 Percentage of memory a node is allowed to register with without being marked as
 invalid with low memory. Default is 100. For State=CLOUD nodes, the default is
 90. To disable this for cloud nodes set it to 100. \fIconfig_overrides\fR takes
-precendence over this option.
+precedence over this option.
 
 It's recommended that \fItask/cgroup\fR with \fIConstrainRamSpace\fR is
 configured. A memory cgroup limit won't be set more than the actual memory on
@@ -4583,6 +4602,12 @@ Log errors and verbose informational messages and even more debugging messages
 \fBdebug5\fR
 Log errors and verbose informational messages and even more debugging messages
 .RE
+.IP
+\fBNOTE\fR: By default, Slurm's systemd service files start daemons in the
+foreground with the -D option. This means that systemd will capture
+stdout/stderr output and print that to syslog, independent of Slurm printing to
+syslog directly. To prevent systemd from doing this, add "StandardOutput=null"
+and "StandardError=null" to the respective service files or override files.
 .IP
 
 .TP
@@ -4791,6 +4816,12 @@ Log errors and verbose informational messages and even more debugging messages
 \fBdebug5\fR
 Log errors and verbose informational messages and even more debugging messages
 .RE
+.IP
+\fBNOTE\fR: By default, Slurm's systemd service files start daemons in the
+foreground with the -D option. This means that systemd will capture
+stdout/stderr output and print that to syslog, independent of Slurm printing to
+syslog directly. To prevent systemd from doing this, add "StandardOutput=null"
+and "StandardError=null" to the respective service files or override files.
 .IP
 
 .TP
@@ -5061,7 +5092,7 @@ TaskPlugin=task/affinity,task/cray_aries,task/cgroup
 \fBTaskPluginParam\fR
 Optional parameters for the task plugin.
 Multiple options should be comma separated.
-\fBNone\fR, \fBBoards\fR, \fBSockets\fR, \fBCores\fR and \fBThreads\fR are mutually
+\fBNone\fR, \fBSockets\fR, \fBCores\fR and \fBThreads\fR are mutually
 exclusive and treated as a last possible source of \-\-cpu\-bind default. See also
 Node and Partition CpuBind options.
 .IP
@@ -5401,7 +5432,7 @@ The default entry values will apply only to lines following it in the
 configuration file and the default values can be reset multiple times
 in the configuration file with multiple entries where "NodeName=DEFAULT".
 Each line where \fBNodeName\fR is "DEFAULT" will replace or add to previous
-default values and not a reinitialize the default values.
+default values and will not reinitialize the default values.
 The "NodeName=" specification must be placed on every line
 describing the configuration of nodes.
 A single node name can not appear as a NodeName value in more than one line
@@ -5546,7 +5577,7 @@ If a job step request does not specify an option to control how tasks are bound
 to allocated CPUs (\-\-cpu\-bind) and all nodes allocated to the job have the same
 \fBCpuBind\fR option the node \fBCpuBind\fR option will control how tasks are
 bound to allocated resources. Supported values for \fBCpuBind\fR are "none",
-"board", "socket", "ldom" (NUMA), "core" and "thread".
+"socket", "ldom" (NUMA), "core" and "thread".
 .IP
 
 .TP
@@ -6120,7 +6151,7 @@ If a job step request does not specify an option to control how tasks are bound
 to allocated CPUs (\-\-cpu\-bind) and all nodes allocated to the job do not have
 the same \fBCpuBind\fR option the node. Then the partition's \fBCpuBind\fR
 option will control how tasks are bound to allocated resources.
-Supported values for\fBCpuBind\fR are "none", "board", "socket", "ldom" (NUMA),
+Supported values for\fBCpuBind\fR are "none", "socket", "ldom" (NUMA),
 "core" and "thread".
 .IP
 
@@ -6455,6 +6486,94 @@ It can be set to OFF to disable preemption and gang scheduling for this
 partition.
 See also \fBPriorityTier\fR and the above description of the cluster\-wide
 \fBPreemptMode\fR parameter for further details.
+.br
+The \fBGANG\fR option is used to enable gang scheduling independent of
+whether preemption is enabled (i.e. independent of the \fBPreemptType\fR
+setting). It can be specified in addition to a \fBPreemptMode\fR setting with
+the two options comma separated (e.g. \fBPreemptMode=SUSPEND,GANG\fR).
+.br
+See <https://slurm.schedmd.com/preempt.html> and
+<https://slurm.schedmd.com/gang_scheduling.html> for more details.
+
+\fBNOTE:\fR
+For performance reasons, the backfill scheduler reserves whole nodes for jobs,
+not partial nodes. If during backfill scheduling a job preempts one or more
+other jobs, the whole nodes for those preempted jobs are reserved for the
+preemptor job, even if the preemptor job requested fewer resources than that.
+These reserved nodes aren't available to other jobs during that backfill
+cycle, even if the other jobs could fit on the nodes. Therefore, jobs may
+preempt more resources during a single backfill iteration than they requested.
+.br
+\fBNOTE:\fR
+For heterogeneous job to be considered for preemption all components
+must be eligible for preemption. When a heterogeneous job is to be preempted
+the first identified component of the job with the highest order PreemptMode
+(\fBSUSPEND\fR (highest), \fBREQUEUE\fR, \fBCANCEL\fR (lowest)) will be
+used to set the PreemptMode for all components. The \fBGraceTime\fR and user
+warning signal for each component of the heterogeneous job remain unique.
+Heterogeneous jobs are excluded from GANG scheduling operations.
+.IP
+.RS
+.TP 12
+\fBOFF\fR
+Is the default value and disables job preemption and gang scheduling.
+It is only compatible with \fBPreemptType=preempt/none\fR at a global level.
+A common use case for this parameter is to set it on a partition to disable
+preemption for that partition.
+.IP
+
+.TP
+\fBCANCEL\fR
+The preempted job will be cancelled.
+.IP
+
+.TP
+\fBGANG\fR
+Enables gang scheduling (time slicing) of jobs in the same partition, and
+allows the resuming of suspended jobs.
+
+\fBNOTE:\fR
+Gang scheduling is performed independently for each partition, so
+if you only want time\-slicing by \fBOverSubscribe\fR, without any preemption,
+then configuring partitions with overlapping nodes is not recommended.
+On the other hand, if you want to use \fBPreemptType=preempt/partition_prio\fR
+to allow jobs from higher PriorityTier partitions to Suspend jobs from lower
+PriorityTier partitions you will need overlapping partitions, and
+\fBPreemptMode=SUSPEND,GANG\fR to use the Gang scheduler to resume the suspended
+jobs(s).
+In any case, time\-slicing won't happen between jobs on different partitions.
+.br
+\fBNOTE:\fR
+Heterogeneous jobs are excluded from GANG scheduling operations.
+.IP
+
+.TP
+\fBREQUEUE\fR
+Preempts jobs by requeuing them (if possible) or canceling them.
+For jobs to be requeued they must have the \-\-requeue sbatch option set
+or the cluster wide JobRequeue parameter in slurm.conf must be set to \fB1\fR.
+.IP
+
+.TP
+\fBSUSPEND\fR
+The preempted jobs will be suspended, and later the Gang scheduler will resume
+them. Therefore the \fBSUSPEND\fR preemption mode always needs the \fBGANG\fR
+option to be specified at the cluster level. Also, because the suspended jobs
+will still use memory on the allocated nodes, Slurm needs to be able to track
+memory resources to be able to suspend jobs.
+
+If the preemptees and preemptor are on different partitions then the preempted
+jobs will remain suspended until the preemptor ends.
+.br
+\fBNOTE:\fR Because gang scheduling is performed independently for each
+partition, if using \fBPreemptType=preempt/partition_prio\fR then jobs in
+higher PriorityTier partitions will suspend jobs in lower PriorityTier
+partitions to run on the released resources. Only when the preemptor job ends
+will the suspended jobs will be resumed by the Gang scheduler.
+.br
+\fBNOTE:\fR Suspended jobs will not release GRES. Higher priority jobs will not
+be able to preempt to gain access to GRES.
+.RE
 .IP
 
 .TP
@@ -7155,7 +7274,7 @@ This prevents the daemons from running if critical file systems are
 not mounted and will minimize the risk of cold\-starting (starting
 without preserving jobs).
 .LP
-Log files and job accounting files,
+Log files and job accounting files
 may need to be created/owned by the "SlurmUser" uid to be successfully
 accessed.  Use the "chown" and "chmod" commands to set the ownership
 and permissions appropriately.
@@ -7202,7 +7321,7 @@ Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
 .br
 Copyright (C) 2008\-2010 Lawrence Livermore National Security.
 .br
-Copyright (C) 2010\-2021 SchedMD LLC.
+Copyright (C) 2010\-2022 SchedMD LLC.
 .LP
 This file is part of Slurm, a resource management program.
 For details, see <https://slurm.schedmd.com/>.

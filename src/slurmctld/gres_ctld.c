@@ -627,9 +627,6 @@ static int _job_alloc(void *job_gres_data, List job_gres_list_alloc,
 	 * one entry for each type of gres separately
 	 */
 	for (j = 0; j < node_gres_ptr->type_cnt; j++) {
-		if (shared_gres) {
-			error("Shared gres shouldn't have types");
-		}
 		if (job_gres_ptr->type_id &&
 		    job_gres_ptr->type_id != node_gres_ptr->type_id[j])
 			continue;
@@ -670,7 +667,8 @@ static int _job_alloc(void *job_gres_data, List job_gres_list_alloc,
 				bit_nclear(left_over_bits, (bitoff_t)0,
 					   last_gres_bit);
 			job_alloc_gres_ptr->gres_bit_alloc[node_offset] =
-				bit_pick_cnt(left_over_bits, gres_cnt);
+				bit_pick_cnt(left_over_bits,
+					     gres_cnt / gres_per_bit);
 			FREE_NULL_BITMAP(left_over_bits);
 			if (gres_cnt)
 				last_gres_bit = bit_fls(
@@ -893,7 +891,8 @@ static int _set_node_type_cnt(gres_state_t *job_gres_ptr, List node_gres_list)
 		 * Not the right type
 		 */
 		if (node_state_ptr->type_cnt_alloc[j] ||
-		    (node_state_ptr->type_id[j] != job_state_ptr->type_id))
+		    (node_state_ptr->type_id[j] != job_state_ptr->type_id) ||
+		    (job_state_ptr->total_gres == NO_CONSUME_VAL64))
 			continue;
 		node_state_ptr->type_cnt_alloc[j] = job_state_ptr->total_gres;
 		break;
@@ -1994,8 +1993,12 @@ static int _step_alloc(gres_step_state_t *step_gres_ptr,
 	xassert(step_gres_ptr);
 	xassert(step_req_gres_ptr);
 
-	if (job_gres_ptr->node_cnt == 0)	/* no_consume */
+	if (job_gres_ptr->total_gres == NO_CONSUME_VAL64) {
+		if (*gres_needed != INFINITE64)
+			*gres_needed = 0;
+		step_gres_ptr->total_gres = NO_CONSUME_VAL64;
 		return SLURM_SUCCESS;
+	}
 
 	if (node_offset >= job_gres_ptr->node_cnt) {
 		error("gres/%s: %s for %ps, node offset invalid (%d >= %u)",
@@ -2314,7 +2317,7 @@ static int _step_dealloc(gres_state_t *step_gres_ptr, List job_gres_list,
 			continue;
 
 		job_data_ptr = (gres_job_state_t *)job_gres_ptr->gres_data;
-		if (job_data_ptr->node_cnt == 0) {	/* no_consume */
+		if (job_data_ptr->total_gres == NO_CONSUME_VAL64) {
 			xassert(!step_data_ptr->node_in_use);
 			xassert(!step_data_ptr->gres_bit_alloc);
 			return SLURM_SUCCESS;

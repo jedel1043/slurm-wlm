@@ -1,4 +1,4 @@
-.TH srun "1" "Slurm Commands" "December 2021" "Slurm Commands"
+.TH srun "1" "Slurm Commands" "February 2022" "Slurm Commands"
 
 .SH "NAME"
 srun \- Run parallel jobs
@@ -354,7 +354,8 @@ meets those requirements.
 \fBNOTE:\fR Brackets are only reserved for \fBMultiple Counts\fR and
 \fBMatching OR\fR syntax.
 AND operators require a count for each feature inside square brackets
-(i.e. "[quad*2&hemi*1]").
+(i.e. "[quad*2&hemi*1]"). Slurm will only allow a single set of bracketed
+constraints per job.
 .IP
 
 .TP
@@ -731,9 +732,8 @@ Not compatible with the \fB\-\-cpus\-per\-task\fR option.
 \fB\-c\fR, \fB\-\-cpus\-per\-task\fR=<\fIncpus\fR>
 Request that \fIncpus\fR be allocated \fBper process\fR. This may be
 useful if the job is multithreaded and requires more than one CPU
-per task for optimal performance. Explicitly requesting this option implies
-\fB\-\-exact\fR. The default is one CPU per process and does not imply
-\fB\-\-exact\fR.
+per task for optimal performance. The default is one CPU per process and does
+not imply \fB\-\-exact\fR.
 If \fB\-c\fR is specified without \fB\-n\fR, as many
 tasks will be allocated per node as possible while satisfying
 the \fB\-c\fR restriction. For instance on a cluster with 8 CPUs
@@ -1542,7 +1542,7 @@ to job and step allocations.
 \fB\-i\fR, \fB\-\-input\fR=<\fImode\fR>
 Specify how stdin is to redirected. By default,
 .B srun
-redirects stdin from the terminal all tasks. See \fBIO Redirection\fR
+redirects stdin from the terminal to all tasks. See \fBIO Redirection\fR
 below for more options.
 For OS X, the poll() function does not support stdin, so input from
 a terminal is not possible. This option applies to job and step allocations.
@@ -1597,6 +1597,10 @@ License names can be followed by a colon and count
 (the default count is one).
 Multiple license names should be comma separated (e.g.
 "\-\-licenses=foo:4,bar"). This option applies to job allocations.
+
+\fBNOTE\fR: When submitting heterogeneous jobs, license requests only work
+correctly when made on the first component job.
+For example "srun \-L ansys:2 : myexecutable".
 .IP
 
 .TP
@@ -2754,7 +2758,7 @@ very small memory computers. This option applies to job allocations.
 \fB\-\-threads\-per\-core\fR=<\fIthreads\fR>
 Restrict node selection to nodes with at least the specified number of
 threads per core. In task layout, use the specified maximum number of threads
-per core. Implies \fB\-\-exact\fR and \fB\-\-cpu\-bind=threads\fR unless
+per core. Implies \fB\-\-cpu\-bind=threads\fR unless
 overridden by command line or environment options.
 NOTE: "Threads" refers to the
 number of processing units on each core rather than the number of application
@@ -4225,7 +4229,7 @@ Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
 .br
 Copyright (C) 2008\-2010 Lawrence Livermore National Security.
 .br
-Copyright (C) 2010\-2021 SchedMD LLC.
+Copyright (C) 2010\-2022 SchedMD LLC.
 .LP
 This file is part of Slurm, a resource management program.
 For details, see <https://slurm.schedmd.com/>.
