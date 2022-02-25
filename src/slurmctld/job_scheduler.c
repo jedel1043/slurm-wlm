@@ -602,6 +602,8 @@ extern List build_job_queue(bool clear_start, bool backfill)
 					job_ptr->state_reason;
 			last_job_update = now;
 		}
+		if (job_ptr->resv_list)
+			job_ptr->resv_ptr = NULL;
 		if (!_job_runnable_test1(job_ptr, clear_start))
 			continue;
 
@@ -1015,6 +1017,7 @@ static int _schedule(bool full_queue)
 	time_t now, last_job_sched_start, sched_start;
 	job_record_t *reject_array_job = NULL;
 	part_record_t *reject_array_part = NULL;
+	slurmctld_resv_t *reject_array_resv = NULL;
 	bool fail_by_part, wait_on_resv;
 	uint32_t deadline_time_limit, save_time_limit = 0;
 	uint32_t prio_reserve;
@@ -1414,16 +1417,11 @@ next_part:
 			part_ptr = job_queue_rec->part_ptr;
 			job_ptr->priority = job_queue_rec->priority;
 
-			if (job_ptr->resv_list)
-				job_queue_rec_resv_list(job_queue_rec);
-			else
-				job_queue_rec_magnetic_resv(job_queue_rec);
-			xfree(job_queue_rec);
-
 			if (!avail_front_end(job_ptr)) {
 				job_ptr->state_reason = WAIT_FRONT_END;
 				xfree(job_ptr->state_desc);
 				last_job_update = now;
+				xfree(job_queue_rec);
 				continue;
 			}
 			if ((job_ptr->array_task_id != array_task_id) &&
@@ -1431,9 +1429,18 @@ next_part:
 				/* Job array element started in other partition,
 				 * reset pointer to "master" job array record */
 				job_ptr = find_job_record(job_ptr->array_job_id);
+				job_queue_rec->job_ptr = job_ptr;
 			}
-			if (!job_ptr || !IS_JOB_PENDING(job_ptr))
+			if (!job_ptr || !IS_JOB_PENDING(job_ptr)) {
+				xfree(job_queue_rec);
 				continue;	/* started in other partition */
+			}
+
+			if (job_ptr->resv_list)
+				job_queue_rec_resv_list(job_queue_rec);
+			else
+				job_queue_rec_magnetic_resv(job_queue_rec);
+			xfree(job_queue_rec);
 
 			if (!_job_runnable_test3(job_ptr, part_ptr))
 				continue;
@@ -1470,12 +1477,14 @@ next_task:
 			if (reject_array_job &&
 			    (reject_array_job->array_job_id ==
 				job_ptr->array_job_id) &&
-			    (reject_array_part == part_ptr))
+			    (reject_array_part == part_ptr) &&
+			    (reject_array_resv == job_ptr->resv_ptr))
 				continue;  /* already rejected array element */
 
 			/* assume reject whole array for now, clear if OK */
 			reject_array_job = job_ptr;
 			reject_array_part = part_ptr;
+			reject_array_resv = job_ptr->resv_ptr;
 
 			if (!job_array_start_test(job_ptr))
 				continue;
@@ -1761,6 +1770,7 @@ skip_start:
 				 */
 				reject_array_job = NULL;
 				reject_array_part = NULL;
+				reject_array_resv = NULL;
 			}
 			sched_debug3("%pJ. State=%s. Reason=%s. Priority=%u.",
 				     job_ptr,
@@ -1809,6 +1819,7 @@ skip_start:
 			/* Clear assumed rejected array status */
 			reject_array_job = NULL;
 			reject_array_part = NULL;
+			reject_array_resv = NULL;
 
 			sched_info("Allocate %pJ NodeList=%s #CPUs=%u Partition=%s",
 				   job_ptr, job_ptr->nodes,
@@ -4643,6 +4654,7 @@ extern int build_feature_list(job_record_t *job_ptr)
 	struct job_details *detail_ptr = job_ptr->details;
 	char *tmp_requested, *str_ptr, *feature = NULL;
 	int bracket = 0, count = 0, i, paren = 0, rc;
+	int brack_set_count = 0;
 	bool fail = false;
 	job_feature_t *feat;
 	bool can_reboot;
@@ -4733,6 +4745,9 @@ extern int build_feature_list(job_record_t *job_ptr)
 				break;
 			}
 			bracket++;
+			brack_set_count++;
+			if (brack_set_count > 1)
+				break;
 		} else if (tmp_requested[i] == ']') {
 			tmp_requested[i] = '\0';
 			if ((feature == NULL) || (bracket == 0)) {
@@ -4784,6 +4799,16 @@ extern int build_feature_list(job_record_t *job_ptr)
 				job_ptr, detail_ptr->features);
 		} else {
 			verbose("Reservation invalid constraint %s",
+				detail_ptr->features);
+		}
+		return ESLURM_INVALID_FEATURE;
+	}
+	if (brack_set_count > 1) {
+		if (job_ptr->job_id) {
+			verbose("%pJ constraint has more than one set of brackets: %s",
+				job_ptr, detail_ptr->features);
+		} else {
+			verbose("Reservation constraint has more than one set of brackets: %s",
 				detail_ptr->features);
 		}
 		return ESLURM_INVALID_FEATURE;
@@ -5027,6 +5052,9 @@ extern void rebuild_job_part_list(job_record_t *job_ptr)
 void cleanup_completing(job_record_t *job_ptr)
 {
 	time_t delay;
+
+	if (job_ptr->epilog_running)
+		return;
 
 	log_flag(TRACE_JOBS, "%s: %pJ", __func__, job_ptr);
 

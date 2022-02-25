@@ -1,4 +1,4 @@
-.TH sstat "1" "Slurm Commands" "October 2021" "Slurm Commands"
+.TH sstat "1" "Slurm Commands" "February 2022" "Slurm Commands"
 
 .SH "NAME"
 sstat \- Display the status information of a running job/step.
@@ -113,7 +113,10 @@ Print version.
 .IP
 
 .SS "Job Status Fields"
-The following are the field options:
+Descriptions of each field option can be found below.
+Note that the Ave*, Max* and Min* accounting fields look at the values for
+all the tasks of each step in a job and return the average, maximum or minimum
+values for the job step.
 .RS
 
 .TP
@@ -360,7 +363,7 @@ $ sstat \-p \-\-format=AveCPU,AvePages,AveRSS,AveVMSize,JobID \-j 11
 Copyright (C) 2009 Lawrence Livermore National Security.
 Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
 .br
-Copyright (C) 2010\-2021 SchedMD LLC.
+Copyright (C) 2010\-2022 SchedMD LLC.
 .LP
 This file is part of Slurm, a resource management program.
 For details, see <https://slurm.schedmd.com/>.

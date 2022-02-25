@@ -1,6 +1,82 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 21.08.6
+==========================
+ -- Handle typed shared GRES better in accounting.
+ -- Fix plugin_name definitions in a number of plugins to improve logging.
+ -- Close sbcast file transfers when job is cancelled.
+ -- job_submit/lua - allow mail_type and mail_user fields to be modified.
+ -- scrontab - fix handling of --gpus and --ntasks-per-gpu options.
+ -- sched/backfill - fix job_queue_rec_t memory leak.
+ -- Fix magnetic reservation logic in both main and backfill schedulers.
+ -- job_container/tmpfs - fix memory leak when using InitScript.
+ -- slurmrestd / openapi - fix memory leaks.
+ -- Fix slurmctld segfault due to job array resv_list double free.
+ -- Fix multi-reservation job testing logic.
+ -- Fix slurmctld segfault due to insufficient job reservation parse validation.
+ -- Fix main and backfill schedulers handling for already rejected job array.
+ -- sched/backfill - restore resv_ptr after yielding locks.
+ -- acct_gather_energy/xcc - appropriately close and destroy the IPMI context.
+ -- Protect slurmstepd from making multiple calls to the cleanup logic.
+ -- Prevent slurmstepd segfault at cleanup time in mpi_fini().
+ -- Fix slurmctld sometimes hanging if shutdown while PrologSlurmctld or
+    EpilogSlurmctld were running and PrologEpilogTimeout is set in slurm.conf.
+ -- Fix affinity of the batch step if batch host is different than the first
+    node in the allocation.
+ -- slurmdbd - fix segfault after multiple failover/failback operations.
+ -- Fix jobcomp filetxt job selection condition.
+ -- Fix -f flag of sacct not being used.
+ -- Select cores for job steps according to the socket distribution. Previously,
+    sockets were always filled before selecting cores from the next socket.
+ -- Keep node in Future state if epilog completes while in Future state.
+ -- Fix erroneous --constraint behavior by preventing multiple sets of brackets.
+ -- Make ResetAccrueTime update the job's accrue_time to now.
+ -- Fix sattach initialization with configless mode.
+ -- Revert packing limit checks affecting pmi2.
+ -- sacct - fixed assertion failure when using -c option and a federation
+    display
+ -- Fix issue that allowed steps to overallocate the job's memory.
+ -- Fix the sanity check mode of AutoDetect so that it actually works.
+ -- Fix deallocated nodes that didn't actually launch a job from waiting for
+    Epilogslurmctld to complete before clearing completing node's state.
+ -- Job should be in a completing state if EpilogSlurmctld when being requeued.
+ -- Fix job not being requeued properly if all node epilog's completed before
+    EpilogSlurmctld finished.
+ -- Keep job completing until EpilogSlurmctld is completed even when "downing"
+    a node.
+ -- Fix handling reboot with multiple job features.
+ -- Fix nodes getting powered down when creating new partitions.
+ -- Fix bad bit_realloc which potentially could lead to bad memory access.
+ -- slurmctld - remove limit on the number of open files.
+ -- Fix bug where job_state file of size above 2GB wasn't saved without any
+    error message.
+ -- Fix various issues with no_consume gres.
+ -- Fix regression in 21.08.0rc1 where job steps failed to launch on systems
+    that reserved a CPU in a cgroup outside of Slurm (for example, on systems
+    with WekaIO).
+ -- Fix OverTimeLimit not being reset on scontrol reconfigure when it is
+    removed from slurm.conf.
+ -- serializer/yaml - use dynamic buffer to allow creation of YAML outputs
+    larger than 1MiB.
+ -- Fix minor memory leak affecting openapi users at process termination.
+ -- Fix batch jobs not resolving the username when nss_slurm is enabled.
+ -- slurmrestd - Avoid slurmrestd ignoring invalid HTTP method if the response
+    serialized without error.
+ -- openapi/dbv0.0.37 - Correct conditional that caused the diag output to
+    give an internal server error status on success.
+ -- Make --mem-bind=sort work with task_affinity
+ -- Fix sacctmgr to set MaxJobsAccruePer{User|Account} and MinPrioThres in
+    sacctmgr add qos, modify already worked correctly.
+ -- job_container/tmpfs - avoid printing extraneous error messages in Prolog
+    and Epilog, and when the job completes.
+ -- Fix step CPU memory allocation with --threads-per-core without --exact.
+ -- Remove implicit --exact when --threads-per-core or --hint=nomultithread
+    is used.
+ -- Do not allow a step to request more threads per core than the
+    allocation did.
+ -- Remove implicit --exact when --cpus-per-task is used.
+
 * Changes in Slurm 21.08.5
 ==========================
  -- Fix issue where typeless GRES node updates were not immediately reflected.
@@ -513,6 +589,7 @@ documents those changes that are of interest to users and administrators.
  -- PMIx v1.1.4 and below are no longer supported.
  -- Fix shutdown of slurmdbd plugin to correctly notice when the agent thread
     finishes.
+ -- Fix slurmctld segfault due to job array --batch features double free.
 
 * Changes in Slurm 20.11.8
 ==========================

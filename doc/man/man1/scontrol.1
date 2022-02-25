@@ -1,4 +1,4 @@
-.TH scontrol "1" "Slurm Commands" "September 2021" "Slurm Commands"
+.TH scontrol "1" "Slurm Commands" "February 2022" "Slurm Commands"
 
 .SH "NAME"
 scontrol \- view or modify Slurm configuration and state.
@@ -500,6 +500,12 @@ threads\-per\-core then it will display '*' in the ReqS:C:T=*:*:* field.
 .IP
 
 .TP
+\fBlicenses\fR
+Displays statistics about all configured licenses (local and remote) by
+default. If an optional license name is specified, details for just that
+license will be displayed.
+
+.TP
 \fBnode\fR
 Displays statistics about all nodes by default. If an optional nodename is
 specified, details for just that node will be displayed.
@@ -641,6 +647,10 @@ automatically as needed.
 \fBNOTE\fP: Don't use scontrol wait_job in PrologSlurmctld or Prolog with
 PrologFlags=Alloc as this will result in a deadlock.
 .IP
+
+\fBNOTE\fR: When using \fBwait_job\fR for an array job, use the
+\fBSLURM_JOB_ID\fR environment variable to reference the job rather than the
+\fBSLURM_ARRAY_JOB_ID\fR variable.
 
 .TP
 \fBwrite batch_script\fR <\fIjob_id\fR> [<\fIoptional_filename\fR>]
@@ -1127,7 +1137,7 @@ Value may be cleared with blank data value, "ReservationName=".
 
 .TP
 \fBResetAccrueTime\fR
-Reset the job's accrue time value to 0 meaning it will lose any time
+Set the job's accrue time value to 'now' meaning it will lose any time
 previously accrued for priority.  Helpful if you have a large queue of jobs
 already in the queue and want to start limiting how many jobs can accrue time
 without waiting for the queue to flush out.
@@ -1310,9 +1320,10 @@ the job has not started or if PreemptMode=OFF.
 .TP
 \fBPreemptTime\fR
 Time at which job was signaled that it was selected for preemption.
-(Meaningful only for PreemptMode=CANCEL and the partition or QOS
-with which the job is associated has a GraceTime value designated.) This is
-hidden if the job has not started or if PreemptMode=OFF.
+This value is only meaningful for \fIPreemptMode=CANCEL\fR and
+\fIPreemptMode=REQUEUE\fR and for jobs in a partition or QOS that has a
+GraceTime value designated. This is hidden if the job has not started or
+if \fIPreemptMode=OFF\fR.
 .IP
 
 .TP
@@ -1442,7 +1453,7 @@ Use quotes to enclose a comment having more than one word
 .TP
 \fBCpuBind\fR=<\fInode\fR>
 Specify the task binding mode to be used by default for this node.
-Supported options include: "none", "board", "socket", "ldom" (NUMA), "core",
+Supported options include: "none", "socket", "ldom" (NUMA), "core",
 "thread" and "off" (remove previous binding mode).
 .IP
 
@@ -1906,7 +1917,7 @@ Alternate partition to be used if the state of this partition is "DRAIN" or
 .TP
 \fBCpuBind\fR=<\fInode\fR>
 Specify the task binding mode to be used by default for this partition.
-Supported options include: "none", "board", "socket", "ldom" (NUMA), "core",
+Supported options include: "none", "socket", "ldom" (NUMA), "core",
 "thread" and "off" (remove previous binding mode).
 .IP
 
@@ -2767,7 +2778,7 @@ Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
 .br
 Copyright (C) 2008\-2010 Lawrence Livermore National Security.
 .br
-Copyright (C) 2010\-2021 SchedMD LLC.
+Copyright (C) 2010\-2022 SchedMD LLC.
 .LP
 This file is part of Slurm, a resource management program.
 For details, see <https://slurm.schedmd.com/>.
