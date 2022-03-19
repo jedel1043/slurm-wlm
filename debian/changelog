@@ -1,3 +1,9 @@
+slurm-wlm (21.08.6-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 25 Feb 2022 18:04:42 +0100
+
 slurm-wlm (21.08.5-2) unstable; urgency=medium
 
   * Add slurm_version.h to libslurm-dev (Closes: #1004409)
