@@ -1,6 +1,7 @@
 slurm-wlm (21.08.6-1) UNRELEASED; urgency=medium
 
   * New upstream release
+  * Remove fix-typos patch included upstream
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 25 Feb 2022 18:04:42 +0100
 

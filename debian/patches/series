@@ -4,6 +4,5 @@ sacctmgr-increase-buffer
 pidfile-path
 rpath
 miscellanea-manpages
-fix-typos
 use-hdf5-18-api
 retry-getaddrinfo
