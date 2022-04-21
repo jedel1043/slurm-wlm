@@ -14973,8 +14973,7 @@ static void _send_job_kill(job_record_t *job_ptr)
 			error("%s: %pJ allocated no nodes to be killed on",
 			      __func__, job_ptr);
 		}
-		xfree(kill_job->nodes);
-		xfree(kill_job);
+		slurm_free_kill_job_msg(kill_job);
 		hostlist_destroy(agent_args->hostlist);
 		xfree(agent_args);
 		return;
@@ -16312,7 +16311,7 @@ extern void job_completion_logger(job_record_t *job_ptr, bool requeue)
 			base_state = job_ptr->job_state & JOB_STATE_BASE;
 			if ((job_ptr->mail_type & MAIL_JOB_FAIL) &&
 			    (base_state >= JOB_FAILED) &&
-			    (base_state != JOB_PREEMPTED))
+			    ((base_state != JOB_PREEMPTED) || !requeue))
 				mail_job_info(job_ptr, MAIL_JOB_FAIL);
 
 			if (requeue &&
@@ -18777,6 +18776,8 @@ extern void set_remote_working_response(
 
 	if (job_ptr->node_cnt && req_cluster &&
 	    xstrcmp(slurm_conf.cluster_name, req_cluster)) {
+		int i, i_first, i_last, addr_index = 0;
+
 		if (job_ptr->fed_details &&
 		    fed_mgr_cluster_rec) {
 			resp->working_cluster_rec = fed_mgr_cluster_rec;
@@ -18786,8 +18787,18 @@ extern void set_remote_working_response(
 
 		resp->node_addr = xcalloc(job_ptr->node_cnt,
 					  sizeof(slurm_addr_t));
-		memcpy(resp->node_addr, job_ptr->node_addr,
-		       (sizeof(slurm_addr_t) * job_ptr->node_cnt));
+		i_first = bit_ffs(job_ptr->node_bitmap);
+		if (i_first >= 0)
+			i_last = bit_fls(job_ptr->node_bitmap);
+		else
+			i_last = -2;
+		for (i = i_first; i <= i_last; i++) {
+			if (!bit_test(job_ptr->node_bitmap, i))
+				continue;
+			slurm_conf_get_addr(
+				node_record_table_ptr[i].name,
+				&resp->node_addr[addr_index++], 0);
+		}
 	}
 }
 

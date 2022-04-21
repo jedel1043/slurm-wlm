@@ -1,6 +1,65 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 21.08.7
+==========================
+ -- openapi/v0.0.37 - correct calculation for bf_queue_len_mean in /diag.
+ -- Optimize sending down nodes in maintenance mode to the database when
+    removing reservations.
+ -- Avoid shrinking a reservation when overlapping with downed nodes.
+ -- Fix 'planned time' in rollups for jobs that were still pending when the
+    rollup happened.
+ -- Prevent new elements from a job array from causing rerollups.
+ -- Only check TRES limits against current usage for TRES requested by the job.
+ -- Do not allocate shared gres (MPS) in whole-node allocations
+ -- Fix minor memory leak when dealing with configless setups.
+ -- Constrain slurmstepd to job/step cgroup like in previous versions of Slurm.
+ -- Fix warnings on 32-bit compilers related to printf() formats.
+ -- Fix memory leak when freeing kill_job_msg_t.
+ -- Fix memory leak when using data_t.
+ -- Fix reconfigure issues after disabling/reenabling the GANG PreemptMode.
+ -- Fix race condition where a cgroup was being deleted while another step
+    was creating it.
+ -- Set the slurmd port correctly if multi-slurmd
+ -- openapi/v0.0.37 - Fix misspelling of account_gather_frequency in spec.
+ -- openapi/v0.0.37 - Fix misspelling of cluster_constraint in spec.
+ -- Fix FAIL mail not being sent if a job was cancelled due to preemption.
+ -- slurmrestd - move debug logs for HTTP handling to be gated by debugflag
+    NETWORK to avoid unnecessary logging of communication contents.
+ -- Fix issue with bad memory access when shrinking running steps.
+ -- Fix various issues with internal job accounting with GRES when jobs are
+    shrunk.
+ -- Fix ipmi polling on slurmd reconfig or restart.
+ -- Fix srun crash when reserved ports are being used and het step fails
+    to launch.
+ -- openapi/dbv0.0.37 - fix DELETE execution path on /user/{user_name}.
+ -- slurmctld - Properly requeue all components of a het job if PrologSlurmctld
+    fails.
+ -- rlimits - remove final calls to limit nofiles to 4096 but to instead use
+    the max possible nofiles in slurmd and slurmdbd.
+ -- Fix slurmctld memory leak after a reconfigure with configless.
+ -- Fix slurmd memory leak when fetching configless files.
+ -- Allow the DBD agent to load large messages (up to MAX_BUF_SIZE) from state.
+ -- Fix minor memory leak with cleaning up the extern step.
+ -- Fix potential deadlock during slurmctld restart when there is a completing
+    job.
+ -- slurmstepd - reduce user requested soft rlimits when they are above max
+    hard rlimits to avoid rlimit request being completely ignored and
+    processes using default limits.
+ -- Fix memory leaks when job/step specifies a container.
+ -- Fix Slurm user commands displaying available features as active features
+    when no features were active.
+ -- Don't power down nodes that are rebooting.
+ -- Clear pending node reboot on power down request.
+ -- Ignore node registrations while node is powering down.
+ -- Don't reboot any node that is power<ing|ed> down.
+ -- Don't allow a node to reboot if it's marked for power down.
+ -- Fix issuing reboot and downing when rebooting a powering up node.
+ -- Clear DRAIN on node after failing to resume before ResumeTimeout.
+ -- Prevent repeating power down if node fails to resume before ResumeTimeout.
+ -- Fix federated cloud node communication with srun and cloud_dns.
+ -- Fix jobs being scheduled on nodes marked to be powered_down when idle.
+
 * Changes in Slurm 21.08.6
 ==========================
  -- Handle typed shared GRES better in accounting.
