@@ -1,6 +1,11 @@
 This file describes changes in recent versions of Slurm. It primarily
 documents those changes that are of interest to users and administrators.
 
+* Changes in Slurm 21.08.8-2
+============================
+ -- Fix communication forwarding when running with a mix of patch and unpatched
+    slurmd processes.
+
 * Changes in Slurm 21.08.8
 ==========================
  -- openapi/dbv0.0.37 - fix slurmrestd fatal() when deleting an association.
@@ -639,6 +644,9 @@ documents those changes that are of interest to users and administrators.
  -- Add support for automatically detecting and broadcasting executable shared
     object dependencies for sbcast and srun --bcast.
  -- Delay steps when memory already used instead of rejecting step request.
+
+* Changes in Slurm 20.11.10
+===========================
 
 * Changes in Slurm 20.11.9
 ==========================
