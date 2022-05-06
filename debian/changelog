@@ -3,6 +3,7 @@ slurm-wlm (21.08.8-1) UNRELEASED; urgency=medium
   * New upstream release fixes CVE-2022-29500,
     CVE-2022-29501 and CVE-2022-29502
     (Closes: #1010632, #1010633, #1010644)
+  * Update libslurm symbols file
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 05 May 2022 21:02:01 +0200
 
