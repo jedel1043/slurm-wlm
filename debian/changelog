@@ -1,3 +1,9 @@
+slurm-wlm (20.11.7+really20.11.4-2+deb11u1) bullseye-security; urgency=medium
+
+  * Fix CVE-2022-29500 and CVE-2022-29501
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Fri, 06 May 2022 21:14:09 +0200
+
 slurm-wlm (20.11.7+really20.11.4-2) unstable; urgency=medium
 
   * Fix CVE-2021-31215 (Closes: #988439)
