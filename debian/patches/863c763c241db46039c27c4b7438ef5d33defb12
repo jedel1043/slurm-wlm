@@ -1,28 +1,11 @@
-commit 863c763c241db46039c27c4b7438ef5d33defb12
+Description: Fix CVE-2022-29501
+  Prevent abuse of REQUEST_FORWARD_DATA.
 Author: Dominik Bartkiewicz <bart@schedmd.com>
-Date:   Wed May 4 13:06:41 2022 -0600
+Last-Update: 2022-05-04
 
-    Prevent abuse of REQUEST_FORWARD_DATA.
-    
-    CVE-2022-29501
-
-diff --git a/NEWS b/NEWS
-index 67981b4360..384e1c884a 100644
---- a/NEWS
-+++ b/NEWS
-@@ -29,6 +29,7 @@ documents those changes that are of interest to users and administrators.
-     finishes.
-  -- Fix slurmctld segfault due to job array --batch features double free.
-  -- CVE-2022-29500 - Prevent credential abuse.
-+ -- CVE-2022-29501 - Prevent abuse of REQUEST_FORWARD_DATA.
- 
- * Changes in Slurm 20.11.8
- ==========================
-diff --git a/src/plugins/mpi/pmi2/setup.c b/src/plugins/mpi/pmi2/setup.c
-index d6357f6a82..84ac3d8930 100644
 --- a/src/plugins/mpi/pmi2/setup.c
 +++ b/src/plugins/mpi/pmi2/setup.c
-@@ -339,6 +339,11 @@ _setup_stepd_sockets(const stepd_step_rec_t *job, char ***env)
+@@ -339,6 +339,11 @@
  		unlink(sa.sun_path);
  		return SLURM_ERROR;
  	}
@@ -34,11 +17,9 @@ index d6357f6a82..84ac3d8930 100644
  	if (listen(tree_sock, 64) < 0) {
  		error("mpi/pmi2: failed to listen tree socket: %m");
  		unlink(sa.sun_path);
-diff --git a/src/slurmd/slurmd/req.c b/src/slurmd/slurmd/req.c
-index 4e94a952d3..c7859b31ca 100644
 --- a/src/slurmd/slurmd/req.c
 +++ b/src/slurmd/slurmd/req.c
-@@ -1724,6 +1724,88 @@ static int _open_as_other(char *path_name, int flags, int mode,
+@@ -1712,6 +1712,88 @@
  	exit(SLURM_SUCCESS);
  }
  
@@ -127,7 +108,7 @@ index 4e94a952d3..c7859b31ca 100644
  
  static void
  _prolog_error(batch_job_launch_msg_t *req, int rc)
-@@ -5896,7 +5978,7 @@ _rpc_forward_data(slurm_msg_t *msg)
+@@ -5883,7 +5965,7 @@
  {
  	forward_data_msg_t *req = (forward_data_msg_t *)msg->data;
  	uint32_t req_uid = (uint32_t) g_slurm_auth_get_uid(msg->auth_cred);
@@ -136,7 +117,7 @@ index 4e94a952d3..c7859b31ca 100644
  	int fd = -1, rc = 0;
  
  	/* Make sure we adjust for the spool dir coming in on the address to
-@@ -5907,31 +5989,8 @@ _rpc_forward_data(slurm_msg_t *msg)
+@@ -5894,31 +5976,8 @@
  	debug3("Entering _rpc_forward_data, address: %s, len: %u",
  	       req->address, req->len);
  
