@@ -1,0 +1,171 @@
+commit 863c763c241db46039c27c4b7438ef5d33defb12
+Author: Dominik Bartkiewicz <bart@schedmd.com>
+Date:   Wed May 4 13:06:41 2022 -0600
+
+    Prevent abuse of REQUEST_FORWARD_DATA.
+    
+    CVE-2022-29501
+
+diff --git a/NEWS b/NEWS
+index 67981b4360..384e1c884a 100644
+--- a/NEWS
++++ b/NEWS
+@@ -29,6 +29,7 @@ documents those changes that are of interest to users and administrators.
+     finishes.
+  -- Fix slurmctld segfault due to job array --batch features double free.
+  -- CVE-2022-29500 - Prevent credential abuse.
++ -- CVE-2022-29501 - Prevent abuse of REQUEST_FORWARD_DATA.
+ 
+ * Changes in Slurm 20.11.8
+ ==========================
+diff --git a/src/plugins/mpi/pmi2/setup.c b/src/plugins/mpi/pmi2/setup.c
+index d6357f6a82..84ac3d8930 100644
+--- a/src/plugins/mpi/pmi2/setup.c
++++ b/src/plugins/mpi/pmi2/setup.c
+@@ -339,6 +339,11 @@ _setup_stepd_sockets(const stepd_step_rec_t *job, char ***env)
+ 		unlink(sa.sun_path);
+ 		return SLURM_ERROR;
+ 	}
++	if (chown(sa.sun_path, job->uid, -1) < 0) {
++		error("mpi/pmi2: failed to chown tree socket: %m");
++		unlink(sa.sun_path);
++		return SLURM_ERROR;
++	}
+ 	if (listen(tree_sock, 64) < 0) {
+ 		error("mpi/pmi2: failed to listen tree socket: %m");
+ 		unlink(sa.sun_path);
+diff --git a/src/slurmd/slurmd/req.c b/src/slurmd/slurmd/req.c
+index 4e94a952d3..c7859b31ca 100644
+--- a/src/slurmd/slurmd/req.c
++++ b/src/slurmd/slurmd/req.c
+@@ -1724,6 +1724,88 @@ static int _open_as_other(char *path_name, int flags, int mode,
+ 	exit(SLURM_SUCCESS);
+ }
+ 
++/*
++ * Connect to unix socket based upon permissions of a different user
++ * IN sock_name - name of socket to open
++ * IN uid - User ID to use for file access check
++ * IN gid - Group ID to use for file access check
++ * OUT fd - File descriptor
++ * RET error or SLURM_SUCCESS
++ * */
++static int _connect_as_other(char *sock_name, uid_t uid, gid_t gid, int *fd)
++{
++	pid_t child;
++	int pipe[2];
++	int rc = 0;
++	struct sockaddr_un sa;
++
++	*fd = -1;
++	if (strlen(sock_name) >= sizeof(sa.sun_path)) {
++		error("%s: Unix socket path '%s' is too long. (%ld > %ld)",
++		      __func__, sock_name,
++		      (long int)(strlen(sock_name) + 1),
++		      (long int)sizeof(sa.sun_path));
++		return EINVAL;
++	}
++
++	/* child process will setuid to the user, register the process
++	 * with the container, and open the file for us. */
++	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, pipe) != 0) {
++		error("%s: Failed to open pipe: %m", __func__);
++		return SLURM_ERROR;
++	}
++
++	child = fork();
++	if (child == -1) {
++		error("%s: fork failure", __func__);
++		close(pipe[0]);
++		close(pipe[1]);
++		return SLURM_ERROR;
++	} else if (child > 0) {
++		int exit_status = -1;
++		close(pipe[0]);
++		(void) waitpid(child, &rc, 0);
++		if (WIFEXITED(rc) && (WEXITSTATUS(rc) == 0))
++			*fd = receive_fd_over_pipe(pipe[1]);
++		exit_status = WEXITSTATUS(rc);
++		close(pipe[1]);
++		return exit_status;
++	}
++
++	/* child process below here */
++
++	close(pipe[1]);
++
++	if (setgid(gid) < 0) {
++		error("%s: uid:%u setgid(%u): %m", __func__, uid, gid);
++		_exit(errno);
++	}
++	if (setuid(uid) < 0) {
++		error("%s: getuid(%u): %m", __func__, uid);
++		_exit(errno);
++	}
++
++	*fd = socket(AF_UNIX, SOCK_STREAM, 0);
++	if (*fd < 0) {
++		error("%s:failed creating UNIX domain socket: %m", __func__ );
++		_exit(errno);
++	}
++
++	memset(&sa, 0, sizeof(sa));
++	sa.sun_family = AF_UNIX;
++	strcpy(sa.sun_path, sock_name);
++	while (((rc = connect(*fd, (struct sockaddr *)&sa,
++			      SUN_LEN(&sa))) < 0) && (errno == EINTR));
++
++	if (rc < 0) {
++		debug2("%s: failed connecting to specified socket '%s': %m",
++		       __func__, sock_name);
++		_exit(errno);
++	}
++	send_fd_over_pipe(pipe[0], *fd);
++	close(*fd);
++	_exit(SLURM_SUCCESS);
++}
+ 
+ static void
+ _prolog_error(batch_job_launch_msg_t *req, int rc)
+@@ -5896,7 +5978,7 @@ _rpc_forward_data(slurm_msg_t *msg)
+ {
+ 	forward_data_msg_t *req = (forward_data_msg_t *)msg->data;
+ 	uint32_t req_uid = (uint32_t) g_slurm_auth_get_uid(msg->auth_cred);
+-	struct sockaddr_un sa;
++	uint32_t req_gid = (uint32_t) g_slurm_auth_get_gid(msg->auth_cred);
+ 	int fd = -1, rc = 0;
+ 
+ 	/* Make sure we adjust for the spool dir coming in on the address to
+@@ -5907,31 +5989,8 @@ _rpc_forward_data(slurm_msg_t *msg)
+ 	debug3("Entering _rpc_forward_data, address: %s, len: %u",
+ 	       req->address, req->len);
+ 
+-	/*
+-	 * If socket name would be truncated, emit error and exit
+-	 */
+-	if (strlen(req->address) >= sizeof(sa.sun_path)) {
+-		error("%s: Unix socket path '%s' is too long. (%ld > %ld)",
+-		      __func__, req->address,
+-		      (long int)(strlen(req->address) + 1),
+-		      (long int)sizeof(sa.sun_path));
+-		slurm_seterrno(EINVAL);
+-		rc = errno;
+-		goto done;
+-	}
++	rc = _connect_as_other(req->address, req_uid, req_gid, &fd);
+ 
+-	/* connect to specified address */
+-	fd = socket(AF_UNIX, SOCK_STREAM, 0);
+-	if (fd < 0) {
+-		rc = errno;
+-		error("failed creating UNIX domain socket: %m");
+-		goto done;
+-	}
+-	memset(&sa, 0, sizeof(sa));
+-	sa.sun_family = AF_UNIX;
+-	strcpy(sa.sun_path, req->address);
+-	while (((rc = connect(fd, (struct sockaddr *)&sa, SUN_LEN(&sa))) < 0) &&
+-	       (errno == EINTR));
+ 	if (rc < 0) {
+ 		rc = errno;
+ 		debug2("failed connecting to specified socket '%s': %m",
