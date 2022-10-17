@@ -51,22 +51,22 @@
 
 #include "slurm/slurm.h"
 
+#include "src/common/conmgr.h"
 #include "src/common/data.h"
 #include "src/common/fd.h"
 #include "src/common/log.h"
-#include "src/common/node_select.h"
 #include "src/common/openapi.h"
 #include "src/common/plugrack.h"
 #include "src/common/proc_args.h"
 #include "src/common/read_config.h"
 #include "src/common/ref.h"
+#include "src/common/select.h"
 #include "src/common/slurm_auth.h"
 #include "src/common/slurm_protocol_defs.h"
 #include "src/common/uid.h"
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
 
-#include "src/slurmrestd/conmgr.h"
 #include "src/slurmrestd/http.h"
 #include "src/slurmrestd/operations.h"
 #include "src/slurmrestd/rest_auth.h"
@@ -103,7 +103,11 @@ static plugrack_t *auth_rack = NULL;
 
 static char *oas_specs = NULL;
 bool unshare_sysv = true;
+bool unshare_files = true;
 bool check_user = true;
+
+extern parsed_host_port_t *parse_host_port(const char *str);
+extern void free_parse_host_port(parsed_host_port_t *parsed);
 
 /* SIGPIPE handler - mostly a no-op */
 static void _sigpipe_handler(int signum)
@@ -153,6 +157,9 @@ static void _parse_env(void)
 		while (token) {
 			if (!xstrcasecmp(token, "disable_unshare_sysv")) {
 				unshare_sysv = false;
+			} else if (!xstrcasecmp(token,
+						"disable_unshare_files")) {
+				unshare_files = false;
 			} else if (!xstrcasecmp(token, "disable_user_check")) {
 				check_user = false;
 			} else {
@@ -304,7 +311,7 @@ static void _lock_down(void)
 		fatal("Unable to disable new privileges: %m");
 	if (unshare_sysv && unshare(CLONE_SYSVSEM))
 		fatal("Unable to unshare System V namespace: %m");
-	if (unshare(CLONE_FILES))
+	if (unshare_files && unshare(CLONE_FILES))
 		fatal("Unable to unshare file descriptors: %m");
 	if (gid && setgroups(0, NULL))
 		fatal("Unable to drop supplementary groups: %m");
@@ -316,8 +323,12 @@ static void _lock_down(void)
 		fatal("Unable to setuid: %m");
 	if (check_user && (getuid() == 0))
 		fatal("slurmrestd should not be run as the root user.");
+	if (check_user && (getgid() == 0))
+		fatal("slurmrestd should not be run with the root goup.");
 	if (check_user && (slurm_conf.slurm_user_id == getuid()))
 		fatal("slurmrestd should not be run as SlurmUser");
+	if (check_user && (gid_from_uid(slurm_conf.slurm_user_id) == getgid()))
+		fatal("slurmrestd should not be run with SlurmUser's group.");
 }
 
 /* simple wrapper to hand over operations router in http context */
@@ -366,6 +377,10 @@ int main(int argc, char **argv)
 		.on_connection = _setup_http_context,
 		.on_finish = on_http_connection_finish,
 	};
+	static const con_mgr_callbacks_t callbacks = {
+		.parse = parse_host_port,
+		.free_parse = free_parse_host_port,
+	};
 
 	if (sigaction(SIGPIPE, &sigpipe_handler, NULL) == -1)
 		fatal("%s: unable to control SIGPIPE: %m", __func__);
@@ -390,7 +405,8 @@ int main(int argc, char **argv)
 	if (data_init(NULL, NULL))
 		fatal("Unable to initialize data static structures");
 
-	if (!(conmgr = init_con_mgr(run_mode.listen ? thread_count : 1)))
+	if (!(conmgr = init_con_mgr((run_mode.listen ? thread_count : 1),
+				    callbacks)))
 		fatal("Unable to initialize connection manager");
 
 	if (init_operations())
@@ -523,7 +539,7 @@ int main(int argc, char **argv)
 	auth_rack = NULL;
 
 	xfree(auth_plugin_handles);
-	slurm_select_fini();
+	select_g_fini();
 	slurm_auth_fini();
 	slurm_conf_destroy();
 	log_fini();
