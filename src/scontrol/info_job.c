@@ -232,6 +232,9 @@ scontrol_print_completing_job(job_info_t *job_ptr,
 	secs2time_str(completing_time, time_str, sizeof(time_str));
 	fprintf(stdout, "CompletingTime=%s ", time_str);
 
+	/* Sort the hostlists */
+	hostlist_sort(comp_nodes);
+	hostlist_sort(down_nodes);
 	node_buf = hostlist_ranged_string_xmalloc(comp_nodes);
 	if (node_buf && node_buf[0])
 		fprintf(stdout, "Nodes(COMPLETING)=%s ", node_buf);
@@ -289,20 +292,18 @@ static bool _het_job_offset_match(job_info_t *job_ptr, uint32_t het_job_offset)
 
 static bool _task_id_in_job(job_info_t *job_ptr, uint32_t array_id)
 {
-	bitstr_t *array_bitmap;
 	uint32_t array_len;
 
 	if ((array_id == NO_VAL) ||
 	    (array_id == job_ptr->array_task_id))
 		return true;
 
-	array_bitmap = (bitstr_t *) job_ptr->array_bitmap;
-	if (array_bitmap == NULL)
+	if (!job_ptr->array_bitmap)
 		return false;
-	array_len = bit_size(array_bitmap);
+	array_len = bit_size(job_ptr->array_bitmap);
 	if (array_id >= array_len)
 		return false;
-	if (bit_test(array_bitmap, array_id))
+	if (bit_test(job_ptr->array_bitmap, array_id))
 		return true;
 	return false;
 }
@@ -820,6 +821,54 @@ extern void scontrol_getent(const char *node_name)
 		}
 		close(fd);
 		xfree_struct_group_array(grps);
+		printf("\n");
+	}
+	list_iterator_destroy(itr);
+	FREE_NULL_LIST(steps);
+}
+
+extern void scontrol_gethost(const char *stepd_node, const char *node_name)
+{
+	List steps = NULL;
+	ListIterator itr = NULL;
+	step_loc_t *stepd;
+	int fd;
+
+	if (!(steps = stepd_available(NULL, stepd_node))) {
+		fprintf(stderr, "No steps found on this node\n");
+		return;
+	}
+
+	itr = list_iterator_create(steps);
+	while ((stepd = list_next(itr))) {
+		char tmp_char[45], buf[INET6_ADDRSTRLEN];
+		struct hostent *host = NULL;
+		const char *ip;
+		int i, j;
+
+		fd = stepd_connect(NULL, stepd_node, &stepd->step_id,
+				   &stepd->protocol_version);
+
+		if (fd < 0)
+			continue;
+		host = stepd_gethostbyname(fd, stepd->protocol_version,
+					   (GETHOST_IPV4 | GETHOST_IPV6 |
+					    GETHOST_NOT_MATCH_PID), node_name);
+		log_build_step_id_str(&stepd->step_id, tmp_char,
+				      sizeof(tmp_char), STEP_ID_FLAG_NO_PREFIX);
+		printf("JobId=%s:\nHost:\n", tmp_char);
+		for (i = 0; host && host->h_addr_list[i] != NULL; ++i) {
+			ip = inet_ntop(host->h_addrtype, host->h_addr_list[i],
+				       buf, sizeof (buf));
+			printf("%-15s %s", ip, host->h_name);
+			for (j = 0; host->h_aliases[j] != NULL; ++j) {
+				printf(" %s", host->h_aliases[i]);
+			}
+			printf("\n");
+		}
+
+		xfree_struct_hostent(host);
+		close(fd);
 		printf("\n");
 	}
 	list_iterator_destroy(itr);
