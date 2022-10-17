@@ -1,3 +1,9 @@
+slurm-wlm (22.05.5-1) UNRELEASED; urgency=medium
+
+  * New upstream major release
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 17 Oct 2022 23:00:14 +0200
+
 slurm-wlm (21.08.8.2-1) unstable; urgency=medium
 
   * New upstream release fixes CVE-2022-29500,
