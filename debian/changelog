@@ -3,6 +3,7 @@ slurm-wlm (22.05.5-1) UNRELEASED; urgency=medium
   * New upstream major release
   * Bump standard version to 4.6.1 (no changes)
   * Remove hdf5 v18 api patch fixed upstream
+  * Refresh patches
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 17 Oct 2022 23:00:14 +0200
 
