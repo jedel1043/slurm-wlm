@@ -32,7 +32,8 @@ Build-Depends:
  libjson-c-dev,
  libjwt-dev,
  liblz4-dev,
- bash-completion
+ bash-completion,
+ libdbus-1-dev
 Standards-Version: 4.6.1
 Homepage: http://slurm.schedmd.com
 Vcs-Browser: https://salsa.debian.org/hpc-team/slurm-wlm
