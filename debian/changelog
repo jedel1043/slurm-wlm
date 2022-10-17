@@ -5,6 +5,7 @@ slurm-wlm (22.05.5-1) UNRELEASED; urgency=medium
   * Remove hdf5 v18 api patch fixed upstream
   * Refresh patches
   * Update configurators
+  * Update d/copyright
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 17 Oct 2022 23:00:14 +0200
 
