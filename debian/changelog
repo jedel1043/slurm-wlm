@@ -7,6 +7,7 @@ slurm-wlm (22.05.5-1) UNRELEASED; urgency=medium
   * Update configurators
   * Update d/copyright
   * Add libdbus-1-dev dep for cgroup v2 plugin
+  * Bump libslurm to soname 38
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 17 Oct 2022 23:00:14 +0200
 
