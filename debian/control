@@ -223,6 +223,34 @@ Description: SLURM basic plugins development files
  is an open-source cluster resource management and job scheduling.
  This package contains development files for the SLURM basic plugins
 
+Package: slurm-wlm-ipmi-plugins
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins (= ${binary:Version})
+Description: SLURM IPMI plugins
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains the IPMI-based SLURM accounting gathering
+ plugins.
+
+Package: slurm-wlm-ipmi-plugins-dev
+Section: devel
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins-dev (= ${binary:Version}),
+ slurm-wlm-ipmi-plugins (= ${binary:Version})
+Description: SLURM IPMI plugins development files
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains development files for the IPMI-based SLURM
+ accounting gathering plugins.
+
 Package: sview
 Architecture: any
 Depends:

@@ -1,5 +1,6 @@
 slurm-wlm (22.05.5-1) UNRELEASED; urgency=medium
 
+  [ Gennaro Oliva ]
   * New upstream major release
   * Bump standard version to 4.6.1 (no changes)
   * Remove hdf5 v18 api patch fixed upstream
@@ -8,6 +9,9 @@ slurm-wlm (22.05.5-1) UNRELEASED; urgency=medium
   * Update d/copyright
   * Add libdbus-1-dev dep for cgroup v2 plugin
   * Bump libslurm to soname 38
+
+  [ Tobias Pape ]
+  * Create ipmi plugin packages
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 17 Oct 2022 23:00:14 +0200
 
