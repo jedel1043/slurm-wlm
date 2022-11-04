@@ -251,6 +251,33 @@ Description: SLURM IPMI plugins development files
  This package contains development files for the IPMI-based SLURM
  accounting gathering plugins.
 
+Package: slurm-wlm-hdf5-plugin
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins (= ${binary:Version})
+Description: SLURM HDF5 plugin
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains the HDF5-based job profiling plugin.
+
+Package: slurm-wlm-hdf5-plugin-dev
+Section: devel
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins-dev (= ${binary:Version}),
+ slurm-wlm-hdf5-plugin (= ${binary:Version})
+Description: SLURM HDF5 plugin development files
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains development files for the HDF5-based job
+ profiling plugin.
+
 Package: sview
 Architecture: any
 Depends:
