@@ -305,6 +305,33 @@ Description: SLURM InfluxDB plugin development files
  This package contains development files for the InfluxDB-based job
  profiling plugin.
 
+Package: slurm-wlm-rrd-plugin
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins (= ${binary:Version})
+Description: SLURM RRD plugin
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains the RRD-based SLURM sensor plugin.
+
+Package: slurm-wlm-rrd-plugin-dev
+Section: devel
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins-dev (= ${binary:Version}),
+ slurm-wlm-rrd-plugin (= ${binary:Version})
+Description: SLURM RRD plugins development files
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains development files for the RRD-based SLURM
+ sensor plugin.
+
 Package: sview
 Architecture: any
 Depends:
