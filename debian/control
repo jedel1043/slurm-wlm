@@ -278,6 +278,33 @@ Description: SLURM HDF5 plugin development files
  This package contains development files for the HDF5-based job
  profiling plugin.
 
+Package: slurm-wlm-influxdb-plugin
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins (= ${binary:Version})
+Description: SLURM InfluxDB plugin
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains the InfluxDB-based job profiling plugin.
+
+Package: slurm-wlm-influxdb-plugin-dev
+Section: devel
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins-dev (= ${binary:Version}),
+ slurm-wlm-influxdb-plugin (= ${binary:Version})
+Description: SLURM InfluxDB plugin development files
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains development files for the InfluxDB-based job
+ profiling plugin.
+
 Package: sview
 Architecture: any
 Depends:

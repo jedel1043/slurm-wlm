@@ -13,6 +13,7 @@ slurm-wlm (22.05.5-1) UNRELEASED; urgency=medium
   [ Tobias Pape ]
   * Create ipmi plugin packages
   * Create hdf5 plugin packages
+  * Create influxdb plugin packages
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 17 Oct 2022 23:00:14 +0200
 
