@@ -359,6 +359,34 @@ Description: SLURM Elasticsearch job-completion plugin development files
  This package contains development files for the Elasticsearch
  job-completion plugin.
 
+Package: slurm-wlm-jwt-plugin
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins (= ${binary:Version})
+Description: SLURM JWT authentication plugins
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains the JSON Web Tokens (JWT) authentication
+ plugin.
+
+Package: slurm-wlm-jwt-plugin-dev
+Section: devel
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins-dev (= ${binary:Version}),
+ slurm-wlm-jwt-plugin (= ${binary:Version})
+Description: SLURM JWT authentication plugin development files
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains development files for the JSON Web Tokens (JWT)
+ authentication plugin.
+
 Package: sview
 Architecture: any
 Depends:
