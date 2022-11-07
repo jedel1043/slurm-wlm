@@ -332,6 +332,33 @@ Description: SLURM RRD plugins development files
  This package contains development files for the RRD-based SLURM
  sensor plugin.
 
+Package: slurm-wlm-elasticsearch-plugin
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins (= ${binary:Version})
+Description: SLURM Elasticsearch job-completion plugin
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains the Elasticsearch job-completion plugin.
+
+Package: slurm-wlm-elasticsearch-plugin-dev
+Section: devel
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins-dev (= ${binary:Version}),
+ slurm-wlm-elasticsearch-plugin (= ${binary:Version})
+Description: SLURM Elasticsearch job-completion plugin development files
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains development files for the Elasticsearch
+ job-completion plugin.
+
 Package: sview
 Architecture: any
 Depends:
