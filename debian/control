@@ -387,6 +387,32 @@ Description: SLURM JWT authentication plugin development files
  This package contains development files for the JSON Web Tokens (JWT)
  authentication plugin.
 
+Package: slurm-wlm-mysql-plugin
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins (= ${binary:Version})
+Description: Slurm MySQL plugins
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains the MySQL plugin.
+
+Package: slurm-wlm-mysql-plugin-dev
+Section: devel
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins-dev (= ${binary:Version}),
+ slurm-wlm-jwt-plugin (= ${binary:Version})
+Description: Slurm MySQL plugins development files
+ SLURM, the Simple Linux Utility for Resource Management,
+ is an open-source cluster resource management and job scheduling.
+ .
+ This package contains development files for the MySQL plugin.
+
 Package: sview
 Architecture: any
 Depends:
@@ -406,6 +432,7 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  slurm-wlm-basic-plugins (= ${binary:Version}),
+ slurm-wlm-mysql-plugin (= ${binary:Version}),
  munge,
  lsb-base (>= 3.2-12),
  ucf
