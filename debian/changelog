@@ -12,6 +12,7 @@ slurm-wlm (22.05.7-1) UNRELEASED; urgency=medium
   * Create MySQL plugin packages
   * Create free plugin metapackage
   * Bump standard version to 4.6.2 (no changes)
+  * Add patch to set the default cgroup basedir
 
   [ Tobias Pape ]
   * Create ipmi plugin packages
