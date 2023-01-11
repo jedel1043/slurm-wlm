@@ -22,7 +22,7 @@ Last-Update: 2022-01-21
  	struct addrinfo* result = NULL;
  	struct addrinfo hints;
  	int err;
-+	int retry = 5;
++	int retry = 10;
  	bool v4_enabled = slurm_conf.conf_flags & CTL_CONF_IPV4_ENABLED;
  	bool v6_enabled = slurm_conf.conf_flags & CTL_CONF_IPV6_ENABLED;
  	char serv[6];
