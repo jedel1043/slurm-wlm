@@ -10,6 +10,7 @@ slurm-wlm (22.05.5-1) UNRELEASED; urgency=medium
   * Add libdbus-1-dev dep for cgroup v2 plugin
   * Bump libslurm to soname 38
   * Create MySQL plugin packages
+  * Create free plugin metapackage
 
   [ Tobias Pape ]
   * Create ipmi plugin packages
