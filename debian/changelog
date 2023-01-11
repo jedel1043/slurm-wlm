@@ -11,6 +11,7 @@ slurm-wlm (22.05.7-1) UNRELEASED; urgency=medium
   * Bump libslurm to soname 38
   * Create MySQL plugin packages
   * Create free plugin metapackage
+  * Bump standard version to 4.6.2 (no changes)
 
   [ Tobias Pape ]
   * Create ipmi plugin packages
