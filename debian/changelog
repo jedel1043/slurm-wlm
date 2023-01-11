@@ -27,6 +27,13 @@ slurm-wlm (22.05.7-1) UNRELEASED; urgency=medium
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 17 Oct 2022 23:00:14 +0200
 
+slurm-wlm (21.08.8.2-1.1) unstable; urgency=medium
+
+  * Non-maintainer upload
+  * tests: increase number of attempts in sbatch (Closes: #1014506)
+
+ -- Paul Gevers <elbrus@debian.org>  Thu, 10 Nov 2022 13:28:47 +0100
+
 slurm-wlm (21.08.8.2-1) unstable; urgency=medium
 
   * New upstream release fixes CVE-2022-29500,
