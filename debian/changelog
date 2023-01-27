@@ -1,3 +1,9 @@
+slurm-wlm (22.05.7-2) unstable; urgency=medium
+
+  * Source only upload for testing
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 25 Jan 2023 22:30:47 +0100
+
 slurm-wlm (22.05.7-1) experimental; urgency=medium
 
   [ Gennaro Oliva ]
