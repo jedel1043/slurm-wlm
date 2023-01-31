@@ -87,7 +87,6 @@ Depends:
  slurm-wlm-basic-plugins (= ${binary:Version}),
  ucf,
  munge,
- lsb-base (>= 3.2-12)
 Description: Slurm compute node daemon
  The Slurm Workload Manager is an open-source cluster resource management and
  job scheduling system that strives to be simple, scalable, portable,
@@ -103,7 +102,6 @@ Depends:
  slurm-wlm-basic-plugins (= ${binary:Version}),
  ucf,
  munge,
- lsb-base (>= 3.2-12)
 Description: Slurm central management daemon
  The Slurm Workload Manager is an open-source cluster resource management and
  job scheduling system that strives to be simple, scalable, portable,
@@ -517,7 +515,6 @@ Depends:
  slurm-wlm-basic-plugins (= ${binary:Version}),
  slurm-wlm-mysql-plugin (= ${binary:Version}),
  munge,
- lsb-base (>= 3.2-12),
  ucf
 Description: Secure enterprise-wide interface to a database for Slurm
  The Slurm Workload Manager is an open-source cluster resource management and
