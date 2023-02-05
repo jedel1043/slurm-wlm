@@ -3,6 +3,7 @@ Description: Force nvml configuration without autodetection
  time. This is necessary to enable the nvml contrib plugin
 Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
 Origin: vendor
+Forwarded: https://bugs.schedmd.com/show_bug.cgi?id=15909
 Last-Update: 2023-01-31
 
 --- slurm-wlm-22.05.8.orig/src/common/gpu.c
