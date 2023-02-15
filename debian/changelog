@@ -1,3 +1,9 @@
+slurm-wlm (22.05.8-3) unstable; urgency=medium
+
+  * Source only upload for testing
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 08 Feb 2023 07:50:18 +0100
+
 slurm-wlm (22.05.8-2) unstable; urgency=medium
 
   * Fix pmix package for non amd64 architectures
