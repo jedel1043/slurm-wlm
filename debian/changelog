@@ -1,6 +1,7 @@
 slurm-wlm (23.02.2-1) UNRELEASED; urgency=medium
 
   * New upstream major release (Closes: #1036109)
+  * Remove default cgroup basedir patch now handled upstream
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sat, 13 May 2023 23:20:24 +0200
 
