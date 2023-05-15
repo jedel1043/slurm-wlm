@@ -110,7 +110,7 @@ Description: Slurm central management daemon
  fault-tolerant, and interconnect agnostic.
  This package contains the central management daemon slurmctld.
 
-Package: libslurm38
+Package: libslurm39
 Section: libs
 Architecture: any
 Pre-Depends: ${misc:Pre-Depends}
@@ -149,7 +149,7 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- libslurm38 (= ${binary:Version})
+ libslurm39 (= ${binary:Version})
 Conflicts: libslurm10-dev, libslurm11-dev, libslurm12-dev, libslurm13-dev, libslurm20-dev, libslurm21-dev
 Breaks: libslurmdb-dev
 Replaces: libslurm10-dev, libslurm11-dev, libslurm12-dev, libslurm13-dev, libslurm20-dev, libslurm21-dev, libslurmdb-dev
@@ -166,7 +166,7 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  libpmi0 (= ${binary:Version}),
- libslurm38 (= ${binary:Version})
+ libslurm39 (= ${binary:Version})
 Description: Slurm PMI library implementation development files
  The Slurm Workload Manager is an open-source cluster resource management and
  job scheduling system that strives to be simple, scalable, portable,
@@ -181,7 +181,7 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  libpmi2-0 (= ${binary:Version}),
- libslurm38 (= ${binary:Version})
+ libslurm39 (= ${binary:Version})
 Description: Slurm PMI2 library implementation development files
  The Slurm Workload Manager is an open-source cluster resource management and
  job scheduling system that strives to be simple, scalable, portable,
