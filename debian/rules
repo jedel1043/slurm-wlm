@@ -161,7 +161,8 @@ override_dh_strip:
 	dh_strip -plibslurm-dev --no-automatic-dbgsym
 	dh_strip -pslurmrestd --no-automatic-dbgsym
 	strip --verbose --strip-unneeded --remove-section=.comment \
-		--remove-section=.note debian/slurm-*-plugin*-dev/usr/lib/*/slurm-wlm/*.a
+		--remove-section=.note debian/slurm-*-plugin*-dev/usr/lib/*/slurm-wlm/*.a \
+		debian/libpam-slurm*-dev/lib/security/*.a
 
 override_dh_auto_test:
 
