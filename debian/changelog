@@ -10,6 +10,7 @@ slurm-wlm (23.02.2-1) UNRELEASED; urgency=medium
   * Add libpam dev packages
   * Add scrun and scrontab commands
   * Add configuration manpages
+  * Update fix-spelling-error patch
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sat, 13 May 2023 23:20:24 +0200
 
