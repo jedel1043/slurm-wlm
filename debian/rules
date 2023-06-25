@@ -1,0 +1,35 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all,-bindnow
+
+# include defs of all DEB_HOST_*/DEB_BUILD_* vars
+include /usr/share/dpkg/architecture.mk
+
+ifneq ($(DEB_TARGET_ARCH_BITS),64)
+  ENABLEDEPRECATED = --enable-deprecated
+endif
+
+%:
+	dh $@ --builddirectory --with bash-completion
+
+override_dh_auto_configure:
+	dh_auto_configure -- --sysconfdir=/etc/slurm --with-munge --enable-pam --without-rpath --disable-debug --enable-multiple-slurmd $(ENABLEDEPRECATED) SUCMD=/bin/su SLEEP_CMD=/bin/sleep
+
+override_dh_auto_build:
+	dh_auto_build -Dobj-$(DEB_BUILD_GNU_TYPE)/src/plugins/gpu/common
+	dh_auto_build -Dobj-$(DEB_BUILD_GNU_TYPE)/src/plugins/gpu/nvml
+
+override_dh_shlibdeps:
+	dh_shlibdeps -O--builddirectory -O--parallel -l$(CURDIR)/debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/slurm-wlm/
+
+override_dh_auto_install:
+	dh_auto_install -Dobj-$(DEB_BUILD_GNU_TYPE)/src/plugins/gpu/nvml
+
+override_dh_strip:
+	dh_strip -pslurm-wlm-nvml-plugin
+	strip --verbose --strip-unneeded --remove-section=.comment \
+		--remove-section=.note debian/slurm-*-plugin*-dev/usr/lib/*/slurm-wlm/*.a

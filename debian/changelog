@@ -1,0 +1,6 @@
+slurm-wlm-contrib (22.05.8-2) unstable; urgency=medium
+
+  * New upstream release
+  * Add nvml plugin to slurm-wlm
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Wed, 25 Jan 2023 22:30:47 +0100
