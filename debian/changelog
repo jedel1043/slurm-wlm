@@ -13,6 +13,7 @@ slurm-wlm (23.02.2-1) UNRELEASED; urgency=medium
   * Update fix-spelling-error patch
   * Bump debhelper compatibility level to 13
   * Add kafka plugin
+  * Add debug packages for emulators
 
  -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sat, 13 May 2023 23:20:24 +0200
 

@@ -149,13 +149,14 @@ override_dh_strip:
 	dh_strip -pslurmd --dbgsym-migration='slurmd-dbg (<< 17.02.6~)'
 	dh_strip -pslurmctld --dbgsym-migration='slurmctld-dbg (<< 17.02.6~)'
 	dh_strip -pslurmdbd --dbgsym-migration='slurmdbd-dbg (<< 17.02.6~)'
+	dh_strip -pslurm-client-emulator
+	dh_strip -pslurm-wlm-emulator
 	# we do not care about debug symbols for those pkgs
 	dh_strip -plibslurmdb-perl --no-automatic-dbgsym
 	dh_strip -plibslurm-perl --no-automatic-dbgsym
 	dh_strip -psview --no-automatic-dbgsym
 	dh_strip -plibpam-slurm --no-automatic-dbgsym
 	dh_strip -plibpam-slurm-adopt --no-automatic-dbgsym
-	dh_strip -pslurm-wlm-emulator --no-automatic-dbgsym
 	dh_strip -pslurm-client-emulator --no-automatic-dbgsym
 	dh_strip -plibpmi0-dev --no-automatic-dbgsym
 	dh_strip -plibpmi2-0-dev --no-automatic-dbgsym
