@@ -1,4 +1,4 @@
-slurm-wlm (23.02.2-1) UNRELEASED; urgency=medium
+slurm-wlm (23.02.3-1) UNRELEASED; urgency=medium
 
   * New upstream major release (Closes: #1036109)
   * Remove default cgroup basedir patch now handled upstream
