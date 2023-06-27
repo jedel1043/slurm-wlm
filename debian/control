@@ -32,6 +32,7 @@ Build-Depends:
  liblz4-dev,
  bash-completion,
  libdbus-1-dev,
+ librdkafka-dev,
  librocm-smi-dev,
  libnvidia-ml-dev,
 Standards-Version: 4.6.2

@@ -17,7 +17,7 @@ endif
 	dh $@ --builddirectory --with bash-completion
 
 override_dh_auto_configure:
-	dh_auto_configure -- --sysconfdir=/etc/slurm --with-munge --enable-pam --without-rpath --disable-debug --enable-multiple-slurmd $(ENABLEDEPRECATED) SUCMD=/bin/su SLEEP_CMD=/bin/sleep
+	dh_auto_configure -- --sysconfdir=/etc/slurm --with-munge --enable-pam --without-rpath --disable-debug --enable-multiple-slurmd --with-pmix=/usr/lib/$(DEB_HOST_MULTIARCH)/pmix2 $(ENABLEDEPRECATED) SUCMD=
 
 override_dh_auto_build:
 	dh_auto_build -Dobj-$(DEB_BUILD_GNU_TYPE)/src/plugins/gpu/common
