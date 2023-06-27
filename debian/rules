@@ -33,3 +33,5 @@ override_dh_strip:
 	dh_strip -pslurm-wlm-nvml-plugin
 	strip --verbose --strip-unneeded --remove-section=.comment \
 		--remove-section=.note debian/slurm-*-plugin*-dev/usr/lib/*/slurm-wlm/*.a
+
+override_dh_missing:
