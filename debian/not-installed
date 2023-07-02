@@ -1,2 +1,2 @@
-debian/tmp/usr/lib/x86_64-linux-gnu/slurm-wlm/src/sattach/sattach.wrapper.c
-debian/tmp/usr/lib/x86_64-linux-gnu/slurm-wlm/src/srun/srun.wrapper.c
+debian/tmp/usr/lib/*/slurm-wlm/src/sattach/sattach.wrapper.c
+debian/tmp/usr/lib/*/slurm-wlm/src/srun/srun.wrapper.c
