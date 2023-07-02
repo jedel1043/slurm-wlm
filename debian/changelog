@@ -1,3 +1,9 @@
+slurm-wlm-contrib (23.02.3-2) unstable; urgency=medium
+
+  * Align version with the free release
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Sun, 02 Jul 2023 23:32:40 +0200
+
 slurm-wlm-contrib (23.02.3-1) unstable; urgency=medium
 
   * New upstream version 23.02.3 (Closes: #1036682)
