@@ -46,8 +46,8 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- slurm-wlm-basic-plugins (= ${binary:Version})
-Enhances: slurmd (= ${binary:Version})
+ slurm-wlm-basic-plugins (= 23.02.3-2)
+Enhances: slurmd (= 23.02.3-2)
 Description: SLURM NVML plugins
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
@@ -60,7 +60,7 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- slurm-wlm-basic-plugins-dev (= ${binary:Version}),
+ slurm-wlm-basic-plugins-dev (= 23.02.3-2),
  slurm-wlm-nvml-plugin (= ${binary:Version}),
  libnvidia-ml-dev,
 Description: SLURM NVML plugin development files

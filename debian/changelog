@@ -1,3 +1,9 @@
+slurm-wlm-contrib (23.02.3-2.1) unstable; urgency=medium
+
+  * Binary uoload for contrib
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Tue, 11 Jul 2023 22:46:44 +0200
+
 slurm-wlm-contrib (23.02.3-2) unstable; urgency=medium
 
   * Align version with the free release
