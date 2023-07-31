@@ -1,3 +1,9 @@
+slurm-wlm (23.02.4-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 27 Jul 2023 22:19:00 +0200
+
 slurm-wlm (23.02.3-2) unstable; urgency=medium
 
   * Fix d/not-installed (Closes: #1040129)
