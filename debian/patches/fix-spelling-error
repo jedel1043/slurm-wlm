@@ -37,17 +37,6 @@ Last-Update: 2022-12-21
  				     __func__);
  			continue;
  		}
---- a/src/common/slurm_errno.c
-+++ b/src/common/slurm_errno.c
-@@ -580,7 +580,7 @@
- 	{ ERRTAB_ENTRY(ESLURM_PLUGIN_INCOMPLETE),
- 	  "Plugin missing required symbol or function"		},
- 	{ ERRTAB_ENTRY(ESLURM_PLUGIN_NOT_LOADED),
--	  "Required plugin type not loaded or initalized"	},
-+	  "Required plugin type not loaded or initialized"	},
- 
- 	/* REST errors */
- 	{ ERRTAB_ENTRY(ESLURM_REST_INVALID_QUERY),
 --- a/src/slurmctld/job_mgr.c
 +++ b/src/slurmctld/job_mgr.c
 @@ -7196,7 +7196,7 @@
