@@ -1,3 +1,9 @@
+slurm-wlm-contrib (23.02.5-1) unstable; urgency=medium
+
+  * New upstream release 23.02.5
+
+ -- Gennaro Oliva <oliva@debian.org>  Sun, 01 Oct 2023 23:56:35 +0200
+
 slurm-wlm-contrib (23.02.3-2.1) unstable; urgency=medium
 
   * Binary uoload for contrib
