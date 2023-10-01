@@ -1,9 +1,13 @@
-slurm-wlm (23.02.4-1) UNRELEASED; urgency=medium
+slurm-wlm (23.02.5-1) unstable; urgency=medium
 
+  [ Gennaro Oliva ]
   * New upstream release
   * Refresh patches
 
- -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Thu, 27 Jul 2023 22:19:00 +0200
+  [ Tobias Pape ]
+  * Add pam-configs for the pam packages
+
+ -- Gennaro Oliva <oliva@debian.org>  Sun, 01 Oct 2023 23:41:22 +0200
 
 slurm-wlm (23.02.3-2) unstable; urgency=medium
 
