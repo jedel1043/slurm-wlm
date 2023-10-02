@@ -1,7 +1,7 @@
 Source: slurm-wlm-contrib
 Section: contrib/admin
 Priority: optional
-Maintainer: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+Maintainer: Gennaro Oliva <oliva@debian.org>
 Build-Depends:
  debhelper (>= 13),
  libmunge-dev,
