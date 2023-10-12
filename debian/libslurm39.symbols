@@ -1366,11 +1366,11 @@ libslurm.so.39 libslurm39 #MINVER#
  slurmdb_destroy_archive_rec@Base 2.3.1
 #MISSING: 15.08.0# slurmdb_destroy_association_cond@Base 2.3.1
 #MISSING: 15.08.0# slurmdb_destroy_association_rec@Base 2.3.1
- slurmdb_destroy_bf_usage@Base 19.05.2
- slurmdb_destroy_bf_usage_members@Base 19.05.2
  slurmdb_destroy_assoc_cond@Base 15.08.0
  slurmdb_destroy_assoc_rec@Base 15.08.0
  slurmdb_destroy_assoc_usage@Base 15.08.0
+ slurmdb_destroy_bf_usage@Base 19.05.2
+ slurmdb_destroy_bf_usage_members@Base 19.05.2
  slurmdb_destroy_clus_res_rec@Base 14.03.0
  slurmdb_destroy_cluster_accounting_rec@Base 2.3.1
  slurmdb_destroy_cluster_cond@Base 2.3.1
