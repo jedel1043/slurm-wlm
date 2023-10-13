@@ -1006,6 +1006,7 @@ libslurm.so.38 libslurm38 #MINVER#
  slurm_resume2@Base 14.11.0
  slurm_resume@Base 1.3.8
  slurm_revert_num_unit@Base 16.05.5
+ slurm_rmdir_recursive@Base 22.05.8
  slurm_route_split_hostlist_treewidth@Base 14.11.0
  slurm_run_in_daemon@Base 14.03.0
  slurm_running_in_daemon@Base 20.02.1
