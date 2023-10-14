@@ -1,3 +1,9 @@
+slurm-wlm-contrib (22.05.8-4+deb12u1) bookworm-security; urgency=medium
+
+  * Fix CVE-2023-41914
+
+ -- Gennaro Oliva <oliva@debian.org>  Sat, 14 Oct 2023 02:11:20 +0200
+
 slurm-wlm-contrib (22.05.8-4) unstable; urgency=medium
 
   * Align version with the free release
