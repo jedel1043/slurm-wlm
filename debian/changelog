@@ -1,3 +1,10 @@
+slurm-wlm (22.05.8-4+deb12u2) bookworm-security; urgency=medium
+
+  * Fix CVE-2023-49933, CVE-2023-49935, CVE-2023-49936, CVE-2023-49937,
+        CVE-2023-49938 (Closes: #1058720)
+
+ -- Gennaro Oliva <oliva.g@na.icar.cnr.it>  Mon, 25 Dec 2023 09:26:16 +0100
+
 slurm-wlm (22.05.8-4+deb12u1) bookworm-security; urgency=medium
 
   * Fix CVE-2023-41914
