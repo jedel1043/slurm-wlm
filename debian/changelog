@@ -1,3 +1,10 @@
+slurm-wlm-contrib (22.05.8-4+deb12u2) bookworm-security; urgency=medium
+
+  * Fix CVE-2023-49933, CVE-2023-49936, CVE-2023-49937, CVE-2023-49938
+    (Closes: #1062264)
+
+ -- Gennaro Oliva <oliva@debian.org>  Sat, 03 Feb 2024 10:52:11 +0100
+
 slurm-wlm-contrib (22.05.8-4+deb12u1) bookworm-security; urgency=medium
 
   * Fix CVE-2023-41914
