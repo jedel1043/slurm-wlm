@@ -1,0 +1,61 @@
+#!/bin/sh
+set -e
+
+cat > /etc/slurm/slurm.conf <<EOF
+SlurmctldHost=localhost
+ProctrackType=proctrack/pgid
+ReturnToService=1
+SlurmctldPidFile=/run/slurmctld.pid
+SlurmctldPort=6817
+SlurmdPidFile=/run/slurmd.pid
+SlurmdPort=6818
+SlurmdSpoolDir=/var/lib/slurm/slurmd
+SlurmUser=slurm
+StateSaveLocation=/var/lib/slurm/slurmctld
+TaskPlugin=task/none
+SlurmctldTimeout=300
+SchedulerType=sched/backfill
+SelectType=select/linear
+AccountingStorageType=accounting_storage/none
+ClusterName=cluster
+JobCompType=jobcomp/none
+JobAcctGatherType=jobacct_gather/none
+SlurmctldDebug=3
+SlurmctldLogFile=/var/log/slurm/slurmctld.log
+SlurmdDebug=3
+SlurmdLogFile=/var/log/slurm/slurmd.log
+NodeName=localhost Procs=1 State=UNKNOWN
+PartitionName=test Nodes=localhost Default=YES MaxTime=INFINITE State=UP
+EOF
+
+service slurmctld restart
+service slurmd restart
+
+sleep 10
+
+service slurmctld status
+service slurmd status
+
+sinfo
+
+sinfo --Node
+
+rm -f /tmp/job.touch
+
+cat > /tmp/job.sh <<EOF
+#!/bin/sh
+/usr/bin/touch /tmp/job.touch
+EOF
+
+sbatch /tmp/job.sh
+
+# Testing if the job is still in the queue every second, at most 60 times
+retry=60
+while [ "$retry" -gt 0 ] && [ -n "$(squeue --noheader)" ] ; do
+	echo Sleeping 1 second for retry number $retry
+	retry=$(($retry-1))
+	sleep 1
+done
+
+# This test fails if the job didn't run
+test -f /tmp/job.touch
