@@ -1,4 +1,4 @@
-slurm-wlm (23.11.3-1) UNRELEASED; urgency=medium
+slurm-wlm (23.11.3-1) unstable; urgency=medium
 
   * New upstream major release
   * Update service files
@@ -7,7 +7,7 @@ slurm-wlm (23.11.3-1) UNRELEASED; urgency=medium
   * Bump libslurm to soname 40
   * Create sackd package
 
- -- Gennaro Oliva <oliva@debian.org>  Sun, 21 Jan 2024 22:06:35 +0100
+ -- Gennaro Oliva <oliva@debian.org>  Thu, 08 Feb 2024 18:32:27 +0100
 
 slurm-wlm (23.02.6-1) unstable; urgency=medium
 
