@@ -722,3 +722,16 @@ Description: Slurm client side commands for the emulator
  job scheduling system that strives to be simple, scalable, portable,
  fault-tolerant, and interconnect agnostic.
  This package contains all client side commands for the emulator.
+
+Package: sackd
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ slurm-wlm-basic-plugins (= ${binary:Version}),
+ adduser,
+Description: Slurm auth and cred kiosk daemon
+ The Slurm Workload Manager is an open-source cluster resource management and
+ job scheduling system that strives to be simple, scalable, portable,
+ fault-tolerant, and interconnect agnostic.
+ This package contains the Slurm auth and cred kiosk daemon
