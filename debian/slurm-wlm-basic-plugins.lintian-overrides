@@ -1,4 +1,0 @@
-slurm-wlm-basic-plugins: hardening-no-fortify-functions
-slurm-wlm-basic-plugins: spelling-error-in-binary
-slurm-wlm-basic-plugins: hardening-no-bindnow
-slurm-wlm-basic-plugins: shared-library-lacks-prerequisites
