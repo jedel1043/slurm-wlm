@@ -2,6 +2,8 @@ Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: slurm
 Upstream-Contact: https://www.schedmd.com/contact.php
 Source: https://slurm.schedmd.com
+Comment: This package provide the nvml plugin that needs to be linked to nvml non-free libraries
+
 
 Files: *
 Copyright: 2001-2009 The Regents of the University of California
