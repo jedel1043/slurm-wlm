@@ -1,3 +1,11 @@
+slurm-wlm (23.11.4-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+  * Remove debian sackd man page
+  * Remove fix-typos patch
+
+ -- Gennaro Oliva <oliva@debian.org>  Fri, 23 Feb 2024 10:30:50 +0100
+
 slurm-wlm (23.11.3-1) unstable; urgency=medium
 
   * New upstream major release (Closes: #1058720)
