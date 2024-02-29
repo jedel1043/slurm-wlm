@@ -5,7 +5,7 @@ Maintainer: Debian HPC Team <debian-hpc@lists.debian.org>
 Uploaders: Rémi Palancher <remi@rezib.org>,
            Mehdi Dogguy <mehdi@debian.org>,
            Gennaro Oliva <oliva@debian.org>,
-Build-Depends:
+Build-Depends: dpkg-dev (>= 1.22.5),
  debhelper (>= 13),
  libmunge-dev,
  libncurses-dev,
@@ -113,7 +113,10 @@ Description: Slurm central management daemon
  fault-tolerant, and interconnect agnostic.
  This package contains the central management daemon slurmctld.
 
-Package: libslurm40
+Package: libslurm40t64
+Provides: ${t64:Provides}
+Replaces: libslurm40
+Breaks: libslurm40 (<< ${source:Version})
 Section: libs
 Architecture: any
 Pre-Depends: ${misc:Pre-Depends}
@@ -124,7 +127,10 @@ Description: Runtime library files for Slurm
  fault-tolerant, and interconnect agnostic.
  This package contains the Slurm runtime library.
 
-Package: libpmi0
+Package: libpmi0t64
+Provides: ${t64:Provides}
+Replaces: libpmi0
+Breaks: libpmi0 (<< ${source:Version})
 Section: libs
 Architecture: any
 Pre-Depends: ${misc:Pre-Depends}
@@ -135,7 +141,10 @@ Description: Slurm PMI library implementation
  fault-tolerant, and interconnect agnostic.
  This package contains the Slurm PMI runtime implementation.
 
-Package: libpmi2-0
+Package: libpmi2-0t64
+Provides: ${t64:Provides}
+Replaces: libpmi2-0
+Breaks: libpmi2-0 (<< ${source:Version})
 Section: libs
 Architecture: any
 Pre-Depends: ${misc:Pre-Depends}
@@ -152,7 +161,7 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- libslurm40 (= ${binary:Version})
+ libslurm40t64 (= ${binary:Version})
 Conflicts: libslurm10-dev, libslurm11-dev, libslurm12-dev, libslurm13-dev, libslurm20-dev, libslurm21-dev
 Breaks: libslurmdb-dev
 Replaces: libslurm10-dev, libslurm11-dev, libslurm12-dev, libslurm13-dev, libslurm20-dev, libslurm21-dev, libslurmdb-dev
@@ -168,8 +177,8 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- libpmi0 (= ${binary:Version}),
- libslurm40 (= ${binary:Version})
+ libpmi0t64 (= ${binary:Version}),
+ libslurm40t64 (= ${binary:Version})
 Description: Slurm PMI library implementation development files
  The Slurm Workload Manager is an open-source cluster resource management and
  job scheduling system that strives to be simple, scalable, portable,
@@ -183,8 +192,8 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- libpmi2-0 (= ${binary:Version}),
- libslurm40 (= ${binary:Version})
+ libpmi2-0t64 (= ${binary:Version}),
+ libslurm40t64 (= ${binary:Version})
 Description: Slurm PMI2 library implementation development files
  The Slurm Workload Manager is an open-source cluster resource management and
  job scheduling system that strives to be simple, scalable, portable,

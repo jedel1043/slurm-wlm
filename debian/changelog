@@ -1,3 +1,10 @@
+slurm-wlm (23.11.4-1.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Rename libraries for 64-bit time_t transition.  Closes: #1062903
+
+ -- Benjamin Drung <bdrung@debian.org>  Thu, 29 Feb 2024 16:19:10 +0000
+
 slurm-wlm (23.11.4-1) unstable; urgency=medium
 
   * New upstream release
@@ -5,13 +12,6 @@ slurm-wlm (23.11.4-1) unstable; urgency=medium
   * Remove fix-typos patch
 
  -- Gennaro Oliva <oliva@debian.org>  Sun, 25 Feb 2024 22:26:05 +0100
-
-slurm-wlm (23.11.3-2) unstable; urgency=medium
-
-  * Team upload
-  * Source-only reupload for testing migration.
-
- -- Gianfranco Costamagna <locutusofborg@debian.org>  Thu, 15 Feb 2024 21:45:47 +0100
 
 slurm-wlm (23.11.3-1) unstable; urgency=medium
 
