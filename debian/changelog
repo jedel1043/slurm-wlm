@@ -1,3 +1,11 @@
+slurm-wlm (23.11.4-1.2) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Remove extraneous files from debian that are not handled by the package
+    clean target, and caused build failures on !amd64.  Closes: #1065225.
+
+ -- Steve Langasek <vorlon@debian.org>  Sun, 03 Mar 2024 20:11:29 +0000
+
 slurm-wlm (23.11.4-1.1) unstable; urgency=medium
 
   * Non-maintainer upload.
