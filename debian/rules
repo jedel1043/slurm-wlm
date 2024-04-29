@@ -36,8 +36,8 @@ override_dh_auto_clean:
 # hardening-no-fortify-functions
 # Notice that -g in CFLAGS is still provided by dpkg-buildflags
 override_dh_auto_configure:
-	dh_auto_configure -- --sysconfdir=/etc/slurm --with-munge --enable-pam --without-rpath --disable-debug --enable-multiple-slurmd $(PMIX) $(ENABLEDEPRECATED) SUCMD=/bin/su SLEEP_CMD=/bin/sleep
-	dh_auto_configure --builddirectory build-emulator -- -sysconfdir=/etc/slurm --with-munge --enable-pam --without-rpath --disable-debug --enable-front-end --enable-multiple-slurmd $(PMIX) $(ENABLEDEPRECATED) SUCMD=/bin/su SLEEP_CMD=/bin/sleep
+	dh_auto_configure -- --sysconfdir=/etc/slurm --with-munge --enable-pam --without-rpath --disable-debug --enable-multiple-slurmd $(PMIX) --with-pam_dir=/usr/lib/$(DEB_HOST_MULTIARCH)/security $(ENABLEDEPRECATED) SUCMD=/bin/su SLEEP_CMD=/bin/sleep
+	dh_auto_configure --builddirectory build-emulator -- -sysconfdir=/etc/slurm --with-munge --enable-pam --without-rpath --disable-debug --enable-front-end --enable-multiple-slurmd $(PMIX) --with-pam_dir=/usr/lib/$(DEB_HOST_MULTIARCH)/security $(ENABLEDEPRECATED) SUCMD=/bin/su SLEEP_CMD=/bin/sleep
 override_dh_auto_build:
 	dh_auto_build
 	dh_auto_build --builddirectory build-emulator
@@ -169,8 +169,7 @@ override_dh_strip:
 	dh_strip -plibslurm-dev --no-automatic-dbgsym
 	dh_strip -pslurmrestd --no-automatic-dbgsym
 	strip --verbose --strip-unneeded --remove-section=.comment \
-		--remove-section=.note debian/slurm-*-plugin*-dev/usr/lib/*/slurm-wlm/*.a \
-		debian/libpam-slurm*-dev/lib/security/*.a
+		--remove-section=.note debian/slurm-*-plugin*-dev/usr/lib/*/slurm-wlm/*.a
 
 override_dh_auto_test:
 
