@@ -1,3 +1,16 @@
+slurm-wlm (23.11.4-3) UNRELEASED; urgency=medium
+
+  * Team upload.
+
+  [ Benjamin Drung ]
+  * Restore /etc/slurm/plugstack.conf in slurm-wlm-basic-plugins.
+  Make the build more robust by always generating
+  `slurm-wlm-basic-plugins.install` from scratch. Restore
+  `/etc/slurm/plugstack.conf` by putting it into a `.install.in` file that
+  is copied into the `.install` file in the beginning.
+
+ -- Michael R. Crusoe <crusoe@debian.org>  Tue, 30 Apr 2024 17:23:52 +0200
+
 slurm-wlm (23.11.4-2) unstable; urgency=medium
 
   * Team upload.
