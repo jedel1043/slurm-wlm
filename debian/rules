@@ -125,6 +125,7 @@ override_dh_auto_install:
 		ls $$(cat debian/$$f.install | sed "s/^/debian\/tmp\//") ; \
 	done | sort >> debian/plugin_packages_filelist
 
+	cp debian/slurm-wlm-basic-plugins.install.in debian/slurm-wlm-basic-plugins.install
 	comm -23 debian/all_plugins_filelist debian/plugin_packages_filelist | sed "s/^debian\/tmp\///" >> debian/slurm-wlm-basic-plugins.install
 
 	ls debian/tmp/usr/lib/*/slurm-wlm/*.a debian/tmp/usr/lib/*/slurm-wlm/*.la | sort > debian/all_plugins_dev_filelist
