@@ -21,3 +21,4 @@ contribs/mic/Makefile
 contribs/pmi2/Makefile
 debian/plugin_packages_dev_filelist
 debian/plugin_packages_filelist
+debian/slurm-wlm-basic-plugins.install
