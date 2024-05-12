@@ -13,11 +13,15 @@ ifneq ($(DEB_TARGET_ARCH_BITS),64)
   ENABLEDEPRECATED = --enable-deprecated
 endif
 
+# PMIX is now only available on 64-bit systems
+PMIX_ARCH:= amd64 arm64 mips64el ppc64el riscv64 s390x alpha ia64 loong64 ppc64
+PMIX:=    $(if $(filter $(DEB_TARGET_ARCH), $(PMIX_ARCH)), --with-pmix=/usr/lib/$(DEB_HOST_MULTIARCH)/pmix2, )
+
 %:
 	dh $@ --builddirectory --with bash-completion
 
 override_dh_auto_configure:
-	dh_auto_configure -- --sysconfdir=/etc/slurm --with-munge --enable-pam --without-rpath --disable-debug --enable-multiple-slurmd --with-pmix=/usr/lib/$(DEB_HOST_MULTIARCH)/pmix2 $(ENABLEDEPRECATED) SUCMD=
+	dh_auto_configure -- --sysconfdir=/etc/slurm --with-munge --enable-pam --without-rpath --disable-debug --enable-multiple-slurmd $(PMIX) --with-pam_dir=/usr/lib/$(DEB_HOST_MULTIARCH)/security $(ENABLEDEPRECATED) SUCMD=/bin/su SLEEP_CMD=/bin/sleep
 
 override_dh_auto_build:
 	dh_auto_build -Dobj-$(DEB_BUILD_GNU_TYPE)/src/plugins/gpu/common
