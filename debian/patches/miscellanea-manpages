@@ -58,16 +58,16 @@ Last-Update: 2021-05-17
 +
 --- a/doc/man/man5/slurm.conf.5
 +++ b/doc/man/man5/slurm.conf.5
-@@ -2469,7 +2469,7 @@
+@@ -2479,7 +2479,7 @@
  be called before and/or after execution of each task spawned as
- part of a user's job step.  Default location is "plugstack.conf"
+ part of a user's job step. Default location is "plugstack.conf"
  in the same directory as the system slurm.conf. For more information
 -on SPANK plugins, see the \fBspank\fR(8) manual.
 +on SPANK plugins, see the \fBspank\fR(7) manual.
  .IP
  
  .TP
-@@ -8099,4 +8099,4 @@
+@@ -8126,4 +8126,4 @@
  \fBgetrlimit\fR(2), \fBgres.conf\fR(5), \fBgroup\fR(5), \fBhostname\fR(1),
  \fBscontrol\fR(1), \fBslurmctld\fR(8), \fBslurmd\fR(8),
  \fBslurmdbd\fR(8), \fBslurmdbd.conf\fR(5), \fBsrun\fR(1),
@@ -110,7 +110,7 @@ diff --git a/doc/man/man8/Makefile.am b/doc/man/man8/Makefile.am
 index 8527b1c0..27b5777e 100644
 --- a/doc/man/man8/Makefile.am
 +++ b/doc/man/man8/Makefile.am
-@@ -4,8 +4,7 @@
+@@ -6,8 +6,7 @@
  	slurmd.8 \
  	slurmdbd.8 \
  	slurmrestd.8 \
@@ -120,7 +120,7 @@ index 8527b1c0..27b5777e 100644
  
  if HAVE_MAN2HTML
  
-@@ -14,8 +13,7 @@
+@@ -17,8 +16,7 @@
  	slurmd.html \
  	slurmdbd.html \
  	slurmrestd.html \
