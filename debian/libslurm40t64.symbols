@@ -45,6 +45,7 @@ libslurm.so.40 libslurm40t64 #MINVER#
 #MISSING: 17.02.0# slurm_arg_name_by_idx@Base 1.3.8
  slurm_array16_to_value_reps@Base 23.11.3
  slurm_array64_to_value_reps@Base 21.08.0
+ slurm_array_str2bitmap@Base 23.11.7
 #MISSING: 2.5.3# slurm_auth_context_create@Base 1.3.8
 #MISSING: 17.11.2# slurm_asctime@Base 15.08.0
 #MISSING: 17.11.2# slurm_asctime_r@Base 15.08.0
@@ -926,7 +927,8 @@ libslurm.so.40 libslurm40t64 #MINVER#
  slurm_option_set_by_env@Base 19.05.2
  slurm_option_table_create@Base 19.05.2
  slurm_option_table_destroy@Base 19.05.2
- slurm_option_update_tres_per_task_cpu@Base 23.11.3
+ slurm_option_update_tres_per_task@Base 23.11.7
+#MISSING: 23.11.7# slurm_option_update_tres_per_task_cpu@Base 23.11.3
  slurm_pack16@Base 1.3.8
  slurm_pack16_array@Base 1.3.8
  slurm_pack32@Base 1.3.8
@@ -954,6 +956,7 @@ libslurm.so.40 libslurm40t64 #MINVER#
  slurm_packmem@Base 1.3.8
  slurm_packmem_array@Base 1.3.8
  slurm_packstr_array@Base 1.3.8
+ slurm_parse_array_tok@Base 23.11.7
  slurm_parse_char_list@Base 22.05.7
  slurm_parse_step_str@Base 20.11.2
  slurm_parse_time@Base 16.05.5
