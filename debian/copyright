@@ -417,7 +417,6 @@ License: GPL-2+ with OpenSSL exception
 Files: src/sview/job_info.c
        src/sview/node_info.c
        src/sview/part_info.c
-       testsuite/expect/test28.8
 Copyright: 2010-2016 SchedMD LLC
            2008-2011 Lawrence Livermore National Security, LLC
            2004-2007 The Regents of the University of California
