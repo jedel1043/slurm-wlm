@@ -1,3 +1,10 @@
+slurm-wlm-contrib (23.11.7-2) unstable; urgency=medium
+
+  * Fix basic plugins version dependency (Closes: #1072209)
+    kudos for Gianfranco Costamagna
+
+ -- Gennaro Oliva <oliva@debian.org>  Thu, 30 May 2024 21:59:13 +0200
+
 slurm-wlm-contrib (23.11.7-1) unstable; urgency=medium
 
   * New upstream release
