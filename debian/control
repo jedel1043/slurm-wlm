@@ -35,6 +35,7 @@ Build-Depends: dpkg-dev (>= 1.22.5),
  librdkafka-dev,
  librocm-smi-dev,
  libnvidia-ml-dev,
+ bc,
 Standards-Version: 4.7.0
 Homepage: http://slurm.schedmd.com
 Vcs-Browser: https://salsa.debian.org/hpc-team/slurm-wlm
@@ -46,8 +47,9 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- slurm-wlm-basic-plugins (= 23.02.3-2)
-Enhances: slurmd (= 23.02.3-2)
+ slurm-wlm-basic-plugins (>= ${upstream:currentVersion}),
+ slurm-wlm-basic-plugins (<< ${upstream:nextVersion})
+Enhances: slurmd (>= ${upstream:currentVersion})
 Description: SLURM NVML plugins
  SLURM, the Simple Linux Utility for Resource Management,
  is an open-source cluster resource management and job scheduling.
@@ -60,8 +62,9 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- slurm-wlm-basic-plugins-dev (= 23.02.3-2),
- slurm-wlm-nvml-plugin (= ${binary:Version}),
+ slurm-wlm-basic-plugins-dev (>= ${upstream:currentVersion}),
+ slurm-wlm-basic-plugins-dev (<< ${upstream:nextVersion}),
+ slurm-wlm-nvml-plugin (>= ${source:Version}),
  libnvidia-ml-dev,
 Description: SLURM NVML plugin development files
  SLURM, the Simple Linux Utility for Resource Management,

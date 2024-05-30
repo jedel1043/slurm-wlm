@@ -4,6 +4,11 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
+include /usr/share/dpkg/default.mk
+MINOR=$(lastword $(subst ., ,$(DEB_VERSION_UPSTREAM)))
+NEXTMINOR=$(shell echo $(MINOR)+1| bc)
+NEXTVERSION=$(patsubst %$(MINOR),%$(NEXTMINOR),$(DEB_VERSION_UPSTREAM))
+
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all,-bindnow
 
 # include defs of all DEB_HOST_*/DEB_BUILD_* vars
@@ -39,3 +44,6 @@ override_dh_strip:
 		--remove-section=.note debian/slurm-*-plugin*-dev/usr/lib/*/slurm-wlm/*.a
 
 override_dh_missing:
+
+override_dh_gencontrol:
+	dh_gencontrol -- -Vupstream:currentVersion=$(DEB_VERSION_UPSTREAM) -Vupstream:nextVersion=$(NEXTVERSION)
