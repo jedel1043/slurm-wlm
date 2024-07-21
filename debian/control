@@ -218,7 +218,7 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- libpmix2t64,
+ libpmix2t64 [amd64 arm64 mips64el ppc64el riscv64 s390x alpha ia64 loong64 ppc64 sparc64],
  adduser
 Recommends: slurm-wlm-plugins (= ${binary:Version}),
 Description: Slurm basic plugins
