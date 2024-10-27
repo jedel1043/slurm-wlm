@@ -1,4 +1,4 @@
-.TH salloc "1" "Slurm Commands" "May 2024" "Slurm Commands"
+.TH salloc "1" "Slurm Commands" "October 2024" "Slurm Commands"
 
 .SH "NAME"
 salloc \- Obtain a Slurm job allocation (a set of nodes), execute a command,
@@ -589,7 +589,7 @@ slurm.conf file, otherwise the default value is zero (no delay).
 .TP
 \fB\-d\fR, \fB\-\-dependency\fR=<\fIdependency_list\fR>
 Defer the start of this job until the specified dependencies have been
-satisfied.
+satisfied. Once a dependency is satisfied, it is removed from the job.
 <\fIdependency_list\fR> is of the form
 <\fItype:job_id[:job_id][,type:job_id[:job_id]]\fR> or
 <\fItype:job_id[:job_id][?type:job_id[:job_id]]\fR>.
@@ -920,8 +920,7 @@ was not specified) as one task per requested thread.
 
 .TP
 \fB\-\-get\-user\-env\fR[=\fItimeout\fR][\fImode\fR]
-This option will load login environment variables for the user specified
-in the \fB\-\-uid\fR option.
+This option will load login environment variables for the user.
 The environment variables are retrieved by running something along the lines of
 "su \- <username> \-c /usr/bin/env" and parsing the output.
 Be aware that any environment variables already set in salloc's environment
@@ -938,14 +937,6 @@ Examples of use include "\-\-get\-user\-env", "\-\-get\-user\-env=10"
 "\-\-get\-user\-env=10L", and "\-\-get\-user\-env=S".
 \fBNOTE\fR: This option only works if the caller has an
 effective uid of "root".
-.IP
-
-.TP
-\fB\-\-gid\fR=<\fIgroup\fR>
-Submit the job with the specified \fIgroup\fR's group access permissions.
-\fIgroup\fR may be the group name or the numerical group ID.
-In the default Slurm configuration, this option is only valid when used
-by the user root.
 .IP
 
 .TP
@@ -1420,7 +1411,8 @@ per task; \fB\-\-mem\-per\-cpu\fR will be reduced to a value no larger than
 \fBMaxMemPerCPU\fR; \fB\-\-cpus\-per\-task\fR will be set and the value of
 \fB\-\-cpus\-per\-task\fR multiplied by the new \fB\-\-mem\-per\-cpu\fR
 value will equal the original \fB\-\-mem\-per\-cpu\fR value specified by
-the user.
+the user. If the user already specified a value for \fB\-\-cpus\-per\-task\fR,
+it will be respected and only the total amount of allocated CPUs will change.
 This parameter would generally be used if individual processors
 are allocated to jobs (\fBSelectType=select/cons_tres\fR).
 If resources are allocated by core, socket, or whole nodes, then the number
@@ -2228,7 +2220,7 @@ affinity of the gres as specified in gres.conf's \fICores\fR parameter.
 \fB\-\-tres\-per\-task\fR=<\fIlist\fR>
 Specifies a comma\-delimited list of trackable resources required for the job on
 each task to be spawned in the job's resource allocation.
-The format for each entry in the list is "trestype[/tresname]:count".
+The format for each entry in the list is "trestype[/tresname]=count".
 The \fItrestype\fR is the type of trackable resource requested (e.g. cpu, gres,
 license, etc).
 The \fItresname\fR is the name of the trackable resource, as can be seen with
@@ -2252,10 +2244,10 @@ The count can have a suffix of
 .br
 Examples:
 .nf
-\-\-tres\-per\-task=cpu:4
-\-\-tres\-per\-task=cpu:8,license/ansys:1
-\-\-tres\-per\-task=gres/gpu:1
-\-\-tres\-per\-task=gres/gpu:a100:2
+\-\-tres\-per\-task=cpu=4
+\-\-tres\-per\-task=cpu=8,license/ansys=1
+\-\-tres\-per\-task=gres/gpu=1
+\-\-tres\-per\-task=gres/gpu:a100=2
 .fi
 The specified resources will be allocated to the job on each node.
 The available trackable resources are configurable by the system
@@ -2268,18 +2260,6 @@ with an explicit \-\-tres\-bind specification.
 \fBNOTE\fR: Invalid TRES for \-\-tres\-per\-task include
 bb,billing,energy,fs,mem,node,pages,vmem.
 .br
-.IP
-
-.TP
-\fB\-\-uid\fR=<\fIuser\fR>
-Attempt to submit and/or run a job as \fIuser\fR instead of the
-invoking user id. The invoking user's credentials will be used
-to check access permissions for the target partition. This option
-is only valid for user root. This option may be used by user root
-may use this option to run jobs as a normal user in a RootOnly
-partition for example. If run as root, \fBsalloc\fR will drop
-its permissions to the uid specified after node allocation is
-successful. \fIuser\fR may be the user name or numerical user ID.
 .IP
 
 .TP
@@ -2674,7 +2654,7 @@ Only set if the \fB\-\-cpus\-per\-gpu\fR option is specified.
 \fBSLURM_CPUS_PER_TASK\fR
 Number of CPUs requested per task.
 Only set if either the \fB\-\-cpus\-per\-task\fR option or the
-\fB\-\-tres\-per\-task=cpu:#\fR option is specified.
+\fB\-\-tres\-per\-task=cpu=#\fR option is specified.
 .IP
 
 .TP
@@ -2719,12 +2699,6 @@ Only set if the \fB\-\-gpus\-per\-socket\fR option is specified.
 .IP
 
 .TP
-\fBSLURM_GPUS_PER_TASK\fR
-Requested GPU count per allocated task.
-Only set if the \fB\-\-gpus\-per\-task\fR option is specified.
-.IP
-
-.TP
 \fBSLURM_HET_SIZE\fR
 Set to count of components in heterogeneous job.
 .IP
@@ -2763,6 +2737,11 @@ Only set in batch and interactive jobs.
 .TP
 \fBSLURM_JOB_ID\fR
 The ID of the job allocation.
+.IP
+
+.TP
+\fBSLURM_JOB_LICENSES\fR
+Name and count of any license(s) requested.
 .IP
 
 .TP
@@ -2944,9 +2923,9 @@ job allocation.
 
 .TP
 \fBSLURM_TRES_PER_TASK\fR
-Set to the value of \fB\-\-tres\-per\-task\fR. If \fB\-\-cpus\-per\-task\fR is
-specified, it is also set in \fBSLURM_TRES_PER_TASK\fR as if it were specified
-in \fB\-\-tres\-per\-task\fR.
+Set to the value of \fB\-\-tres\-per\-task\fR. If \fB\-\-cpus\-per\-task\fR or
+\fB\-\-gpus\-per\-task\fR is specified, it is also set in
+\fBSLURM_TRES_PER_TASK\fR as if it were specified in \fB\-\-tres\-per\-task\fR.
 .IP
 
 .SH "SIGNALS"

@@ -1,4 +1,4 @@
-.TH squeue "1" "Slurm Commands" "June 2024" "Slurm Commands"
+.TH squeue "1" "Slurm Commands" "October 2024" "Slurm Commands"
 
 .SH "NAME"
 squeue \- view information about jobs located in the Slurm scheduling queue.
@@ -192,7 +192,8 @@ Time at which the job ended or is expected to end (based upon its time limit).
 Job dependencies remaining. This job will not begin execution until these
 dependent jobs complete. In the case of a job that can not run due to job
 dependencies never being satisfied, the full original job dependency
-specification will be reported. A value of NULL implies this job has no
+specification will be reported. Once a dependency is satisfied, it is
+removed from the job. A value of NULL implies this job has no
 dependencies.
 (Valid for jobs only)
 .IP
@@ -691,7 +692,8 @@ Delay boot time.
 Job dependencies remaining. This job will not begin execution until these
 dependent jobs complete. In the case of a job that can not run due to job
 dependencies never being satisfied, the full original job dependency
-specification will be reported. A value of NULL implies this job has no
+specification will be reported. Once a dependency is satisfied, it is
+removed from the job. A value of NULL implies this job has no
 dependencies.
 (Valid for jobs only)
 .IP
@@ -1397,7 +1399,7 @@ Opposite of \fB\-\-me\fR; only display jobs that are not from the invoking user.
 .TP
 \fB\-\-only\-job\-state\fR
 Only query for the job state. Query utilizes RPC that only retains JobID
-and State information reducing work required by slurmctld to respond.
+and State information, reducing work required by slurmctld to respond.
 .IP
 
 .TP
@@ -1658,7 +1660,7 @@ One or more higher priority jobs exist for this partition or advanced reservatio
 
 .TP
 \fBProlog\fR
-Its PrologSlurmctld program is still running.
+Its Prolog program is still running.
 .IP
 
 .TP
@@ -1732,7 +1734,8 @@ Waiting for the scheduler to determine the appropriate reason.
 Jobs typically pass through several states in the course of their
 execution.
 The typical states are PENDING, RUNNING, SUSPENDED, COMPLETING, and COMPLETED.
-An explanation of each state follows.
+The following states are recognized by squeue. A full list of possible states
+is available at <https://slurm.schedmd.com/job_state_codes.html>.
 
 .TP 20
 \fBBF  BOOT_FAIL\fR

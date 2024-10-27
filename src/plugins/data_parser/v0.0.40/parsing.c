@@ -396,6 +396,8 @@ static int _parse_list(const parser_t *const parser, void *dst, data_t *src,
 		(uintptr_t) parser, rc, slurm_strerror(rc)
 	);
 
+	if (rc)
+		*list = NULL;
 	FREE_NULL_LIST(list_args.list);
 	xfree(path);
 	return rc;
@@ -415,18 +417,17 @@ static int _parse_pointer(const parser_t *const parser, void *dst, data_t *src,
 			     !data_get_list_length(src);
 
 	xassert(!*ptr);
+	*ptr = alloc_parser_obj(parser);
 
 	if (is_empty_dict || is_empty_list) {
 		/*
 		 * Detect work around for OpenAPI clients being unable to handle
 		 * a null in place of a object/array by placing an empty
-		 * dict/array.
+		 * dict/array. Place the default allocated object pointer but
+		 * skip attempting to parse.
 		 */
-		*ptr = NULL;
 		return SLURM_SUCCESS;
 	}
-
-	*ptr = alloc_parser_obj(parser);
 
 	if ((rc = parse(*ptr, NO_VAL, pt, src, args, parent_path))) {
 		log_flag(DATA, "%s object at 0x%"PRIxPTR" freed due to parser error: %s",
