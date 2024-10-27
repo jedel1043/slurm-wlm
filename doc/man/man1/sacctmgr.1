@@ -1,4 +1,4 @@
-.TH sacctmgr "1" "Slurm Commands" "April 2024" "Slurm Commands"
+.TH sacctmgr "1" "Slurm Commands" "October 2024" "Slurm Commands"
 
 .SH "NAME"
 sacctmgr \- Used to view and modify Slurm account information.
@@ -51,6 +51,7 @@ Commit changes immediately without asking for confirmation.
 \f3\-\-json\fP, \f3\-\-json\fP=\fIlist\fR, \f3\-\-json\fP=<\fIdata_parser\fR>
 Dump information as JSON using the default data_parser plugin or explicit
 data_parser with parameters. Sorting and formatting arguments will be ignored.
+This option is not available for every command.
 .IP
 
 .TP
@@ -84,6 +85,7 @@ The \fBreadonly\fR option is for use within interactive mode.
 \f3\-\-yaml\fP, \f3\-\-yaml\fP=\fIlist\fR, \f3\-\-yaml\fP=<\fIdata_parser\fR>
 Dump information as YAML using the default data_parser plugin or explicit
 data_parser with parameters. Sorting and formatting arguments will be ignored.
+This option is not available for every command.
 .IP
 
 .TP
@@ -415,9 +417,6 @@ value of \-1 for each TRES id.
 \fBTRES\fR can be one of the Slurm defaults (i.e. \fIcpu\fR, \fImem\fR,
 \fInode\fR, etc...), or any defined generic resource. You can see the list
 of available resources by running \fBsacctmgr show tres\fR.
-
-\fBNOTE\fR: This limit only applies fully when using the Select Consumable
-Resource plugin.
 .IP
 
 .TP
@@ -535,9 +534,22 @@ value of \-1 for each TRES id.
 \fBTRES\fR can be one of the Slurm defaults (i.e. \fIcpu\fR, \fImem\fR,
 \fInode\fR, etc...), or any defined generic resource. You can see the list
 of available resources by running \fBsacctmgr show tres\fR.
+.IP
 
-\fBNOTE\fR: This limit only applies fully when using the
-\fBcons_tres\fR select type plugin.
+.IP \fBMaxTRESPN\fR=TRES=<\fImax_TRES\fR>[,TRES=<\fImax_TRES\fR>,...]
+.PD 0
+.IP \fBMaxTRESPerNode\fR=TRES=<\fImax_TRES\fR>[,TRES=<\fImax_TRES\fR>,...]
+.PD
+Maximum number of TRES each node in a job allocation is able to use in this
+association.
+This is overridden if set directly on a user.
+Default is the cluster's limit.
+To clear a previously set value use the modify command with a new
+value of \-1 for each TRES id.
+
+\fBTRES\fR can be one of the Slurm defaults (i.e. \fIcpu\fR, \fImem\fR,
+etc...), or any defined generic resource. You can see the list
+of available resources by running \fBsacctmgr show tres\fR.
 .IP
 
 .IP \fBMaxWall\fR=<\fImax_wall\fR>
@@ -750,12 +762,18 @@ List the associations of the user(s).
 .IP
 
 .TP
-\fBPartition\fR=<\fIpartition_name\fR>[,<\fIpartition_name\fR>,...]
+\fBPartitions\fR=<\fIpartition_name\fR>[,<\fIpartition_name\fR>,...]
 List the associations of the partition(s).
+.P
+\fBNOTE\fR: Use Partitions="" or Partitions='' with no other names listed
+when specifying the case where there is no partition. This can be useful
+when using a command with an entity that has associations with and without
+partitions. If given in a shell where the quotes will be consumed then
+they must be quoted themselves. For example: Partitions=\\"\\".
 .P
 \fBNOTE\fR: You can also use the general specifications list above in the
 \fIGENERAL SPECIFICATIONS FOR ASSOCIATION BASED ENTITIES\fP section.
-
+.P
 \fBOther options unique for listing associations:\fP
 .IP
 
@@ -1802,8 +1820,8 @@ If this is used as a partition QOS:
 2. Only one partition may have this QOS as its partition QOS.
 .br
 3. Jobs will not be allowed to use it as a normal QOS.
-.RE
 .IP
+.RE
 Additional details are in the QOS documentation at
 <https://slurm.schedmd.com/qos.html>.
 .IP
@@ -2816,8 +2834,8 @@ Type of resource this record represents.
 Under certain circumstances, jobs can complete without having that completion
 recorded by slurmdbd. This results in a "runaway job", where slurmdbd is not
 going to record a completion time for that job without intervention.
-This command allows you to identify jobs that are in this state and have
-slurmdbd clean up the job record.
+This command will identify jobs that are in this state and offer to have
+slurmdbd clean up the job record(s).
 
 .TP
 \fBCluster\fR
@@ -3007,6 +3025,10 @@ Use to rename a user in the accounting database
 .TP
 \fBPartition\fR=<\fIname\fR>
 Partition name.
+.P
+\fBNOTE\fR: See also \fBPartitions\fR listed in the \fISPECIFICATIONS FOR
+ASSOCIATIONS\fP section.
+.P
 .IP
 
 .TP
@@ -3667,6 +3689,7 @@ $ sacctmgr create account name=chemistry parent=science fairshare=30
 $ sacctmgr create account name=physics parent=science fairshare=20
 $ sacctmgr create user name=adam cluster=tux account=physics fairshare=10
 $ sacctmgr delete user name=adam cluster=tux account=physics
+$ sacctmgr delete user name=adam cluster=tux account=science partition=\\"\\"
 $ sacctmgr delete account name=physics cluster=tux
 $ sacctmgr modify user where name=adam cluster=tux account=physics set maxjobs=2 maxwall=30:00
 $ sacctmgr add user brian account=chemistry

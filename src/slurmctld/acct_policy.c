@@ -2998,10 +2998,12 @@ static void _get_accrue_create_cnt(uint32_t *max_jobs_accrue, int *create_cnt,
 				   uint32_t in_accrue, uint32_t in_used)
 {
 	/*
-	 * If we already set max_jobs_accrue then call it good.
 	 * If in_accrue is INFINITE we don't have a limit
+	 * If we already set max_jobs_accrue and it is the most restrictive,
+	 * then call it good.
 	 */
-	if ((*max_jobs_accrue != INFINITE) || (in_accrue == INFINITE))
+	if ((in_accrue == INFINITE) ||
+	    ((*max_jobs_accrue != INFINITE) && (*max_jobs_accrue <= in_accrue)))
 		return;
 
 	*max_jobs_accrue = in_accrue;
@@ -4657,6 +4659,7 @@ static void _get_accrue_limits(job_record_t *job_ptr,
 	xassert(verify_assoc_lock(QOS_LOCK, WRITE_LOCK));
 
 	if (job_ptr->qos_ptr) {
+		/* Find the most restrictive qos limit */
 		_get_accrue_create_cnt(max_jobs_accrue_ptr, create_cnt_ptr,
 				       job_ptr->qos_ptr->grp_jobs_accrue,
 				       job_ptr->qos_ptr->usage->accrue_cnt);
@@ -4675,6 +4678,10 @@ static void _get_accrue_limits(job_record_t *job_ptr,
 
 	assoc_ptr = job_ptr->assoc_ptr;
 	while (assoc_ptr) {
+		/*
+		 * Find the first limit whether it be from the qos above or in
+		 * the hierarchy.
+		 */
 		if (*max_jobs_accrue_ptr != INFINITE)
 			break;
 
