@@ -1,3 +1,12 @@
+slurm-wlm (24.05.4-1) unstable; urgency=medium
+
+  * New upstream release fixes CVE-2024-48936 (Closes: 1086003)
+  * Update libslurm symbols file
+  * Fix not-installed
+  * Remove unused overrides
+
+ -- Gennaro Oliva <oliva@debian.org>  Wed, 06 Nov 2024 22:43:30 +0100
+
 slurm-wlm (24.05.1-2) unstable; urgency=medium
 
   * Specify not-installed entries with wildcards
