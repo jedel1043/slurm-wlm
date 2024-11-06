@@ -1201,6 +1201,14 @@ libslurm.so.41 libslurm41t64 #MINVER#
  slurm_sort_int_list_desc@Base 24.05.1
  slurm_sort_key_pairs@Base 2.1.0
  slurm_sort_node_list_str@Base 22.05.7
+ slurm_sort_time_list_asc@Base 24.05.4
+ slurm_sort_time_list_desc@Base 24.05.4
+ slurm_sort_uint16_list_asc@Base 24.05.4
+ slurm_sort_uint16_list_desc@Base 24.05.4
+ slurm_sort_uint32_list_asc@Base 24.05.4
+ slurm_sort_uint32_list_desc@Base 24.05.4
+ slurm_sort_uint64_list_asc@Base 24.05.4
+ slurm_sort_uint64_list_desc@Base 24.05.4
  slurm_sort_uint_list_asc@Base 24.05.1
  slurm_sort_uint_list_desc@Base 24.05.1
  slurm_spank_log@Base 20.02.1
@@ -1454,6 +1462,7 @@ libslurm.so.41 libslurm41t64 #MINVER#
  slurmdb_destroy_instance_cond@Base 23.11.3
  slurmdb_destroy_instance_rec@Base 23.11.3
  slurmdb_destroy_job_cond@Base 2.3.1
+ slurmdb_destroy_job_cond_members@Base 24.05.4
 #MISSING: 20.02.1# slurmdb_destroy_job_modify_cond@Base 2.3.1
  slurmdb_destroy_job_rec@Base 2.3.1
  slurmdb_destroy_print_tree@Base 2.3.1
