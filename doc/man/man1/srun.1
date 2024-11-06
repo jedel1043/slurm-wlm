@@ -1,4 +1,4 @@
-.TH srun "1" "Slurm Commands" "June 2024" "Slurm Commands"
+.TH srun "1" "Slurm Commands" "October 2024" "Slurm Commands"
 
 .SH "NAME"
 srun \- Run parallel jobs
@@ -787,6 +787,10 @@ threads per CPU for a total of two tasks.
 there are configurations and options which can result in inconsistent
 allocations when \-c has a value greater than \-c on salloc or sbatch.
 
+\fBNOTE\fR: If \fB\-\-mem\-per\-cpu\fR is also specified, the number of
+allocated cpus can be increased if \fBMaxMemPerCPU\fR is exceeded. In the case
+\fB\-n\fR is not specified, the number of tasks can be higher than expected.
+
 This option applies to job and step allocations.
 .IP
 
@@ -831,7 +835,8 @@ This option applies only to job allocations.
 .TP
 \fB\-d\fR, \fB\-\-dependency\fR=<\fIdependency_list\fR>
 Defer the start of this job until the specified dependencies have been
-satisfied. This option does not apply to job steps (executions of
+satisfied. Once a dependency is satisfied, it is removed from the job.
+This option does not apply to job steps (executions of
 srun within an existing salloc or sbatch allocation) only to job allocations.
 <\fIdependency_list\fR> is of the form
 <\fItype:job_id[:job_id][,type:job_id[:job_id]]\fR> or
@@ -1161,11 +1166,12 @@ if it contains a "/" character. This option applies to job and step allocations.
 \fB\-\-exclusive\fR[={user|mcs|topo}]
 This option applies to job and job step allocations, and has two slightly
 different meanings for each one.
-When used to initiate a job, the job allocation can not share nodes
-(or topology segment  with the "=topo")
-with other running jobs (or just other users with the "=user" option or "=mcs" option).
-If user/mcs/topo are not specified (i.e. the job allocation can not share nodes with
-other running jobs), the job is allocated all CPUs and GRES on all nodes in the
+
+When used to initiate a \fBjob\fR, the job allocation can not share nodes
+(or topology segment with the "=topo") with other running jobs (or just other
+users with the "=user" option or "=mcs" option). If user/mcs/topo are not
+specified (i.e. the job allocation can not share nodes with other running jobs),
+the job allocation is allocated all CPUs and GRES on all nodes in the
 allocation, but is only allocated as much memory as it requested. This is by
 design to support gang scheduling, because suspended jobs still reside in
 memory. To request all the memory on a node, use \fB\-\-mem=0\fR.
@@ -1175,13 +1181,12 @@ partition's \fBOverSubscribe\fR option takes precedence over the job's option.
 sharing GRES (GPU) this option only allocates all sharing GRES and no underlying
 shared GRES.
 
-This option can also be used when initiating more than one job step within
+This option can also be used when initiating more than one \fBjob step\fR within
 an existing resource allocation (default), where you want separate processors to
-be dedicated to each job step. If sufficient processors are not
-available to initiate the job step, it will be deferred. This can
-be thought of as providing a mechanism for resource management to the job
-within its allocation (\fB\-\-exact\fR implied).
-
+be dedicated to each job step. The job step is only allocated as much GRES as is
+requested. If sufficient processors are not available to initiate the job step,
+it will be deferred. This can be thought of as providing a mechanism for
+resource management to the job within its allocation (\fB\-\-exact\fR implied).
 The exclusive allocation of CPUs applies to job steps by default, but \-\-exact
 is \fBNOT\fR the default. In other words, the default behavior is this: job
 steps will not share CPUs, but job steps will be allocated all CPUs available
@@ -1870,7 +1875,8 @@ per task; \fB\-\-mem\-per\-cpu\fR will be reduced to a value no larger than
 \fBMaxMemPerCPU\fR; \fB\-\-cpus\-per\-task\fR will be set and the value of
 \fB\-\-cpus\-per\-task\fR multiplied by the new \fB\-\-mem\-per\-cpu\fR
 value will equal the original \fB\-\-mem\-per\-cpu\fR value specified by
-the user.
+the user. If the user already specified a value for \fB\-\-cpus\-per\-task\fR,
+it will be respected and only the total amount of allocated CPUs will change.
 This parameter would generally be used if individual processors
 are allocated to jobs (\fBSelectType=select/cons_tres\fR).
 If resources are allocated by core, socket, or whole nodes, then the number
@@ -3045,7 +3051,7 @@ affinity of the gres as specified in gres.conf's \fICores\fR parameter.
 \fB\-\-tres\-per\-task\fR=<\fIlist\fR>
 Specifies a comma\-delimited list of trackable resources required for the job on
 each task to be spawned in the job's resource allocation.
-The format for each entry in the list is "trestype[/tresname]:count".
+The format for each entry in the list is "trestype[/tresname]=count".
 The \fItrestype\fR is the type of trackable resource requested (e.g. cpu, gres,
 license, etc).
 The \fItresname\fR is the name of the trackable resource, as can be seen with
@@ -3069,10 +3075,10 @@ The count can have a suffix of
 .br
 Examples:
 .nf
-\-\-tres\-per\-task=cpu:4
-\-\-tres\-per\-task=cpu:8,license/ansys:1
-\-\-tres\-per\-task=gres/gpu:1
-\-\-tres\-per\-task=gres/gpu:a100:2
+\-\-tres\-per\-task=cpu=4
+\-\-tres\-per\-task=cpu=8,license/ansys=1
+\-\-tres\-per\-task=gres/gpu=1
+\-\-tres\-per\-task=gres/gpu:a100=2
 .fi
 The specified resources will be allocated to the job on each node.
 The available trackable resources are configurable by the system
@@ -3480,7 +3486,7 @@ Same as \fB\-\-cpus\-per\-gpu\fR
 
 .TP
 \fBSLURM_CPUS_PER_TASK\fR
-Same as \fB\-c, \-\-cpus\-per\-task\fR or \fB\-\-tres\-per\-task=cpu:#\fR
+Same as \fB\-c, \-\-cpus\-per\-task\fR or \fB\-\-tres\-per\-task=cpu=#\fR
 .IP
 
 .TP
@@ -3989,7 +3995,7 @@ indicates the number of CPUs on this node allocated to the step.
 \fBSLURM_CPUS_PER_TASK\fR
 Number of cpus requested per task.
 Only set if either the \fB\-\-cpus\-per\-task\fR option or the
-\fB\-\-tres\-per\-task=cpu:#\fR option is specified.
+\fB\-\-tres\-per\-task=cpu=#\fR option is specified.
 .IP
 
 .TP
@@ -4057,6 +4063,11 @@ Only set in batch and interactive jobs.
 .TP
 \fBSLURM_JOB_ID\fR
 Job id of the executing job.
+.IP
+
+.TP
+\fBSLURM_JOB_LICENSES\fR
+Name and count of any license(s) requested.
 .IP
 
 .TP

@@ -1010,6 +1010,8 @@ extern List as_mysql_modify_qos(mysql_conn_t *mysql_conn, uint32_t uid,
 				} else if (new_preempt[0] == '+') {
 					bit_set(qos_rec->preempt_bitstr,
 						atol(new_preempt+1));
+				} else if (new_preempt[0] == '\0') {
+					bit_clear_all(qos_rec->preempt_bitstr);
 				} else {
 					if (!cleared) {
 						cleared = 1;
@@ -1136,10 +1138,10 @@ extern List as_mysql_remove_qos(mysql_conn_t *mysql_conn, uint32_t uid,
 		else
 			xstrfmtcat(assoc_char, " || id_qos='%s'", row[0]);
 		xstrfmtcat(extra,
-			   ", qos=replace(qos, ',%s,', '')"
-			   ", delta_qos=replace(delta_qos, ',+%s,', '')"
-			   ", delta_qos=replace(delta_qos, ',-%s,', '')",
-			   row[0], row[0], row[0]);
+			   ", qos=replace(qos, ',%s,', if(qos=',%s,', '', ','))"
+			   ", delta_qos=replace(delta_qos, ',+%s,', if(delta_qos=',+%s,', '', ','))"
+			   ", delta_qos=replace(delta_qos, ',-%s,', if(delta_qos=',-%s,', '', ','))",
+			   row[0], row[0], row[0], row[0], row[0], row[0]);
 
 		qos_rec = xmalloc(sizeof(slurmdb_qos_rec_t));
 		/* we only need id when removing no real need to init */

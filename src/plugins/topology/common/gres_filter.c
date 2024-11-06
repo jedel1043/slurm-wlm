@@ -39,25 +39,38 @@ static uint16_t *avail_cores_per_sock = NULL;
 
 static uint64_t _shared_gres_task_limit(gres_job_state_t *gres_js,
 					bool use_total_gres,
+					bool one_task_sharing,
 					gres_node_state_t *gres_ns)
 {
-	int task_limit = 0, cnt;
+	int task_limit = 0, cnt, task_cnt;
+	gres_node_state_t *alt_gres_ns =
+		gres_ns->alt_gres ? gres_ns->alt_gres->gres_data : NULL;
+
 	for (int i = 0; i < gres_ns->topo_cnt; i++)
 	{
 		if (gres_js->type_id &&
 		    gres_js->type_id != gres_ns->topo_type_id[i])
 			continue;
-
+		if (!use_total_gres &&
+		    alt_gres_ns && alt_gres_ns->gres_bit_alloc &&
+		    gres_ns->topo_gres_bitmap && gres_ns->topo_gres_bitmap[i] &&
+		    bit_overlap_any(gres_ns->topo_gres_bitmap[i],
+				    alt_gres_ns->gres_bit_alloc))
+			continue; /* Skip alt gres that are currently used */
 		cnt = gres_ns->topo_gres_cnt_avail[i];
 
 		if (!use_total_gres)
 			cnt -= gres_ns->topo_gres_cnt_alloc[i];
 
-		if ((slurm_conf.select_type_param & MULTIPLE_SHARING_GRES_PJ))
-			task_limit += cnt / gres_js->gres_per_task;
+		if (one_task_sharing)
+			task_cnt = (cnt >= gres_js->gres_per_task) ? 1 : 0;
 		else
-			task_limit = MAX(task_limit,
-					 (cnt / gres_js->gres_per_task));
+			task_cnt = cnt / gres_js->gres_per_task;
+
+		if ((slurm_conf.select_type_param & MULTIPLE_SHARING_GRES_PJ))
+			task_limit += task_cnt;
+		else
+			task_limit = MAX(task_limit, task_cnt);
 	}
 	return task_limit;
 }
@@ -101,8 +114,8 @@ static void _estimate_cpus_per_gres(uint32_t ntasks_per_job,
 
 static int _sort_sockets_by_avail_cores(const void *x, const void *y)
 {
-	return slurm_sort_uint_list_desc(&avail_cores_per_sock[*(int *)x],
-					 &avail_cores_per_sock[*(int *)y]);
+	return slurm_sort_uint16_list_desc(&avail_cores_per_sock[*(int *)x],
+					   &avail_cores_per_sock[*(int *)y]);
 }
 
 static int _sock_gres_sort(void *x, void *y)
@@ -283,6 +296,9 @@ extern void gres_filter_sock_core(job_record_t *job_ptr,
 
 	if (*max_tasks_this_node == 0)
 		return;
+
+	if (mc_ptr->threads_per_core)
+		cpus_per_core = MIN(cpus_per_core, mc_ptr->threads_per_core);
 
 	xassert(avail_core);
 	avail_cores_per_sock = xcalloc(sockets, sizeof(uint16_t));
@@ -602,6 +618,8 @@ extern void gres_filter_sock_core(job_record_t *job_ptr,
 				    sock_gres->gres_state_job->config_flags))
 				max_tasks = _shared_gres_task_limit(
 					gres_js, sock_gres->use_total_gres,
+					(job_ptr->bit_flags &
+					 GRES_ONE_TASK_PER_SHARING),
 					sock_gres->gres_state_node->gres_data);
 			else
 				max_tasks = cnt_avail_total /

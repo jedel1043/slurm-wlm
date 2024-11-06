@@ -515,6 +515,13 @@ static void _print_config(char *config_param, int argc, char **argv)
 	int error_code;
 	slurm_ctl_conf_info_msg_t  *slurm_ctl_conf_ptr = NULL;
 
+	/*
+	 * There isn't a parser for slurm.conf but there is one for ping, which
+	 * gets printed as part of this funciton. So to make sure the ouput is
+	 * not mixing output types disable json/yaml ouput for ping.
+	 */
+	mime_type = NULL;
+
 	if (old_slurm_ctl_conf_ptr) {
 		error_code = slurm_load_ctl_conf (
 				old_slurm_ctl_conf_ptr->last_update,
@@ -576,8 +583,14 @@ static void _print_ping(int argc, char **argv)
 	controller_ping_t *pings = ping_all_controllers();
 
 	if (mime_type) {
-		DATA_DUMP_CLI_SINGLE(OPENAPI_PING_ARRAY_RESP, pings, argc, argv,
-				     NULL, mime_type, data_parser, exit_code);
+		if (is_data_parser_deprecated(data_parser))
+			DATA_DUMP_CLI_DEPRECATED(CONTROLLER_PING_ARRAY, pings,
+						 "pings", argc, argv, NULL,
+						 mime_type, exit_code);
+		else
+			DATA_DUMP_CLI_SINGLE(OPENAPI_PING_ARRAY_RESP, pings,
+					     argc, argv, NULL, mime_type,
+					     data_parser, exit_code);
 		xfree(pings);
 		return;
 	}

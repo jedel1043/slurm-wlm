@@ -5992,7 +5992,7 @@ static int _merge_generic_data(
 			if (over_list[i].plugin_id != gres_state->plugin_id)
 				continue;
 			if (generic_gres_data == gres_state->gres_data) {
-				list_remove(iter);
+				list_delete_item(iter);
 				continue;
 			}
 
@@ -7832,6 +7832,17 @@ static uint32_t _job_test(gres_state_t *gres_state_job,
 					topo_gres_cnt_alloc[top_inx];
 			} else if (!use_total_gres) {
 				gres_tmp = 0;
+			}
+			if (gres_id_shared(gres_state_job->config_flags) &&
+			    gres_js->gres_per_task) {
+				/*
+				 * Remove remaining shared gres_per_task
+				 * Because we don't allocate shared
+				 * gres_per_task across multiple sharing gres.
+				 * See _set_shared_task_bits() in
+				 * gres_select_filter.c
+				 */
+				gres_tmp -= (gres_tmp % gres_js->gres_per_task);
 			}
 			if (gres_tmp == 0) {
 				error("gres/%s: topology allocation error on node %s",
@@ -10093,7 +10104,7 @@ static int _get_usable_gres(int context_inx, int proc_id,
 		if (get_devices)
 			return SLURM_SUCCESS;
 		/*
-		* Overwrite device index setting to use the global node GRES
+		* Overwrite device index setting to use the global node/job GRES
 		* index, rather than the index local to the task. This ensures
 		* that the GRES environment variable is set correctly on the
 		* task when multiple devices are constrained to the task, and
@@ -10101,6 +10112,16 @@ static int _get_usable_gres(int context_inx, int proc_id,
 		*/
 		use_local_index = false;
 		dev_index_mode_set = true;
+
+		/*
+		 * Consolidate allocated gres bitstring so that we get the GRES
+		 * device index of the GRES within the context of the job, and
+		 * not within the context of the whole node, unless specifically
+		 * required with the GRES_CONF_GLOBAL_INDEX flag.
+		 */
+		if (!(gres_context[context_inx].config_flags &
+		      GRES_CONF_GLOBAL_INDEX))
+			bit_consolidate(gres_bit_alloc);
 	}
 
 	if (gres_context[context_inx].config_flags & GRES_CONF_GLOBAL_INDEX) {
