@@ -15,17 +15,6 @@ Last-Update: 2024-07-21
  scope to be ready before failing. Only applies to cgroup/v2.
  The default is 1000 ms.
  .IP
---- slurm-wlm-24.05.1.orig/doc/man/man5/slurm.conf.5
-+++ slurm-wlm-24.05.1/doc/man/man5/slurm.conf.5
-@@ -6385,7 +6385,7 @@ Number of cores per GPU restricted for o
- GPU it will not have access to these cores.
- 
- \fBNOTE\fR: Configuring multiple GPU types on overlapping sockets can result in
--erroneous GPU type and restricted core pairings in allocations requsting gpus
-+erroneous GPU type and restricted core pairings in allocations requesting gpus
- without specifying a type.
- .IP
- 
 --- slurm-wlm-24.05.1.orig/src/slurmd/slurmd/req.c
 +++ slurm-wlm-24.05.1/src/slurmd/slurmd/req.c
 @@ -3043,7 +3043,7 @@ _rpc_reboot(slurm_msg_t *msg)
