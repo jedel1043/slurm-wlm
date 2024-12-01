@@ -114,8 +114,6 @@ Description: Slurm central management daemon
 
 Package: libslurm42t64
 Provides: ${t64:Provides}
-Replaces: libslurm41
-Breaks: libslurm41 (<< ${source:Version})
 Section: libs
 Architecture: any
 Pre-Depends: ${misc:Pre-Depends}
