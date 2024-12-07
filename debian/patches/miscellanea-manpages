@@ -7,7 +7,7 @@ Last-Update: 2024-07-21
 
 --- a/configure.ac
 +++ b/configure.ac
-@@ -375,6 +375,7 @@
+@@ -384,6 +384,7 @@
  		 doc/man/Makefile
  		 doc/man/man1/Makefile
  		 doc/man/man5/Makefile
@@ -58,7 +58,7 @@ Last-Update: 2024-07-21
 +
 --- a/doc/man/man5/slurm.conf.5
 +++ b/doc/man/man5/slurm.conf.5
-@@ -2533,7 +2533,7 @@
+@@ -2595,7 +2595,7 @@
  be called before and/or after execution of each task spawned as
  part of a user's job step. Default location is "plugstack.conf"
  in the same directory as the system slurm.conf. For more information
@@ -67,7 +67,7 @@ Last-Update: 2024-07-21
  .IP
  
  .TP
-@@ -8080,4 +8080,4 @@
+@@ -8326,4 +8326,4 @@
  \fBgetrlimit\fR(2), \fBgres.conf\fR(5), \fBgroup\fR(5), \fBhostname\fR(1),
  \fBscontrol\fR(1), \fBslurmctld\fR(8), \fBslurmd\fR(8),
  \fBslurmdbd\fR(8), \fBslurmdbd.conf\fR(5), \fBsrun\fR(1),

@@ -7,7 +7,7 @@ Last-Update: 2024-07-21
 
 --- a/src/common/read_config.h
 +++ b/src/common/read_config.h
-@@ -139,9 +139,9 @@
+@@ -135,9 +135,9 @@
  #define DEFAULT_SCHED_TIME_SLICE    30
  #define DEFAULT_SCHEDTYPE           "sched/backfill"
  #define DEFAULT_SELECT_TYPE         "select/cons_tres"
