@@ -1,3 +1,15 @@
+slurm-wlm (24.11.0-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+  * Bump SONAME to 42 and update symbols
+  * Remove useless Replaces/Breaks libslurm41
+  * Refresh patches
+  * Add sackd.default (Closes: #1087927)
+  * Update copyright
+  * Fix so perms to allow rootless builds (Closes: #1089437)
+
+ -- Gennaro Oliva <oliva@debian.org>  Sun, 01 Dec 2024 22:00:21 +0100
+
 slurm-wlm (24.05.4-1) unstable; urgency=medium
 
   * New upstream release fixes CVE-2024-48936 (Closes: 1086003)
