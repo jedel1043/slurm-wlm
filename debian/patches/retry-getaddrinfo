@@ -6,7 +6,7 @@ Description: Retry getaddrinfo five times before giving up
  network-online.target is complete.
 Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
 Forwarded: https://bugs.schedmd.com/show_bug.cgi?id=13280
-Last-Update: 2022-01-21
+Last-Update: 2024-12-01
 
 --- a/src/common/util-net.c
 +++ b/src/common/util-net.c
@@ -18,26 +18,20 @@ Last-Update: 2022-01-21
  #include <arpa/inet.h>
  #include <errno.h>
  #include <limits.h>	/* for PATH_MAX */
-@@ -265,6 +266,7 @@
+@@ -258,8 +259,15 @@
+ {
  	struct addrinfo *result = NULL;
- 	struct addrinfo hints;
  	int err;
 +	int retry = 10;
- 	bool v4_enabled = slurm_conf.conf_flags & CONF_FLAG_IPV4_ENABLED;
- 	bool v6_enabled = slurm_conf.conf_flags & CONF_FLAG_IPV6_ENABLED;
- 
-@@ -300,7 +302,13 @@
- 		hints.ai_flags |= AI_CANONNAME;
- 	hints.ai_socktype = SOCK_STREAM;
- 
--	err = getaddrinfo(hostname, serv, &hints, &result);
-+	while ( ( (err = getaddrinfo(hostname, serv, &hints, &result)) != 0 ) && retry ) {
++
++	while ( ( (err = getaddrinfo(hostname, serv, hints, &result)) != 0 ) && retry ) {
 +		error("%s: getaddrinfo() failed: %s: %m, attempt number %d", __func__,
 +			gai_strerror(err), 6 - retry);
 +		sleep(1);
 +		retry -= 1;
 +	}
-+
+ 
+-	err = getaddrinfo(hostname, serv, hints, &result);
  	if (err == EAI_SYSTEM) {
  		error_in_daemon("%s: getaddrinfo(%s:%s) failed: %s: %m",
  				__func__, hostname, serv, gai_strerror(err));

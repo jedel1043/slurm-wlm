@@ -8,13 +8,16 @@ Last-Update: 2024-07-21
 
 --- a/src/interfaces/gpu.c
 +++ b/src/interfaces/gpu.c
-@@ -93,14 +93,10 @@
+@@ -93,7 +93,6 @@
  	uint32_t autodetect_flags = gres_get_autodetect_flags();
  
  	if (autodetect_flags & GRES_AUTODETECT_GPU_NVML) {
 -#ifdef HAVE_NVML
- 		if (!dlopen("libnvidia-ml.so", RTLD_NOW | RTLD_GLOBAL))
- 			info("We were configured with nvml functionality, but that lib wasn't found on the system.");
+ 		(void) dlerror();
+ 		if (!(ext_lib_handle = dlopen("libnvidia-ml.so",
+ 					      RTLD_NOW | RTLD_GLOBAL)) &&
+@@ -103,9 +102,6 @@
+ 			     dlerror());
  		else
  			return "gpu/nvml";
 -#else
@@ -22,4 +25,4 @@ Last-Update: 2024-07-21
 -#endif
  	} else if (autodetect_flags & GRES_AUTODETECT_GPU_RSMI) {
  #ifdef HAVE_RSMI
- 		if (!dlopen("librocm_smi64.so", RTLD_NOW | RTLD_GLOBAL))
+ 		(void) dlerror();

@@ -1,12 +1,12 @@
 Description: Fix typos in code and man pages
- This patch fix some typos in tcode and man pages
+ This patch fix some typos in code and man pages
 Author: Gennaro Oliva <oliva@debian.org>
 Forwarded: https://support.schedmd.com/show_bug.cgi?id=20460
 Last-Update: 2024-07-21
 
---- slurm-wlm-24.05.1.orig/doc/man/man5/cgroup.conf.5
-+++ slurm-wlm-24.05.1/doc/man/man5/cgroup.conf.5
-@@ -45,7 +45,7 @@ cgroup versions. The default value is "a
+--- a/doc/man/man5/cgroup.conf.5
++++ b/doc/man/man5/cgroup.conf.5
+@@ -45,7 +45,7 @@
  \fBSystemdTimeout\fR=\fI<number>\fR
  On slow systems like virtual machines or when systemd is busy, it can take
  a lot of time to initialize and prepare the scope for slurmd during startup.
@@ -15,9 +15,9 @@ Last-Update: 2024-07-21
  scope to be ready before failing. Only applies to cgroup/v2.
  The default is 1000 ms.
  .IP
---- slurm-wlm-24.05.1.orig/src/slurmd/slurmd/req.c
-+++ slurm-wlm-24.05.1/src/slurmd/slurmd/req.c
-@@ -3043,7 +3043,7 @@ _rpc_reboot(slurm_msg_t *msg)
+--- a/src/slurmd/slurmd/req.c
++++ b/src/slurmd/slurmd/req.c
+@@ -3073,7 +3073,7 @@
  			log_flag(NODE_FEATURES, "Features on node updated successfully");
  		}
  		if (!need_reboot) {
