@@ -130,7 +130,6 @@ Copyright: 2019-2021,2023 SchedMD LLC.
 License: GPL-2+ with OpenSSL exception or apache-2.0
 
 Files: src/slurmrestd/plugins/openapi/slurmctld/reservations.c
-       src/slurmrestd/plugins/openapi/v0.0.39/reservations.c
 Copyright: 2020 UT-Battelle, LLC.
 License: GPL-2+ with OpenSSL exception or apache-2.0
 
@@ -177,7 +176,6 @@ Files: src/interfaces/mcs.?
        src/plugins/mcs/user/mcs_user.c
        src/plugins/proctrack/cgroup/proctrack_cgroup.c
        src/plugins/task/cgroup/task_cgroup.c
-       src/plugins/task/cgroup/task_cgroup.h
        src/plugins/task/cgroup/task_cgroup_cpuset.h
        src/plugins/task/cgroup/task_cgroup_devices.h
        src/plugins/task/cgroup/task_cgroup_memory.c
@@ -207,7 +205,6 @@ Files: src/api/resource_functions.c
        src/sacctmgr/resource_functions.c
        src/slurmd/common/slurmd_cgroup.c
        src/slurmd/common/slurmd_cgroup.h
-       testsuite/expect/test33.1.prog.c
 Copyright: 2011-2014 Bull
 License: GPL-2+ with OpenSSL exception
 
@@ -292,7 +289,6 @@ License: GPL-2+ with OpenSSL exception
 
 Files: src/plugins/acct_gather_energy/ipmi/acct_gather_energy_ipmi.c
        src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup.c
-       src/plugins/jobacct_gather/cgroup/jobacct_gather_cgroup.h
 Copyright: 2007,2011-2013 Bull
            2002,2007 The Regents of the University of California
 License: GPL-2+ with OpenSSL exception
@@ -355,7 +351,6 @@ License: GPL-2+ with OpenSSL exception
 Files: src/plugins/acct_gather_energy/rapl/acct_gather_energy_rapl.c
        src/plugins/acct_gather_filesystem/lustre/acct_gather_filesystem_lustre.c
        src/plugins/acct_gather_interconnect/ofed/acct_gather_interconnect_ofed.c
-       src/plugins/acct_gather_interconnect/ofed/acct_gather_interconnect_ofed.h
 Copyright: 2012-2013 Bull - Yiannis Georgiou
            2002 The Regents of the University of California
 License: GPL-2+ with OpenSSL exception
@@ -420,7 +415,6 @@ License: GPL-2+ with OpenSSL exception
 
 Files: testsuite/expect/test1.76
        testsuite/expect/test12.6
-       testsuite/expect/test33.1
 Copyright: 2013-2014 Bull
 License: GPL-2+
 
@@ -733,6 +727,10 @@ License: GPL-2+ with OpenSSL exception
 Files: src/sdiag/sdiag.h
 Copyright: 2019,2020 UT-Battelle, LLC
 License: GPL-2+ with OpenSSL exception
+
+Files: auxdir/ax_have_epoll.m4
+Copyright: 2008 Peter Simons
+License: FSF-all-permissive
 
 License: GPL-2+ with OpenSSL exception
  This file is part of SLURM, a resource management program.
