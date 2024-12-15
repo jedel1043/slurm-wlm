@@ -60,6 +60,7 @@ override_dh_auto_install:
 	
 	# run make install for libslurm[db]-perl pkgs
 	$(MAKE) -C obj-$(DEB_BUILD_GNU_TYPE)/contribs/perlapi install DESTDIR=$(CURDIR)/debian/tmp PERL_MM_OPT="INSTALLDIRS=vendor"
+	find debian/tmp/$(PERL_ARCHLIB) -type f -name "*.so" | xargs chmod u+rwX
 	find debian/tmp/$(PERL_ARCHLIB) -type f -name "*.so" | xargs chrpath -d
 	
 	# run make install for slurm-wlm-torque pkg
