@@ -1,3 +1,9 @@
+slurm-wlm (24.11.0-2) unstable; urgency=medium
+
+  * Source only upload for testing
+
+ -- Gennaro Oliva <oliva@debian.org>  Tue, 24 Dec 2024 08:15:02 +0100
+
 slurm-wlm (24.11.0-1) unstable; urgency=medium
 
   * New upstream release
