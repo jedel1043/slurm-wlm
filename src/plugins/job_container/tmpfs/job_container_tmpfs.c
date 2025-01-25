@@ -722,7 +722,8 @@ extern int container_p_join_external(uint32_t job_id)
 	return step_ns_fd;
 }
 
-extern int container_p_join(uint32_t job_id, uid_t uid)
+extern int container_p_join(slurm_step_id_t *step_id, uid_t uid,
+			    bool step_create)
 {
 	char *job_mount = NULL, *ns_holder = NULL;
 	int fd;
@@ -737,18 +738,20 @@ extern int container_p_join(uint32_t job_id, uid_t uid)
 	 * all successive calls within slurmstepd need to be skipped. If not
 	 * set, do the opposite.
 	 */
-	if ((!jc_conf->entire_step_in_ns && running_in_slurmd()) ||
-	    (jc_conf->entire_step_in_ns && running_in_slurmstepd()))
+	if ((!jc_conf->entire_step_in_ns && running_in_slurmd() &&
+	     step_create) ||
+	    (jc_conf->entire_step_in_ns && running_in_slurmstepd() &&
+	     step_id->step_id != SLURM_EXTERN_CONT))
 		return SLURM_SUCCESS;
 
 	/*
 	 * Jobid 0 means we are not a real job, but a script running instead we
 	 * do not need to handle this request.
 	 */
-	if (job_id == 0)
+	if (step_id->job_id == 0)
 		return SLURM_SUCCESS;
 
-	_create_paths(job_id, &job_mount, &ns_holder, NULL);
+	_create_paths(step_id->job_id, &job_mount, &ns_holder, NULL);
 
 	/* This is called on the slurmd so we can't use ns_fd. */
 	fd = open(ns_holder, O_RDONLY);
@@ -768,7 +771,7 @@ extern int container_p_join(uint32_t job_id, uid_t uid)
 		xfree(ns_holder);
 		return SLURM_ERROR;
 	} else {
-		log_flag(JOB_CONT, "job %u entered namespace", job_id);
+		log_flag(JOB_CONT, "job %u entered namespace", step_id->job_id);
 	}
 
 	close(fd);
