@@ -248,7 +248,7 @@ Depends:
  slurm-wlm-influxdb-plugin (= ${binary:Version}),
  slurm-wlm-ipmi-plugins (= ${binary:Version}),
  slurm-wlm-jwt-plugin (= ${binary:Version}),
- slurm-wlm-mysql-plugin-dev (= ${binary:Version}),
+ slurm-wlm-mysql-plugin (= ${binary:Version}),
  slurm-wlm-rsmi-plugin (= ${binary:Version}),
  ${misc:Depends},
 Description: Slurm free plugins (metapackage)
