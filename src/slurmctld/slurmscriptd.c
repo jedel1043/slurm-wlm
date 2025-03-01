@@ -720,6 +720,7 @@ static int _handle_shutdown(slurmscriptd_msg_t *recv_msg)
 
 static int _handle_run_script(slurmscriptd_msg_t *recv_msg)
 {
+	extern char **environ;
 	run_script_msg_t *script_msg = recv_msg->msg_data;
 	int rc, status = 0;
 	char *resp_msg = NULL;
@@ -747,7 +748,13 @@ static int _handle_run_script(slurmscriptd_msg_t *recv_msg)
 
 	switch (script_msg->script_type) {
 	case SLURMSCRIPTD_BB_LUA:
-		/* Set SLURM_SCRIPT_CONTEXT in env for slurmctld */
+		/*
+		 * Set SLURM_SCRIPT_CONTEXT in env for slurmctld, but we also
+		 * need to preserve the parent's environment. There was not any
+		 * env passed to us in script_msg.
+		 */
+		xassert(!run_command_args.env);
+		run_command_args.env = env_array_copy((const char **) environ);
 		env_array_append(&run_command_args.env, "SLURM_SCRIPT_CONTEXT",
 				 "burst_buffer.lua");
 
@@ -1077,14 +1084,29 @@ static void _on_sigterm(conmgr_callback_args_t conmgr_args, void *arg)
 	log_flag(SCRIPT, "Caught SIGTERM. Ignoring.");
 }
 
+static void _on_sigchld(conmgr_callback_args_t conmgr_args, void *arg)
+{
+	log_flag(SCRIPT, "Caught SIGCHLD. Ignoring");
+}
+
 static void _on_sigquit(conmgr_callback_args_t conmgr_args, void *arg)
 {
 	log_flag(SCRIPT, "Caught SIGQUIT. Ignoring.");
 }
 
+static void _on_sigtstp(conmgr_callback_args_t conmgr_args, void *arg)
+{
+	log_flag(SCRIPT, "Caught SIGTSTP. Ignoring.");
+}
+
 static void _on_sighup(conmgr_callback_args_t conmgr_args, void *arg)
 {
 	log_flag(SCRIPT, "Caught SIGHUP. Ignoring.");
+}
+
+static void _on_sigusr1(conmgr_callback_args_t conmgr_args, void *arg)
+{
+	log_flag(SCRIPT, "Caught SIGUSR1. Ignoring.");
 }
 
 static void _on_sigusr2(conmgr_callback_args_t conmgr_args, void *arg)
@@ -1098,6 +1120,20 @@ static void _on_sigpipe(conmgr_callback_args_t conmgr_args, void *arg)
 	debug5("Caught SIGPIPE. Ignoring.");
 }
 
+static void _on_sigxcpu(conmgr_callback_args_t conmgr_args, void *arg)
+{
+	log_flag(SCRIPT, "Caught SIGXCPU. Ignoring.");
+}
+
+static void _on_sigabrt(conmgr_callback_args_t conmgr_args, void *arg)
+{
+	log_flag(SCRIPT, "Caught SIGABRT. Ignoring.");
+}
+
+static void _on_sigalrm(conmgr_callback_args_t conmgr_args, void *arg)
+{
+	log_flag(SCRIPT, "Caught SIGALRM. Ignoring.");
+}
 
 static void _init_slurmscriptd_conmgr(void)
 {
@@ -1114,10 +1150,16 @@ static void _init_slurmscriptd_conmgr(void)
 	 */
 	conmgr_add_work_signal(SIGINT, _on_sigint, NULL);
 	conmgr_add_work_signal(SIGTERM, _on_sigterm, NULL);
+	conmgr_add_work_signal(SIGCHLD, _on_sigchld, NULL);
 	conmgr_add_work_signal(SIGQUIT, _on_sigquit, NULL);
+	conmgr_add_work_signal(SIGTSTP, _on_sigtstp, NULL);
 	conmgr_add_work_signal(SIGHUP, _on_sighup, NULL);
+	conmgr_add_work_signal(SIGUSR1, _on_sigusr1, NULL);
 	conmgr_add_work_signal(SIGUSR2, _on_sigusr2, NULL);
 	conmgr_add_work_signal(SIGPIPE, _on_sigpipe, NULL);
+	conmgr_add_work_signal(SIGXCPU, _on_sigxcpu, NULL);
+	conmgr_add_work_signal(SIGABRT, _on_sigabrt, NULL);
+	conmgr_add_work_signal(SIGALRM, _on_sigalrm, NULL);
 
 	conmgr_run(false);
 }

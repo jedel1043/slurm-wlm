@@ -3450,8 +3450,9 @@ extern int update_resv(resv_desc_msg_t *resv_desc_ptr, char **err_msg)
 			 * updated to have multiple reoccurring flags, then
 			 * reject the update
 			 */
-			if (((resv_ptr->flags & RESERVE_REOCCURRING) !=
-			     (resv_desc_ptr->flags & RESERVE_REOCCURRING)) ||
+			if (((resv_ptr->flags & RESERVE_REOCCURRING) &&
+			     ((resv_ptr->flags & RESERVE_REOCCURRING) !=
+			      (resv_desc_ptr->flags & RESERVE_REOCCURRING))) ||
 			    (_has_multiple_reoccurring(resv_desc_ptr))) {
 				info("Cannot update reservation to have multiple reoccurring flags. Please specify only one reoccurring flag");
 				if (err_msg)
@@ -6752,6 +6753,8 @@ extern int job_test_resv(job_record_t *job_ptr, time_t *when,
 				*node_bitmap = bit_copy(resv_ptr->node_bitmap);
 			}
 		}
+		/* The job can only run on nodes in the partition */
+		bit_and(*node_bitmap, job_ptr->part_ptr->node_bitmap);
 
 		/*
 		 * if there are any overlapping reservations, we need to

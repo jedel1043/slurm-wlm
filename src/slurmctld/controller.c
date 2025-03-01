@@ -416,11 +416,6 @@ static void _on_sigpipe(conmgr_callback_args_t conmgr_args, void *arg)
 	debug5("Caught SIGPIPE. Ignoring.");
 }
 
-static void _on_sigttin(conmgr_callback_args_t conmgr_args, void *arg)
-{
-	debug5("Caught SIGTTIN. Ignoring.");
-}
-
 static void _on_sigxcpu(conmgr_callback_args_t conmgr_args, void *arg)
 {
 	debug5("Caught SIGXCPU. Ignoring.");
@@ -431,6 +426,11 @@ static void _on_sigabrt(conmgr_callback_args_t conmgr_args, void *arg)
 	info("SIGABRT received");
 	slurmctld_shutdown();
 	dump_core = true;
+}
+
+static void _on_sigalrm(conmgr_callback_args_t conmgr_args, void *arg)
+{
+	debug5("Caught SIGALRM. Ignoring.");
 }
 
 static void _register_signal_handlers(conmgr_callback_args_t conmgr_args,
@@ -445,9 +445,9 @@ static void _register_signal_handlers(conmgr_callback_args_t conmgr_args,
 	conmgr_add_work_signal(SIGUSR1, _on_sigusr1, NULL);
 	conmgr_add_work_signal(SIGUSR2, _on_sigusr2, NULL);
 	conmgr_add_work_signal(SIGPIPE, _on_sigpipe, NULL);
-	conmgr_add_work_signal(SIGTTIN, _on_sigttin, NULL);
 	conmgr_add_work_signal(SIGXCPU, _on_sigxcpu, NULL);
 	conmgr_add_work_signal(SIGABRT, _on_sigabrt, NULL);
+	conmgr_add_work_signal(SIGALRM, _on_sigalrm, NULL);
 }
 
 static void _reopen_stdio(void)
@@ -1525,8 +1525,7 @@ static int _on_primary_msg(conmgr_fd_t *con, slurm_msg_t *msg, void *arg)
 	 * to minimize controller disruption.
 	 */
 	if (rate_limit_exceeded(msg)) {
-		rc = SLURMCTLD_COMMUNICATIONS_BACKOFF;
-		slurm_send_rc_msg(msg, rc);
+		rc = slurm_send_rc_msg(msg, SLURMCTLD_COMMUNICATIONS_BACKOFF);
 		slurm_free_msg(msg);
 	} else if ((rc = conmgr_queue_extract_con_fd(
 			    con, _service_connection,
@@ -2191,6 +2190,9 @@ static void _queue_reboot_msg(void)
 
 		bit_clear(avail_node_bitmap, node_ptr->index);
 		bit_clear(idle_node_bitmap, node_ptr->index);
+
+		/* Unset this as this node is not in reboot ASAP anymore. */
+		bit_clear(asap_node_bitmap, node_ptr->index);
 
 		node_ptr->boot_req_time = now;
 
@@ -2946,6 +2948,7 @@ static void _parse_commandline(int argc, char **argv)
 		char *ctx = getenv("SLURM_SCRIPT_CONTEXT");
 
 		if (!xstrcmp(ctx, "burst_buffer.lua")) {
+			unsetenv("SLURM_SCRIPT_CONTEXT");
 			slurmscriptd_handle_bb_lua_mode(argc, argv);
 			_exit(127);
 		}

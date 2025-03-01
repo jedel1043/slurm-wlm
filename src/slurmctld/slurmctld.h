@@ -293,7 +293,7 @@ extern list_t *conf_includes_list;  /* list of conf_includes_map_t */
 
 /*****************************************************************************\
  *  NODE states and bitmaps
- *
+ *  asap_node_bitmap 	    Set if the node is marked to be rebooted asap
  *  avail_node_bitmap       Set if node's state is not DOWN, DRAINING/DRAINED,
  *                          FAILING or NO_RESPOND (i.e. available to run a job)
  *  booting_node_bitmap     Set if node in process of booting
@@ -309,6 +309,7 @@ extern list_t *conf_includes_list;  /* list of conf_includes_map_t */
  *                          configured for the job's partition)
  *  up_node_bitmap          Set if the node's state is not DOWN
 \*****************************************************************************/
+extern bitstr_t *asap_node_bitmap; /* reboot asap nodes */
 extern bitstr_t *avail_node_bitmap;	/* bitmap of available nodes,
 					 * state not DOWN, DRAIN or FAILING */
 extern bitstr_t *bf_ignore_node_bitmap;	/* bitmap of nodes made available during
@@ -796,12 +797,14 @@ extern uint32_t get_next_job_id(bool test_only);
 /*
  * get_part_list - find record for named partition(s)
  * IN name - partition name(s) in a comma separated list
+ * OUT part_ptr_list - sorted list of pointers to the partitions or NULL
+ * OUT prim_part_ptr - pointer to the primary partition
  * OUT err_part - The first invalid partition name.
- * RET sorted list of pointers to the partitions or NULL if not found
  * NOTE: Caller must free the returned list
  * NOTE: Caller must free err_part
  */
-extern list_t *get_part_list(char *name, char **err_part);
+extern void get_part_list(char *name, list_t **part_ptr_list,
+			  part_record_t **prim_part_ptr, char **err_part);
 
 /*
  * init_depend_policy()
@@ -1968,6 +1971,11 @@ extern int update_part (update_part_msg_t * part_desc, bool create_flag);
  * tier is modified.
  */
 extern void sort_all_jobs_partition_lists();
+
+/*
+ * Common code to handle a job when a cred can't be created.
+ */
+extern void job_mgr_handle_cred_failure(job_record_t *job_ptr);
 
 /*
  * validate_alloc_node - validate that the allocating node
