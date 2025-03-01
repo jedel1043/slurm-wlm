@@ -1496,7 +1496,6 @@ static int _schedule(bool full_queue)
 	(void) list_for_each(resv_list, _foreach_setup_resv_sched, NULL);
 
 	save_avail_node_bitmap = bit_copy(avail_node_bitmap);
-	bit_or(avail_node_bitmap, rs_node_bitmap);
 
 	/* Avoid resource fragmentation if important */
 	if (reduce_completing_frag) {
@@ -1554,9 +1553,11 @@ static int _schedule(bool full_queue)
 			job_ptr = find_job_record(job_ptr->array_job_id);
 			job_queue_rec->job_ptr = job_ptr;
 		}
-		if (!job_ptr || !IS_JOB_PENDING(job_ptr)) {
+		if (!job_ptr ||
+		    !IS_JOB_PENDING(job_ptr) || /* started in other part/qos */
+		    !job_ptr->priority) { /* held from fail in other part/qos */
 			xfree(job_queue_rec);
-			continue;	/* started in other partition/qos */
+			continue;
 		}
 
 		use_prefer = job_queue_rec->use_prefer;
@@ -1807,7 +1808,11 @@ next_task:
 			 */
 			job_ptr->state_reason = WAIT_RESOURCES;
 			xfree(job_ptr->state_desc);
-			job_ptr->state_desc = xstrdup("Nodes required for job are DOWN, DRAINED or reserved for jobs in higher priority partitions");
+			job_ptr->state_desc =
+				xstrdup_printf("Nodes required for job are DOWN, DRAINED%s or reserved for jobs in higher priority partitions",
+					       bit_overlap(rs_node_bitmap,
+							   job_ptr->part_ptr->
+							   node_bitmap) ? ", REBOOTING" : "");
 			last_job_update = now;
 			sched_debug3("%pJ. State=%s. Reason=%s. Priority=%u. Partition=%s.",
 				     job_ptr,
@@ -2419,17 +2424,10 @@ static batch_job_launch_msg_t *_build_launch_job_msg(job_record_t *job_ptr,
 	launch_msg_ptr->profile       = job_ptr->profile;
 
 	if (make_batch_job_cred(launch_msg_ptr, job_ptr, protocol_version)) {
-		/* FIXME: This is a kludge, but this event indicates a serious
-		 * problem with Munge or OpenSSH and should never happen. We
-		 * are too deep into the job launch to gracefully clean up from
-		 * from the launch, so requeue if possible. */
-		error("Can not create job credential, attempting to requeue batch %pJ",
-		      job_ptr);
+		error("%s: slurm_cred_create failure for %pJ, holding job",
+		      __func__, job_ptr);
 		slurm_free_job_launch_msg(launch_msg_ptr);
-		job_ptr->batch_flag = 1;	/* Allow repeated requeue */
-		job_ptr->details->begin_time = time(NULL) + 120;
-		job_complete(job_ptr->job_id, slurm_conf.slurm_user_id,
-		             true, false, 0);
+		job_mgr_handle_cred_failure(job_ptr);
 		return NULL;
 	}
 
@@ -4308,6 +4306,10 @@ static int _foreach_add_to_preemptee_job_id(void *x, void *arg)
 	uint32_t *preemptee_jid = xmalloc(sizeof(uint32_t));
 
 	(*preemptee_jid) = job_ptr->job_id;
+
+	if (!resp_data->preemptee_job_id)
+		resp_data->preemptee_job_id = list_create(xfree_ptr);
+
 	list_append(resp_data->preemptee_job_id, preemptee_jid);
 
 	return 0;

@@ -1398,6 +1398,7 @@ extern int job_mgr_dump_job_state(void *object, void *arg)
 extern int job_mgr_load_job_state(buf_t *buffer,
 				  uint16_t protocol_version)
 {
+	char *err_part = NULL;
 	time_t now = time(NULL);
 	job_record_t *job_ptr = NULL;
 	int rc;
@@ -1449,23 +1450,15 @@ extern int job_mgr_load_job_state(buf_t *buffer,
 		lowest_prio  = MIN(lowest_prio,  job_ptr->priority);
 	}
 
-	job_ptr->part_ptr = find_part_record(job_ptr->partition);
+	get_part_list(job_ptr->partition, &job_ptr->part_ptr_list,
+		      &job_ptr->part_ptr, &err_part);
 	if (job_ptr->part_ptr == NULL) {
-		char *err_part = NULL;
-		job_ptr->part_ptr_list =
-			get_part_list(job_ptr->partition, &err_part);
-		if (job_ptr->part_ptr_list) {
-			job_ptr->part_ptr = list_peek(job_ptr->part_ptr_list);
-			if (list_count(job_ptr->part_ptr_list) == 1)
-				FREE_NULL_LIST(job_ptr->part_ptr_list);
-		} else {
-			verbose("Invalid partition (%s) for JobId=%u",
-				err_part, job_ptr->job_id);
-			xfree(err_part);
-			/* not fatal error, partition could have been
-			 * removed, reset_job_bitmaps() will clean-up
-			 * this job */
-		}
+		verbose("Invalid partition (%s) for JobId=%u",
+			err_part, job_ptr->job_id);
+		xfree(err_part);
+		/* not fatal error, partition could have been
+		 * removed, reset_job_bitmaps() will clean-up
+		 * this job */
 	}
 
 #if 0
@@ -1570,7 +1563,8 @@ extern int job_mgr_load_job_state(buf_t *buffer,
 
 	if (!job_finished && (job_ptr->qos_id || job_ptr->details->qos_req) &&
 	    (job_ptr->state_reason != FAIL_ACCOUNT)) {
-		int qos_error = _get_qos_info(job_ptr->details->qos_req, 0,
+		int qos_error = _get_qos_info(job_ptr->details->qos_req,
+					      job_ptr->qos_id,
 					      &job_ptr->qos_list,
 					      &job_ptr->qos_ptr,
 					      job_ptr->resv_name,
@@ -3960,10 +3954,6 @@ static int _select_nodes_parts(job_record_t *job_ptr, bool test_only,
 		.test_only = test_only,
 	};
 	int rc, best_rc, part_limits_rc;
-	bitstr_t *save_avail_node_bitmap = NULL;
-
-	save_avail_node_bitmap = bit_copy(avail_node_bitmap);
-	bit_or(avail_node_bitmap, rs_node_bitmap);
 
 	if (job_ptr->part_ptr_list) {
 		/* part_ptr_list is already sorted */
@@ -4023,9 +4013,6 @@ static int _select_nodes_parts(job_record_t *job_ptr, bool test_only,
 		job_ptr->state_reason = FAIL_QOS;
 	else if (rc == ESLURM_INVALID_ACCOUNT)
 		job_ptr->state_reason = FAIL_ACCOUNT;
-
-	FREE_NULL_BITMAP(avail_node_bitmap);
-	avail_node_bitmap = save_avail_node_bitmap;
 
 	return rc;
 }
@@ -6501,16 +6488,8 @@ static int _get_job_parts(job_desc_msg_t *job_desc, part_record_t **part_pptr,
 	/* Identify partition(s) and set pointer(s) to their struct */
 	if (job_desc->partition) {
 		char *err_part = NULL;
-		part_ptr = find_part_record(job_desc->partition);
-		if (part_ptr == NULL) {
-			part_ptr_list = get_part_list(job_desc->partition,
-						      &err_part);
-			if (part_ptr_list) {
-				part_ptr = list_peek(part_ptr_list);
-				if (list_count(part_ptr_list) == 1)
-					FREE_NULL_LIST(part_ptr_list);
-			}
-		}
+		get_part_list(job_desc->partition, &part_ptr_list, &part_ptr,
+			      &err_part);
 		if (part_ptr == NULL) {
 			info("%s: invalid partition specified: %s",
 			     __func__, job_desc->partition);
@@ -10352,7 +10331,8 @@ void pack_job(job_record_t *dump_job_ptr, uint16_t show_flags, buf_t *buffer,
 		else
 			packstr(dump_job_ptr->partition, buffer);
 
-		if (IS_JOB_PENDING(dump_job_ptr))
+		if (IS_JOB_PENDING(dump_job_ptr) &&
+		    dump_job_ptr->details->qos_req)
 			packstr(dump_job_ptr->details->qos_req, buffer);
 		else {
 			if (!has_qos_lock)
@@ -19405,4 +19385,13 @@ static int _sort_part_lists(void *x, void *none)
 extern void sort_all_jobs_partition_lists()
 {
 	list_for_each(job_list, _sort_part_lists, NULL);
+}
+
+extern void job_mgr_handle_cred_failure(job_record_t *job_ptr)
+{
+	job_ptr->priority = 0; /* Hold job */
+	xfree(job_ptr->system_comment);
+	job_ptr->system_comment =
+		xstrdup("slurm_cred_create failure, holding job.");
+	job_complete(job_ptr->job_id, slurm_conf.slurm_user_id, true, false, 0);
 }

@@ -116,8 +116,7 @@ static char *_get_device_name(unsigned int dev_inx)
 
 	if (!fscanf(fp, "%s", device_name))
 		debug("Could not read Neuron device name");
-
-	xstrtolower(device_name);
+	gpu_common_underscorify_tolower(device_name);
 	xfree(sysfs_file);
 	fclose(fp);
 	return device_name;
@@ -203,6 +202,7 @@ static list_t *_get_system_gpu_list_neuron(node_config_load_t *node_conf)
 			char *device_name = NULL;
 
 			gres_slurmd_conf_t gres_slurmd_conf = {
+				.config_flags = GRES_CONF_AUTODETECT,
 				.count = 1,
 				.cpu_cnt = node_conf->cpu_cnt,
 				.name = "gpu",

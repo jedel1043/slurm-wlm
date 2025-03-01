@@ -1703,6 +1703,7 @@ for filesystem profiling using the acct_gather_filesystem
 plugin.
 
 .RE
+.RE
 The default value for task sampling interval
 is 30 seconds. The default value for all other intervals is 0.
 An interval of 0 disables sampling of the specified type.
@@ -4244,7 +4245,7 @@ and the node's Extra field.
 .IP
 
 .TP
-\ignore_constraint_validation\fR
+\fBignore_constraint_validation\fR
 If set, and a job requests --constraint any features in the request that would
 create an invalid request with the current system will not generate an error.
 This is helpful for dynamic systems where nodes with features come and go.
@@ -5873,6 +5874,10 @@ parameters are supported:
 \fBimex_channel_count\fR
 Number of channels that can be configured. Channels allow nodes to create a
 secure method of sharing memory. The default value is 2048.
+
+\fBNOTE\fR: The batch and interactive steps will not have imex channels
+created since they run on a single node. Once you start creating job steps
+that span nodes you will see the channels created.
 .RE
 .IP
 
