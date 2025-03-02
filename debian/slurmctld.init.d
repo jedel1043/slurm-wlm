@@ -218,7 +218,7 @@ case "$1" in
     reconfig)
 	for prog in $DAEMONLIST ; do
 	    PIDFILE=$(getpidfile $prog)
-	    start-stop-daemon --stop --signal HUP --pidfile \
+	    start-stop-daemon --user slurm --stop --signal HUP --pidfile \
 	      "$PIDFILE" --quiet $prog
 	done
 	;;
