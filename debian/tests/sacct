@@ -71,8 +71,12 @@ sacctmgr -i add cluster cluster
 sacctmgr -i add account slurmtest Cluster=cluster
 sacctmgr -i add user slurmtest Account=slurmtest
 
-service slurmctld restart
-service slurmd restart
+service slurmctld stop
+service slurmd stop
+rm -rf /var/lib/slurm/slurmctld/*
+rm -rf /var/lib/slurm/slurmd/*
+service slurmctld start
+service slurmd start
 
 sleep 10
 
