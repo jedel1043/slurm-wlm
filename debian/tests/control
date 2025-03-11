@@ -17,3 +17,4 @@ Tests: mpi
 Features: no-build-needed,isolation-container
 Restrictions: needs-root, allow-stderr
 Depends: slurmctld, slurmd, slurm-client, mpi-default-dev, gcc, mpich-doc
+Architecture: amd64 arm64 mips64el ppc64el riscv64 s390x alpha ia64 loong64 ppc64 sparc64
