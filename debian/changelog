@@ -1,3 +1,16 @@
+slurm-wlm (24.11.3-1) unstable; urgency=medium
+
+  [ Gennaro Oliva ]
+  * New upstream release
+  * RSMI plugin depends on librocm-smi-dev (Closes: #1094164)
+  * Fix sacct test
+  * Restrict mpi test on pmix supported architectures
+
+  [ Yiyang Wu ]
+  * Fix slurmctld init.d script (Closes: #1090031)
+
+ -- Gennaro Oliva <oliva@debian.org>  Tue, 11 Mar 2025 22:24:02 +0100
+
 slurm-wlm (24.11.1-1) unstable; urgency=medium
 
   * New upstream release
