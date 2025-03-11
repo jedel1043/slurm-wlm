@@ -1843,8 +1843,12 @@ static int _pick_best_nodes(struct node_set *node_set_ptr, int node_set_size,
 					    cg_node_bitmap);
 			}
 
+			/*
+			 * We must skip the node *only* in the case it is
+			 * rebooted with ASAP flag.
+			 */
 			bit_and_not(node_set_ptr[i].my_bitmap,
-				    rs_node_bitmap);
+				    asap_node_bitmap);
 
 			if (!nodes_busy) {
 				count2 = bit_set_count(node_set_ptr[i].
@@ -2851,6 +2855,7 @@ extern int select_nodes(job_node_select_t *job_node_select,
 			bit_not(unavail_bitmap);
 			bit_and_not(unavail_bitmap, future_node_bitmap);
 			bit_and(unavail_bitmap, part_ptr->node_bitmap);
+			bit_and_not(unavail_bitmap, up_node_bitmap);
 			if (job_ptr->details->req_node_bitmap) {
 				bit_and(unavail_bitmap,
 					job_ptr->details->req_node_bitmap);
@@ -3392,12 +3397,10 @@ extern void launch_prolog(job_record_t *job_ptr)
 	xfree(cred_arg.job_mem_alloc_rep_count);
 
 	if (!prolog_msg_ptr->cred) {
-		error("%s: slurm_cred_create failure for %pJ",
+		error("%s: slurm_cred_create failure for %pJ, holding job",
 		      __func__, job_ptr);
 		slurm_free_prolog_launch_msg(prolog_msg_ptr);
-		job_ptr->details->begin_time = time(NULL) + 120;
-		job_complete(job_ptr->job_id, slurm_conf.slurm_user_id,
-		             true, false, 0);
+		job_mgr_handle_cred_failure(job_ptr);
 		return;
 	}
 

@@ -78,6 +78,7 @@ extern void conmgr_init(int thread_count, int max_connections,
 
 	slurm_mutex_lock(&mgr.mutex);
 
+	enabled_status = true;
 	mgr.shutdown_requested = false;
 
 	if (mgr.workers.conf_threads > 0)
@@ -225,7 +226,7 @@ extern int conmgr_run(bool blocking)
 	if (mgr.watch_thread)
 		running = true;
 	else if (!blocking)
-		slurm_thread_create(&mgr.watch_thread, watch, NULL);
+		slurm_thread_create(&mgr.watch_thread, watch_thread, NULL);
 	else
 		mgr.watch_thread = pthread_self();
 

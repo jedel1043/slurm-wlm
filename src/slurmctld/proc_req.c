@@ -751,7 +751,10 @@ extern resource_allocation_response_msg_t *build_alloc_msg(
 	alloc_msg->job_id         = job_ptr->job_id;
 	alloc_msg->node_cnt       = job_ptr->node_cnt;
 	alloc_msg->node_list      = xstrdup(job_ptr->nodes);
-	alloc_msg->partition      = xstrdup(job_ptr->partition);
+	if (job_ptr->part_ptr)
+		alloc_msg->partition = xstrdup(job_ptr->part_ptr->name);
+	else
+		alloc_msg->partition = xstrdup(job_ptr->partition);
 	alloc_msg->alias_list     = xstrdup(job_ptr->alias_list);
 	alloc_msg->batch_host = xstrdup(job_ptr->batch_host);
 	if (job_ptr->details) {
@@ -5450,6 +5453,7 @@ static void _slurm_rpc_reboot_nodes(slurm_msg_t *msg)
 
 				node_ptr->node_state |= NODE_STATE_DRAIN;
 				bit_clear(avail_node_bitmap, node_ptr->index);
+				bit_set(asap_node_bitmap, node_ptr->index);
 
 				if (node_ptr->reason == NULL) {
 					node_ptr->reason =

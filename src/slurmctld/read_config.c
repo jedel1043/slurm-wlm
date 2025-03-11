@@ -335,6 +335,7 @@ extern hostlist_t *nodespec_to_hostlist(const char *nodes, bool uniq,
 static void _init_bitmaps(void)
 {
 	/* initialize the idle and up bitmaps */
+	FREE_NULL_BITMAP(asap_node_bitmap);
 	FREE_NULL_BITMAP(avail_node_bitmap);
 	FREE_NULL_BITMAP(bf_ignore_node_bitmap);
 	FREE_NULL_BITMAP(booting_node_bitmap);
@@ -347,6 +348,7 @@ static void _init_bitmaps(void)
 	FREE_NULL_BITMAP(rs_node_bitmap);
 	FREE_NULL_BITMAP(share_node_bitmap);
 	FREE_NULL_BITMAP(up_node_bitmap);
+	asap_node_bitmap = bit_alloc(node_record_count);
 	avail_node_bitmap = bit_alloc(node_record_count);
 	bf_ignore_node_bitmap = bit_alloc(node_record_count);
 	booting_node_bitmap = bit_alloc(node_record_count);
@@ -568,6 +570,9 @@ static void _build_bitmaps(void)
 		     IS_NODE_REBOOT_ISSUED(node_ptr)) &&
 		    ((node_ptr->next_state & NODE_STATE_FLAGS) & NODE_RESUME))
 			bit_set(rs_node_bitmap, node_ptr->index);
+
+		if (IS_NODE_REBOOT_ASAP(node_ptr))
+			bit_set(asap_node_bitmap, node_ptr->index);
 	}
 }
 
@@ -1287,17 +1292,8 @@ void _sync_jobs_to_conf(void)
 			job_fail = true;
 		} else {
 			char *err_part = NULL;
-			part_ptr = find_part_record(job_ptr->partition);
-			if (part_ptr == NULL) {
-				part_ptr_list = get_part_list(
-					job_ptr->partition,
-					&err_part);
-				if (part_ptr_list) {
-					part_ptr = list_peek(part_ptr_list);
-					if (list_count(part_ptr_list) == 1)
-						FREE_NULL_LIST(part_ptr_list);
-				}
-			}
+			get_part_list(job_ptr->partition, &part_ptr_list,
+				      &part_ptr, &err_part);
 			if (part_ptr == NULL) {
 				error("Invalid partition (%s) for %pJ",
 				      err_part, job_ptr);
@@ -2376,15 +2372,12 @@ static int _sync_nodes_to_active_job(job_record_t *job_ptr)
 	int cnt = 0;
 	uint32_t node_flags;
 	node_record_t *node_ptr;
-	bitstr_t *node_bitmap, *orig_job_node_bitmap;
-	bool job_resized = false;
+	bitstr_t *node_bitmap, *orig_job_node_bitmap = NULL;
 
 	if (job_ptr->node_bitmap_cg) /* job completing */
 		node_bitmap = job_ptr->node_bitmap_cg;
 	else
 		node_bitmap = job_ptr->node_bitmap;
-
-	orig_job_node_bitmap = bit_copy(job_ptr->job_resrcs->node_bitmap);
 
 	job_ptr->node_cnt = bit_set_count(node_bitmap);
 	for (int i = 0; (node_ptr = next_node_bitmap(node_bitmap, &i)); i++) {
@@ -2440,12 +2433,26 @@ static int _sync_nodes_to_active_job(job_record_t *job_ptr)
 			 */
 			save_accounting_enforce = accounting_enforce;
 			accounting_enforce &= (~ACCOUNTING_ENFORCE_LIMITS);
+			if (job_ptr->job_resrcs &&
+			    job_ptr->job_resrcs->node_bitmap) {
+				/*
+				 * node_bitmap is eventually changed within
+				 * extract_job_resources_node() so we need to
+				 * copy it before that.
+				 */
+				if (!orig_job_node_bitmap)
+					orig_job_node_bitmap = bit_copy(
+						job_ptr->job_resrcs->
+						node_bitmap);
+			} else {
+				error("We resized job %pJ, but the original node bitmap is unavailable. Unable to resize step node bitmaps for job's steps, this should never happen",
+				      job_ptr);
+			}
 			job_pre_resize_acctg(job_ptr);
 			srun_node_fail(job_ptr, node_ptr->name);
 			kill_step_on_node(job_ptr, node_ptr, true);
 			excise_node_from_job(job_ptr, node_ptr);
 			job_post_resize_acctg(job_ptr);
-			job_resized = true;
 			accounting_enforce = save_accounting_enforce;
 		} else if (IS_NODE_DOWN(node_ptr) && IS_JOB_RUNNING(job_ptr)) {
 			info("Killing %pJ on DOWN node %s",
@@ -2462,9 +2469,8 @@ static int _sync_nodes_to_active_job(job_record_t *job_ptr)
 	}
 
 	/* If the job was resized then resize the bitmaps of the job's steps */
-	if (job_resized) {
+	if (orig_job_node_bitmap)
 		rebuild_step_bitmaps(job_ptr, orig_job_node_bitmap);
-	}
 	FREE_NULL_BITMAP(orig_job_node_bitmap);
 
 	if ((IS_JOB_RUNNING(job_ptr) || IS_JOB_SUSPENDED(job_ptr)) &&

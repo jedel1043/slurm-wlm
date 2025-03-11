@@ -288,11 +288,6 @@ static void _on_sigquit(conmgr_callback_args_t conmgr_args, void *arg)
 	slurmd_shutdown();
 }
 
-static void _on_sigtstp(conmgr_callback_args_t conmgr_args, void *arg)
-{
-	info("Caught SIGTSTP. Ignoring");
-}
-
 static void _on_sighup(conmgr_callback_args_t conmgr_args, void *arg)
 {
 	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
@@ -301,11 +296,6 @@ static void _on_sighup(conmgr_callback_args_t conmgr_args, void *arg)
 	info("Caught SIGHUP. Triggering reconfigure.");
 
 	slurm_thread_create_detached(_try_to_reconfig, NULL);
-}
-
-static void _on_sigusr1(conmgr_callback_args_t conmgr_args, void *arg)
-{
-	info("Caught SIGUSR1. Ignoring.");
 }
 
 static void _on_sigusr2(conmgr_callback_args_t conmgr_args, void *arg)
@@ -328,11 +318,6 @@ static void _on_sigusr2(conmgr_callback_args_t conmgr_args, void *arg)
 static void _on_sigpipe(conmgr_callback_args_t conmgr_args, void *arg)
 {
 	info("Caught SIGPIPE. Ignoring.");
-}
-
-static void _on_sigttin(conmgr_callback_args_t conmgr_args, void *arg)
-{
-	debug("Caught SIGTTIN. Ignoring.");
 }
 
 int
@@ -415,12 +400,9 @@ main (int argc, char **argv)
 	conmgr_add_work_signal(SIGINT, _on_sigint, NULL);
 	conmgr_add_work_signal(SIGTERM, _on_sigterm, NULL);
 	conmgr_add_work_signal(SIGQUIT, _on_sigquit, NULL);
-	conmgr_add_work_signal(SIGTSTP, _on_sigtstp, NULL);
 	conmgr_add_work_signal(SIGHUP, _on_sighup, NULL);
-	conmgr_add_work_signal(SIGUSR1, _on_sigusr1, NULL);
 	conmgr_add_work_signal(SIGUSR2, _on_sigusr2, NULL);
 	conmgr_add_work_signal(SIGPIPE, _on_sigpipe, NULL);
-	conmgr_add_work_signal(SIGTTIN, _on_sigttin, NULL);
 
 	if ((oom_value = getenv("SLURMD_OOM_ADJ"))) {
 		int i = atoi(oom_value);
@@ -1791,10 +1773,8 @@ static void _print_gres(void)
 	log_options_t *o = &conf->log_opts;
 
 	o->logfile_level = LOG_LEVEL_QUIET;
-	o->stderr_level = LOG_LEVEL_INFO;
+	o->stderr_level = conf->debug_level;
 	o->syslog_level = LOG_LEVEL_INFO;
-	if (conf->debug_level_set)
-		o->stderr_level = conf->debug_level;
 
 	log_alter(conf->log_opts, SYSLOG_FACILITY_USER, NULL);
 
@@ -1878,6 +1858,8 @@ _process_cmdline(int ac, char **av)
 			conf->dynamic_feature = xstrdup(optarg);
 			break;
 		case 'G':
+			conf->debug_level_set = 1;
+			conf->daemonize = 0;
 			conf->print_gres = true;
 			break;
 		case 'h':
