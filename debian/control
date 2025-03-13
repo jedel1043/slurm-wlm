@@ -347,7 +347,7 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- librocm-smi64-dev,
+ librocm-smi-dev,
  slurm-wlm-basic-plugins (= ${binary:Version})
 Description: Slurm RSMI plugin
  The Slurm Workload Manager is an open-source cluster resource management and
