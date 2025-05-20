@@ -58,6 +58,7 @@
 #include "src/common/id_util.h"
 #include "src/common/job_features.h"
 #include "src/common/list.h"
+#include "src/common/node_features.h"
 #include "src/common/port_mgr.h"
 #include "src/common/slurm_protocol_pack.h"
 #include "src/common/xassert.h"
@@ -4161,6 +4162,8 @@ end_node_set:
 		node_set_ptr[node_set_inx].node_cnt = power_cnt;
 		node_set_ptr[i].node_cnt -= power_cnt;
 		node_set_ptr[node_set_inx].flags = NODE_SET_POWER_DN;
+		node_set_ptr[node_set_inx].node_weight =
+			node_set_ptr[i].node_weight;
 		node_set_ptr[node_set_inx].features =
 			xstrdup(node_set_ptr[i].features);
 		node_set_ptr[node_set_inx].feature_bits =

@@ -62,6 +62,7 @@
 #include "src/common/id_util.h"
 #include "src/common/log.h"
 #include "src/common/macros.h"
+#include "src/common/node_features.h"
 #include "src/common/pack.h"
 #include "src/common/persist_conn.h"
 #include "src/common/read_config.h"
@@ -574,14 +575,32 @@ extern bool validate_super_user(uid_t uid)
  * IN uid - user to validate
  * RET true if permitted to run, false otherwise
  */
+static bool _validate_operator_internal(uid_t uid, bool locked)
+{
+	slurmdb_admin_level_t level;
+
+	if ((uid == 0) || (uid == slurm_conf.slurm_user_id))
+		return true;
+
+	if (locked)
+		level = assoc_mgr_get_admin_level_locked(acct_db_conn, uid);
+	else
+		level = assoc_mgr_get_admin_level(acct_db_conn, uid);
+
+	if (level >= SLURMDB_ADMIN_OPERATOR)
+		return true;
+
+	return false;
+}
+
 extern bool validate_operator(uid_t uid)
 {
-	if ((uid == 0) || (uid == slurm_conf.slurm_user_id) ||
-	    assoc_mgr_get_admin_level(acct_db_conn, uid) >=
-	    SLURMDB_ADMIN_OPERATOR)
-		return true;
-	else
-		return false;
+	return _validate_operator_internal(uid, false);
+}
+
+extern bool validate_operator_locked(uid_t uid)
+{
+	return _validate_operator_internal(uid, true);
 }
 
 extern bool validate_operator_user_rec(slurmdb_user_rec_t *user)
@@ -1096,7 +1115,10 @@ static void _slurm_rpc_allocate_het_job(slurm_msg_t *msg)
 
 	if (error_code) {
 		/* Cancel remaining job records */
-		(void) list_for_each(submit_job_list, _het_job_cancel, NULL);
+		iter = list_iterator_create(submit_job_list);
+		while ((job_ptr = list_next(iter)))
+			(void) _het_job_cancel(job_ptr, NULL);
+		list_iterator_destroy(iter);
 		if (!first_job_ptr)
 			FREE_NULL_LIST(submit_job_list);
 	} else {
@@ -3174,42 +3196,81 @@ static void _slurm_rpc_takeover(slurm_msg_t *msg)
 
 }
 
+static void _slurm_rpc_request_control(slurm_msg_t *msg)
+{
+	time_t now = time(NULL);
+	struct timespec ts = {0, 0};
+
+	if (!validate_super_user(msg->auth_uid)) {
+		error("Security violation, REQUEST_CONTROL RPC from uid=%u",
+		      msg->auth_uid);
+		slurm_send_rc_msg(msg, ESLURM_USER_ID_MISSING);
+		return;
+	}
+
+	info("Performing RPC: REQUEST_CONTROL");
+	slurm_mutex_lock(&slurmctld_config.backup_finish_lock);
+	/* resume backup mode */
+	slurmctld_config.resume_backup = true;
+
+	/* do RPC call */
+	if (slurmctld_config.shutdown_time) {
+		debug2("REQUEST_CONTROL RPC issued when already in progress");
+	} else {
+		/* signal clean-up */
+		pthread_kill(pthread_self(), SIGTERM);
+	}
+
+	/* save_all_state();	performed by _slurmctld_background */
+
+	/*
+	 * Wait for the backup to dump state and finish up everything.
+	 * This should happen in _slurmctld_background and then release
+	 * once we know for sure we are in backup mode in run_backup().
+	 * Here we will wait CONTROL_TIMEOUT - 1 before we reply.
+	 */
+	ts.tv_sec = now + CONTROL_TIMEOUT - 1;
+
+	slurm_cond_timedwait(&slurmctld_config.backup_finish_cond,
+			     &slurmctld_config.backup_finish_lock, &ts);
+	slurm_mutex_unlock(&slurmctld_config.backup_finish_lock);
+
+	/*
+	 * jobcomp/elasticsearch saves/loads the state to/from file
+	 * elasticsearch_state. Since the jobcomp API isn't designed with
+	 * save/load state operations, the jobcomp/elasticsearch _save_state()
+	 * is highly coupled to its fini() function. This state doesn't follow
+	 * the same execution path as the rest of Slurm states, where in
+	 * save_all_sate() they are all independently scheduled. So we save
+	 * it manually here.
+	 */
+	jobcomp_g_fini();
+
+	if (slurmctld_config.resume_backup)
+		error("%s: REQUEST_CONTROL reply but backup not completely done relinquishing control.  Old state possible", __func__);
+
+	slurm_send_rc_msg(msg, SLURM_SUCCESS);
+}
+
 /* _slurm_rpc_shutdown_controller - process RPC to shutdown slurmctld */
 static void _slurm_rpc_shutdown_controller(slurm_msg_t *msg)
 {
-	int error_code = SLURM_SUCCESS;
-	slurmctld_shutdown_type_t options = SLURMCTLD_SHUTDOWN_ALL;
-	time_t now = time(NULL);
 	shutdown_msg_t *shutdown_msg = msg->data;
-	/* Locks: Read node */
-	slurmctld_lock_t node_read_lock = {
-		NO_LOCK, NO_LOCK, READ_LOCK, NO_LOCK, NO_LOCK };
 
 	if (!validate_super_user(msg->auth_uid)) {
 		error("Security violation, SHUTDOWN RPC from uid=%u",
 		      msg->auth_uid);
-		error_code = ESLURM_USER_ID_MISSING;
-	}
-	if (error_code);
-	else if (msg->msg_type == REQUEST_CONTROL) {
-		info("Performing RPC: REQUEST_CONTROL");
-		slurm_mutex_lock(&slurmctld_config.backup_finish_lock);
-		/* resume backup mode */
-		slurmctld_config.resume_backup = true;
-	} else {
-		info("Performing RPC: REQUEST_SHUTDOWN");
-		options = shutdown_msg->options;
+		slurm_send_rc_msg(msg, ESLURM_USER_ID_MISSING);
+		return;
 	}
 
-	/* do RPC call */
-	if (error_code)
-		;
-	else if (slurmctld_config.shutdown_time)
+	info("Performing RPC: REQUEST_SHUTDOWN");
+
+	if (slurmctld_config.shutdown_time)
 		debug2("shutdown RPC issued when already in progress");
 	else {
-		if ((msg->msg_type == REQUEST_SHUTDOWN) &&
-		    (options == SLURMCTLD_SHUTDOWN_ALL)) {
-			/* This means (msg->msg_type != REQUEST_CONTROL) */
+		if (shutdown_msg->options == SLURMCTLD_SHUTDOWN_ALL) {
+			slurmctld_lock_t node_read_lock = { .node = READ_LOCK };
 			lock_slurmctld(node_read_lock);
 			msg_to_slurmd(REQUEST_SHUTDOWN);
 			unlock_slurmctld(node_read_lock);
@@ -3218,40 +3279,7 @@ static void _slurm_rpc_shutdown_controller(slurm_msg_t *msg)
 		pthread_kill(pthread_self(), SIGTERM);
 	}
 
-	if (msg->msg_type == REQUEST_CONTROL) {
-		struct timespec ts = {0, 0};
-
-		/* save_all_state();	performed by _slurmctld_background */
-
-		/*
-		 * Wait for the backup to dump state and finish up everything.
-		 * This should happen in _slurmctld_background and then release
-		 * once we know for sure we are in backup mode in run_backup().
-		 * Here we will wait CONTROL_TIMEOUT - 1 before we reply.
-		 */
-		ts.tv_sec = now + CONTROL_TIMEOUT - 1;
-
-		slurm_cond_timedwait(&slurmctld_config.backup_finish_cond,
-				     &slurmctld_config.backup_finish_lock,
-				     &ts);
-		slurm_mutex_unlock(&slurmctld_config.backup_finish_lock);
-
-		/*
-		 * jobcomp/elasticsearch saves/loads the state to/from file
-		 * elasticsearch_state. Since the jobcomp API isn't designed
-		 * with save/load state operations, the jobcomp/elasticsearch
-		 * _save_state() is highly coupled to its fini() function. This
-		 * state doesn't follow the same execution path as the rest of
-		 * Slurm states, where in save_all_sate() they are all indepen-
-		 * dently scheduled. So we save it manually here.
-		 */
-		jobcomp_g_fini();
-
-		if (slurmctld_config.resume_backup)
-			error("%s: REQUEST_CONTROL reply but backup not completely done relinquishing control.  Old state possible", __func__);
-	}
-
-	slurm_send_rc_msg(msg, error_code);
+	slurm_send_rc_msg(msg, SLURM_SUCCESS);
 }
 
 static int _foreach_step_match_containerid(void *x, void *arg)
@@ -3908,7 +3936,10 @@ static void _slurm_rpc_submit_batch_het_job(slurm_msg_t *msg)
 	xfree(het_job_id_set);
 
 	if (reject_job && submit_job_list) {
-		(void) list_for_each(submit_job_list, _het_job_cancel, NULL);
+		iter = list_iterator_create(submit_job_list);
+		while ((job_ptr = list_next(iter)))
+			(void) _het_job_cancel(job_ptr, NULL);
+		list_iterator_destroy(iter);
 		if (!first_job_ptr)
 			FREE_NULL_LIST(submit_job_list);
 	}
@@ -5407,10 +5438,15 @@ static void _slurm_rpc_reboot_nodes(slurm_msg_t *msg)
 			      __func__, nodelist);
 			slurm_send_rc_msg(msg, ESLURM_INVALID_NODE_NAME);
 			return;
-		} else {
-			hostlist2bitmap(hostlist, true, &bitmap);
+		} else if ((rc = hostlist2bitmap(hostlist, true, &bitmap))) {
+			error("%s: Can't find nodes requested in REBOOT_NODES request: \"%s\"",
+			      __func__, nodelist);
+			FREE_NULL_BITMAP(bitmap);
 			FREE_NULL_HOSTLIST(hostlist);
+			slurm_send_rc_msg(msg, ESLURM_INVALID_NODE_NAME);
+			return;
 		}
+		FREE_NULL_HOSTLIST(hostlist);
 	}
 
 	cannot_reboot_nodes = bit_alloc(node_record_count);
@@ -6669,7 +6705,7 @@ slurmctld_rpc_t slurmctld_rpcs[] =
 		.keep_msg = true,
 	},{
 		.msg_type = REQUEST_CONTROL,
-		.func = _slurm_rpc_shutdown_controller,
+		.func = _slurm_rpc_request_control,
 	},{
 		.msg_type = REQUEST_TAKEOVER,
 		.func = _slurm_rpc_takeover,
