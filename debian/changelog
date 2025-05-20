@@ -1,3 +1,9 @@
+slurm-wlm (24.11.5-1) unstable; urgency=medium
+
+  * New upstream release fix CVE-2025-4390 (Closes: #1104929)
+
+ -- Gennaro Oliva <oliva@debian.org>  Tue, 20 May 2025 10:30:14 +0200
+
 slurm-wlm (24.11.3-2) unstable; urgency=medium
 
   * Fix librocm-smi-dev dependency
