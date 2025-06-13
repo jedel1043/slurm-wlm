@@ -1,3 +1,9 @@
+slurm-wlm (24.11.5-2) unstable; urgency=medium
+
+  * Binary upload for contrib
+
+ -- Gennaro Oliva <oliva@debian.org>  Fri, 13 Jun 2025 08:21:08 +0200
+
 slurm-wlm (24.11.5-1) unstable; urgency=medium
 
   * New upstream release fix CVE-2025-4390 (Closes: #1104929)
