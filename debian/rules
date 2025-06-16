@@ -47,6 +47,7 @@ override_dh_shlibdeps:
 
 override_dh_auto_install:
 	dh_auto_install
+	dh_installsysusers # needed until DH compat 14
 	
 	# Rename slurm(1) manpage before dh_installman run. It is not possible
 	# to rename manpages in debian/*.manpages so hardcore `mv` is done here
