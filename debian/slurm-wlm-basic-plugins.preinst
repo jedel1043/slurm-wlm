@@ -16,7 +16,7 @@ set -e
 
 case "$1" in
     install)
-      if [ ! $(id -u slurm 2>/dev/null) ]; then
+      if command -v adduser >/dev/null && [ ! $(id -u slurm 2>/dev/null) ]; then
          adduser --quiet --system --group --uid 64030 --no-create-home --home /nonexistent slurm
       fi
     ;;

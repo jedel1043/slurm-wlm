@@ -213,11 +213,11 @@ Description: Slurm documentation
 
 Package: slurm-wlm-basic-plugins
 Architecture: any
+Pre-Depends: ${misc:Pre-Depends}, systemd-sysusers | adduser
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- libpmix2t64 [amd64 arm64 mips64el ppc64el riscv64 s390x alpha ia64 loong64 ppc64 sparc64],
- adduser
+ libpmix2t64 [amd64 arm64 mips64el ppc64el riscv64 s390x alpha ia64 loong64 ppc64 sparc64]
 Recommends: slurm-wlm-plugins (= ${binary:Version}),
 Description: Slurm basic plugins
  The Slurm Workload Manager is an open-source cluster resource management and
