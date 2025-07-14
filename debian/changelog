@@ -1,3 +1,9 @@
+slurm-wlm (24.11.5-4) unstable; urgency=medium
+
+  * Move adduser to postinst
+
+ -- Gennaro Oliva <oliva@debian.org>  Sun, 13 Jul 2025 19:39:23 +0200
+
 slurm-wlm (24.11.5-3) unstable; urgency=medium
 
   [ Gábor Németh ]

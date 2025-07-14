@@ -18,6 +18,9 @@ set -e
 #
 case "$1" in
     configure)
+      if command -v adduser >/dev/null && [ ! $(id -u slurm 2>/dev/null) ]; then
+         adduser --quiet --system --group --uid 64030 --no-create-home --home /nonexistent slurm
+      fi
       if [ -n "$2" ] && dpkg --compare-versions $2 lt 18.08.5.2-1 ; then
          if [ -e /etc/slurm-llnl/slurm.conf ] ; then
             # Move PID file location
