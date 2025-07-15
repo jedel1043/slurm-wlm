@@ -1,3 +1,9 @@
+slurm-wlm-contrib (24.11.5-4) unstable; urgency=medium
+
+  * Bump standard version to 4.7.2 (no changes)
+
+ -- Gennaro Oliva <oliva@debian.org>  Mon, 14 Jul 2025 23:21:11 +0200
+
 slurm-wlm-contrib (24.11.5-3) unstable; urgency=medium
 
   * Align version with the free release
