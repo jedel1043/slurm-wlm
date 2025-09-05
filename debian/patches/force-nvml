@@ -1,14 +1,22 @@
-Description: Force nvml configuration without autodetection
- This patch will force nvml configuration without autodetection at build
- time. This is necessary to enable the nvml contrib plugin
-Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+From: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+Date: Fri, 5 Sep 2025 17:04:25 -0600
+Subject: Force nvml configuration without autodetection
+
 Origin: vendor
 Forwarded: https://bugs.schedmd.com/show_bug.cgi?id=15909
 Last-Update: 2024-07-21
 
+This patch will force nvml configuration without autodetection at build
+time. This is necessary to enable the nvml contrib plugin
+---
+ src/interfaces/gpu.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/src/interfaces/gpu.c b/src/interfaces/gpu.c
+index e0ff1ea..4a36805 100644
 --- a/src/interfaces/gpu.c
 +++ b/src/interfaces/gpu.c
-@@ -93,7 +93,6 @@
+@@ -93,7 +93,6 @@ static char *_get_gpu_type(void)
  	uint32_t autodetect_flags = gres_get_autodetect_flags();
  
  	if (autodetect_flags & GRES_AUTODETECT_GPU_NVML) {
@@ -16,7 +24,7 @@ Last-Update: 2024-07-21
  		(void) dlerror();
  		if (!(ext_lib_handle = dlopen("libnvidia-ml.so",
  					      RTLD_NOW | RTLD_GLOBAL)) &&
-@@ -103,9 +102,6 @@
+@@ -103,9 +102,6 @@ static char *_get_gpu_type(void)
  			     dlerror());
  		else
  			return "gpu/nvml";

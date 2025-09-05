@@ -1,12 +1,20 @@
-Description: Remove google custom engine queries script
- Remove javascript for the custom google engine queries, in the header
- and in the footer of each html documentation page, to avoid potential
- privacy breach.
-Author: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+From: Gennaro Oliva <oliva.g@na.icar.cnr.it>
+Date: Fri, 5 Sep 2025 17:04:24 -0600
+Subject: Remove google custom engine queries script
+
 Origin: other
 Forwarded: not-needed
 Last-Update: 2016-09-29
 
+Remove javascript for the custom google engine queries, in the header
+and in the footer of each html documentation page, to avoid potential
+privacy breach.
+---
+ doc/html/header.txt | 12 ------------
+ 1 file changed, 12 deletions(-)
+
+diff --git a/doc/html/header.txt b/doc/html/header.txt
+index 59eb454..7fd276f 100644
 --- a/doc/html/header.txt
 +++ b/doc/html/header.txt
 @@ -5,7 +5,6 @@
