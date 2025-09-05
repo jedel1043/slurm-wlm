@@ -86,7 +86,7 @@ static char *_get_gpu_type(void)
 	 *  symbols for the plugin to use.
 	 *
 	 *  We are also doing this outside of the plugins on purpose as we want
-	 *  to be able to deal with heterogenous systems where not all the nodes
+	 *  to be able to deal with heterogeneous systems where not all the nodes
 	 *  will have cards and we want the slurmds to still run there with only
 	 *  1 gres.conf file.
 	 */
@@ -182,8 +182,10 @@ extern int gpu_plugin_fini(void)
 
 	slurm_mutex_lock(&g_context_lock);
 
-	if (ext_lib_handle)
+	if (ext_lib_handle) {
 		dlclose(ext_lib_handle);
+		ext_lib_handle = NULL;
+	}
 
 	rc = plugin_context_destroy(g_context);
 	g_context = NULL;

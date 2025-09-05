@@ -303,18 +303,13 @@ static void _read_last_decay_ran(time_t *last_ran, time_t *last_reset)
 	(*last_reset) = 0;
 
 	/* read the file */
-	state_file = xstrdup(slurm_conf.state_save_location);
-	xstrcat(state_file, "/priority_last_decay_ran");
-	lock_state_files();
-
-	if (!(buffer = create_mmap_buf(state_file))) {
+	buffer = state_save_open("priority_last_decay_ran", &state_file);
+	if (!buffer) {
 		info("No last decay (%s) to recover", state_file);
 		xfree(state_file);
-		unlock_state_files();
 		return;
 	}
 	xfree(state_file);
-	unlock_state_files();
 
 	safe_unpack_time(last_ran, buffer);
 	safe_unpack_time(last_reset, buffer);
@@ -539,9 +534,9 @@ static int _priority_each_qos(void *object, void *arg)
 		priority_part = (double) tmp_64;
 	}
 	if (((flags & PRIORITY_FLAGS_INCR_ONLY) == 0) ||
-	    (job_ptr->part_prio->priority_array[args->counter] <
+	    (job_ptr->prio_mult->priority_array[args->counter] <
 	     (uint32_t) priority_part)) {
-		job_ptr->part_prio->priority_array[args->counter] =
+		job_ptr->prio_mult->priority_array[args->counter] =
 			(uint32_t) priority_part;
 	}
 	if (slurm_conf.debug_flags & DEBUG_FLAG_PRIO) {
@@ -551,12 +546,12 @@ static int _priority_each_qos(void *object, void *arg)
 			xstrfmtcat(args->multi_prio_str,
 				   "%s/%s=%u", args->part_ptr->name,
 				   qos_ptr->name,
-				   job_ptr->part_prio->
+				   job_ptr->prio_mult->
 				   priority_array[args->counter]);
 		else
 			xstrfmtcat(args->multi_prio_str,
 				   "%s=%u", args->part_ptr->name,
-				   job_ptr->part_prio->
+				   job_ptr->prio_mult->
 				   priority_array[args->counter]);
 	}
 
@@ -688,10 +683,10 @@ static uint32_t _get_priority_internal(time_t start_time,
 	 * Free after transitioning from multi-part/qos job to single part job.
 	 */
 	if (!job_ptr->part_ptr_list && !job_ptr->qos_list &&
-	    job_ptr->part_prio) {
-		xfree(job_ptr->part_prio->priority_array);
-		xfree(job_ptr->part_prio->priority_array_names);
-		xfree(job_ptr->part_prio);
+	    job_ptr->prio_mult) {
+		xfree(job_ptr->prio_mult->priority_array);
+		xfree(job_ptr->prio_mult->priority_array_names);
+		xfree(job_ptr->prio_mult);
 	}
 
 	if (job_ptr->part_ptr_list || job_ptr->qos_list) {
@@ -700,20 +695,20 @@ static uint32_t _get_priority_internal(time_t start_time,
 			.job_ptr = job_ptr
 		};
 
-		if (!job_ptr->part_prio)
-			job_ptr->part_prio =
-				xmalloc(sizeof(*job_ptr->part_prio));
+		if (!job_ptr->prio_mult)
+			job_ptr->prio_mult =
+				xmalloc(sizeof(*job_ptr->prio_mult));
 
-		if (job_ptr->part_prio &&
-		    (!job_ptr->part_prio->priority_array ||
-		     (job_ptr->part_prio->last_update < last_part_update))) {
+		if (job_ptr->prio_mult &&
+		    (!job_ptr->prio_mult->priority_array ||
+		     (job_ptr->prio_mult->last_update < last_part_update))) {
 
-			xfree(job_ptr->part_prio->priority_array);
+			xfree(job_ptr->prio_mult->priority_array);
 			if (job_ptr->part_ptr_list) {
 				i = list_count(job_ptr->part_ptr_list);
 				/* part_ptr_list is already sorted */
-				xfree(job_ptr->part_prio->priority_array_names);
-				job_ptr->part_prio->priority_array_names =
+				xfree(job_ptr->prio_mult->priority_array_names);
+				job_ptr->prio_mult->priority_array_names =
 					part_list_to_xstr(
 						job_ptr->part_ptr_list);
 			}
@@ -726,10 +721,10 @@ static uint32_t _get_priority_internal(time_t start_time,
 					i = qos_count;
 			}
 
-			job_ptr->part_prio->priority_array =
+			job_ptr->prio_mult->priority_array =
 				xcalloc(i, sizeof(uint32_t));
 
-			job_ptr->part_prio->last_update = time(NULL);
+			job_ptr->prio_mult->last_update = time(NULL);
 		}
 
 		if (job_ptr->part_ptr_list)
@@ -1465,14 +1460,17 @@ static void *_decay_thread(void *no_data)
 
 		running_decay = 0;
 
-		/* Sleep until the next time. */
-		abs.tv_sec += slurm_conf.priority_calc_period;
-		slurm_cond_timedwait(&decay_cond, &decay_lock, &abs);
+		if (!plugin_shutdown) {
+			/* Sleep until the next time. */
+			abs.tv_sec += slurm_conf.priority_calc_period;
+			slurm_cond_timedwait(&decay_cond, &decay_lock, &abs);
+			start_time = time(NULL);
+			/* repeat ;) */
+		}
 		slurm_mutex_unlock(&decay_lock);
 
-		start_time = time(NULL);
-		/* repeat ;) */
 	}
+
 	return NULL;
 }
 
@@ -1583,7 +1581,7 @@ static void _internal_setup(void)
 }
 
 
-/* Reursively call assoc_mgr_normalize_assoc_shares from assoc_mgr.c on
+/* Recursively call assoc_mgr_normalize_assoc_shares from assoc_mgr.c on
  * children of an assoc
  */
 static void _set_norm_shares(list_t *children_list)
@@ -1624,7 +1622,7 @@ static void _init_decay_vars()
 	* To ease the computation, the notion of decay_factor
 	* is introduced and corresponds to the decay factor
 	* required for a slice of 1 second. Thus, for any given
-	* slice ot time of n seconds, decay_factor_slice will be
+	* slice of time of n seconds, decay_factor_slice will be
 	* defined as : df_slice = pow(df,n)
 	*
 	* For a slice corresponding to the defined half life 'decay_hl' and

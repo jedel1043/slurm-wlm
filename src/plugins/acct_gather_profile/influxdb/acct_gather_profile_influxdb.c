@@ -174,7 +174,7 @@ static int _send_data(const char *data)
 {
 	int rc = SLURM_SUCCESS;
 	long response_code = 0;
-	char *url = NULL, *response_str;
+	char *url = NULL, *response_str = NULL;
 	size_t length;
 
 	debug3("%s %s called", plugin_type, __func__);
@@ -199,9 +199,9 @@ static int _send_data(const char *data)
 	xstrfmtcat(url, "%s/write?db=%s&rp=%s&precision=s", influxdb_conf.host,
 		   influxdb_conf.database, influxdb_conf.rt_policy);
 	rc = slurm_curl_request(datastr, url, influxdb_conf.username,
-				influxdb_conf.password, false,
+				influxdb_conf.password, NULL, NULL, NULL, false,
 				influxdb_conf.timeout, &response_str,
-				&response_code, HTTP_REQUEST_POST, true);
+				&response_code, HTTP_REQUEST_POST, true, false);
 	xfree(url);
 
 	/* In general, status codes of the form 2xx indicate success,

@@ -185,7 +185,7 @@ proc wait_for_depend { job_id expected_reason expected_dependency } {
 	set my_delay 0
 	# By default we test remote dependencies every 30 seconds.
 	# Once the dependencies are cleared, we have to wait for the job to be
-	# scheduled which could be another 30-60 seconds dependending on the
+	# scheduled which could be another 30-60 seconds depending on the
 	# main scheduler and backfill scheduler timing.
 	set max_delay 120
 	set poll_interval 3
@@ -1045,9 +1045,6 @@ proc cleanup {} {
 # Use file_in_long everywhere else.
 make_bash_script $file_in_long "$bin_sleep 60"
 make_bash_script $file_in_short "$bin_sleep 5"
-
-set permit_job_expansion [param_contains [get_config_param "ClusterName"] "permit_job_expansion"]
-log_info "permit_job_expansion: $permit_job_expansion"
 
 set kill_invalid_depend [param_contains [get_config_param "DependencyParameters"] "kill_invalid_depend"]
 set disable_remote_singleton [param_contains [get_config_param "DependencyParameters"]  "disable_remote_singleton"]

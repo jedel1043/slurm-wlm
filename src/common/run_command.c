@@ -56,10 +56,14 @@
 #include "src/common/macros.h"
 #include "src/common/read_config.h"
 #include "src/common/run_command.h"
+#include "src/common/slurm_time.h"
 #include "src/common/timers.h"
 #include "src/common/xassert.h"
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
+
+/* Define slurm-specific aliases for use by plugins, see slurm_xlator.h. */
+strong_alias(run_command, slurm_run_command);
 
 static char *script_launcher = NULL;
 static int script_launcher_fd = -1;
@@ -208,18 +212,6 @@ extern int run_command_count(void)
 	return cnt;
 }
 
-
-static int _tot_wait (struct timeval *start_time)
-{
-	struct timeval end_time;
-	int msec_delay;
-
-	gettimeofday(&end_time, NULL);
-	msec_delay =   (end_time.tv_sec  - start_time->tv_sec ) * 1000;
-	msec_delay += ((end_time.tv_usec - start_time->tv_usec + 500) / 1000);
-	return msec_delay;
-}
-
 static void _kill_pg(pid_t pid)
 {
 	killpg(pid, SIGTERM);
@@ -246,7 +238,7 @@ static void _run_command_child(run_command_args_t *args, int write_fd,
 	dup2(write_fd, STDERR_FILENO);
 	dup2(write_fd, STDOUT_FILENO);
 
-	if (launcher_argv)
+	if (launcher_argv && !args->direct_exec)
 		_run_command_child_exec(script_launcher_fd, script_launcher,
 					launcher_argv, args->env);
 
@@ -408,7 +400,7 @@ extern char *run_command(run_command_args_t *args)
 	child_proc_count++;
 	slurm_mutex_unlock(&proc_count_mutex);
 
-	if (script_launcher)
+	if (script_launcher && !args->direct_exec)
 		launcher_argv = _setup_launcher_argv(args);
 
 	if ((cpid = fork()) == 0) {
@@ -518,7 +510,7 @@ extern char *run_command_poll_child(int cpid,
 		if (max_wait <= 0) {
 			new_wait = MAX_POLL_WAIT;
 		} else {
-			new_wait = max_wait - _tot_wait(&tstart);
+			new_wait = max_wait - timeval_tot_wait(&tstart);
 			if (new_wait <= 0) {
 				error("%s: %s poll timeout @ %d msec",
 				      __func__, script_type,
@@ -584,7 +576,7 @@ extern char *run_command_poll_child(int cpid,
 		run_command_waitpid_timeout(script_type,
 					    cpid, status,
 					    max_wait,
-					    _tot_wait(&tstart),
+					    timeval_tot_wait(&tstart),
 					    tid, timed_out);
 	}
 
