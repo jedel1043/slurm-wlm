@@ -1,3 +1,11 @@
+slurm-wlm (25.05.3-1ppa1) noble; urgency=medium
+
+  * New upstream release
+  * Rediff patches
+  * Update libslurm symbols file
+
+ -- José Julián Espina Del Ángel <julian.espina@canonical.com>  Fri, 05 Sep 2025 17:56:52 -0600
+
 slurm-wlm (24.11.5-1) unstable; urgency=medium
 
   * New upstream release fix CVE-2025-4390 (Closes: #1104929)

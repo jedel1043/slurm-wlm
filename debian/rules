@@ -47,22 +47,22 @@ override_dh_shlibdeps:
 
 override_dh_auto_install:
 	dh_auto_install
-	
+
 	# Rename slurm(1) manpage before dh_installman run. It is not possible
 	# to rename manpages in debian/*.manpages so hardcore `mv` is done here
 	mv -v debian/tmp/usr/share/man/man7/slurm.7 debian/tmp/usr/share/man/man7/slurm-wlm.7
-	
+
 	# run make install for libpam-slurm pkg
 	$(MAKE) -C obj-$(DEB_BUILD_GNU_TYPE)/contribs/pam install DESTDIR=$(CURDIR)/debian/tmp
-	
+
 	# run make install for libpam-slurm-adopt pkg
 	$(MAKE) -C obj-$(DEB_BUILD_GNU_TYPE)/contribs/pam_slurm_adopt install DESTDIR=$(CURDIR)/debian/tmp
-	
+
 	# run make install for libslurm[db]-perl pkgs
 	$(MAKE) -C obj-$(DEB_BUILD_GNU_TYPE)/contribs/perlapi install DESTDIR=$(CURDIR)/debian/tmp PERL_MM_OPT="INSTALLDIRS=vendor"
 	find debian/tmp/$(PERL_ARCHLIB) -type f -name "*.so" | xargs chmod u+rwX
 	find debian/tmp/$(PERL_ARCHLIB) -type f -name "*.so" | xargs chrpath -d
-	
+
 	# run make install for slurm-wlm-torque pkg
 	$(MAKE) -C obj-$(DEB_BUILD_GNU_TYPE)/contribs/torque install DESTDIR=$(CURDIR)/debian/tmp
 
@@ -138,7 +138,7 @@ override_dh_auto_install:
 	comm -23 debian/all_plugins_dev_filelist debian/plugin_packages_dev_filelist | sed "s/^debian\/tmp\///" >> debian/slurm-wlm-basic-plugins-dev.install
 
 override_dh_strip:
-	dh_strip -plibslurm42t64
+	dh_strip -plibslurm43t64
 	dh_strip -plibpmi0t64 --dbgsym-migration='libpmi0-dbg (<< 17.02.6~)'
 	dh_strip -plibpmi2-0t64 --dbgsym-migration='libpmi2-0-dbg (<< 17.02.6~)'
 	dh_strip -pslurm-wlm-basic-plugins --dbgsym-migration='slurm-wlm-basic-plugins-dbg (<< 17.02.6~)'

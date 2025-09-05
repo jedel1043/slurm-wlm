@@ -21,6 +21,7 @@ debian/tmp/usr/share/man/man5/gres.conf.5
 debian/tmp/usr/share/man/man5/acct_gather.conf.5
 debian/tmp/usr/share/man/man5/cgroup.conf.5
 debian/tmp/usr/share/man/man5/topology.conf.5
+debian/tmp/usr/share/man/man5/topology.yaml.5
 debian/tmp/usr/share/man/man5/slurm.conf.5
 debian/tmp/usr/share/man/man1/scrontab.1
 debian/tmp/usr/share/man/man1/scrun.1
