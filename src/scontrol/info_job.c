@@ -705,9 +705,10 @@ static char *_sprint_job_info(job_info_t *job_ptr)
 	}
 
 	/****** Line 20 ******/
-	xstrfmtcat(out, "OverSubscribe=%s Contiguous=%d Licenses=%s Network=%s",
+	xstrfmtcat(out, "OverSubscribe=%s Contiguous=%d Licenses=%s LicensesAlloc=%s Network=%s",
 		   job_share_string(job_ptr->shared), job_ptr->contiguous,
-		   job_ptr->licenses, job_ptr->network);
+		   job_ptr->licenses, job_ptr->licenses_allocated,
+		   job_ptr->network);
 	xstrcat(out, line_end);
 
 	/****** Line 21 ******/
@@ -760,6 +761,12 @@ static char *_sprint_job_info(job_info_t *job_ptr)
 		xstrcat(out, line_end);
 		slurm_get_job_stdout(tmp_path, sizeof(tmp_path), job_ptr);
 		xstrfmtcat(out, "StdOut=%s", tmp_path);
+	}
+
+	/****** Line (optional) ******/
+	if (job_ptr->segment_size) {
+		xstrcat(out, line_end);
+		xstrfmtcat(out, "SegmentSize=%u", job_ptr->segment_size);
 	}
 
 	/****** Line 34 (optional) ******/
@@ -2119,7 +2126,7 @@ scontrol_print_hosts (char * node_list)
 		error("host list is empty");
 		return;
 	}
-	hl = hostlist_create_dims(node_list, 0);
+	hl = hostlist_create_client(node_list);
 	if (!hl) {
 		fprintf(stderr, "Invalid hostlist: %s\n", node_list);
 		return;
@@ -2205,7 +2212,7 @@ extern int scontrol_encode_hostlist(char *arg_hostlist, bool sorted)
 	} else
 		tmp_list = hostlist;
 
-	hl = hostlist_create(tmp_list);
+	hl = hostlist_create_client(tmp_list);
 	if (hl == NULL) {
 		fprintf(stderr, "Invalid hostlist: %s\n", tmp_list);
 		xfree(io_buf);

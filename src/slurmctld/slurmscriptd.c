@@ -114,6 +114,7 @@ typedef struct {
 	char *key;
 	pthread_mutex_t mutex;
 	int rc;
+	bool received_response;
 	char *resp_msg;
 	bool track_script_signalled;
 } script_response_t;
@@ -209,15 +210,17 @@ static void _wait_for_script_resp(script_response_t *script_resp,
 				  int *status, char **resp_msg,
 				  bool *track_script_signalled)
 {
-	slurm_mutex_lock(&script_resp->mutex);
-	slurm_cond_wait(&script_resp->cond, &script_resp->mutex);
+	/* script_resp->mutex should already be locked */
+	/* Loop to handle spurious wakeups */
+	while (!script_resp->received_response) {
+		slurm_cond_wait(&script_resp->cond, &script_resp->mutex);
+	}
 	/* The script is done now, and we should have the response */
 	*status = script_resp->rc;
 	if (resp_msg)
 		*resp_msg = xstrdup(script_resp->resp_msg);
 	if (track_script_signalled)
 		*track_script_signalled = script_resp->track_script_signalled;
-	slurm_mutex_unlock(&script_resp->mutex);
 }
 
 static void _wait_for_powersave_scripts()
@@ -390,10 +393,16 @@ static int _send_to_slurmscriptd(uint32_t msg_type, void *msg_data, bool wait,
 	}
 	if (msg_type == SLURMSCRIPTD_REQUEST_RUN_SCRIPT)
 		_incr_script_cnt();
+
+	if (wait)
+		slurm_mutex_lock(&script_resp->mutex);
 	rc = _write_msg(slurmctld_writefd, msg.msg_type, buffer, true);
 
 	if ((rc == SLURM_SUCCESS) && wait) {
 		_wait_for_script_resp(script_resp, &rc, resp_msg, signalled);
+	}
+	if (wait) {
+		slurm_mutex_unlock(&script_resp->mutex);
 		_script_resp_map_remove(script_resp->key);
 	}
 
@@ -475,18 +484,9 @@ static void _incr_script_cnt(void)
 static void _change_proc_name(int argc, char **argv, char *proc_name)
 {
 	char *log_prefix;
-	/*
-	 * Since running_in_slurmctld() is called before we fork()'d,
-	 * the result is cached in static variables, so calling it now
-	 * would return true even though we're now slurmscriptd.
-	 * Reset those cached variables so running_in_slurmctld()
-	 * returns false if called from slurmscriptd.
-	 * But first change slurm_prog_name since that is
-	 * read by run_in_daemon().
-	 */
-	xfree(slurm_prog_name);
-	slurm_prog_name = xstrdup(proc_name);
-	running_in_slurmctld_reset();
+
+	/* Update slurm_daemon to ensure run_in_daemon() works properly. */
+	slurm_daemon = IS_SLURMSCRIPTD;
 
 	/*
 	 * Change the process name to slurmscriptd.
@@ -842,11 +842,12 @@ static int _notify_script_done(char *key, script_complete_t *script_complete)
 		      script_complete->script_name, key);
 		rc = SLURM_ERROR;
 	} else {
+		slurm_mutex_lock(&script_resp->mutex);
+		script_resp->received_response = true;
 		script_resp->resp_msg = xstrdup(script_complete->resp_msg);
 		script_resp->rc = script_complete->status;
 		script_resp->track_script_signalled =
 			script_complete->signalled;
-		slurm_mutex_lock(&script_resp->mutex);
 		slurm_cond_signal(&script_resp->cond);
 		slurm_mutex_unlock(&script_resp->mutex);
 	}
@@ -1094,11 +1095,6 @@ static void _on_sigquit(conmgr_callback_args_t conmgr_args, void *arg)
 	log_flag(SCRIPT, "Caught SIGQUIT. Ignoring.");
 }
 
-static void _on_sigtstp(conmgr_callback_args_t conmgr_args, void *arg)
-{
-	log_flag(SCRIPT, "Caught SIGTSTP. Ignoring.");
-}
-
 static void _on_sighup(conmgr_callback_args_t conmgr_args, void *arg)
 {
 	log_flag(SCRIPT, "Caught SIGHUP. Ignoring.");
@@ -1152,7 +1148,6 @@ static void _init_slurmscriptd_conmgr(void)
 	conmgr_add_work_signal(SIGTERM, _on_sigterm, NULL);
 	conmgr_add_work_signal(SIGCHLD, _on_sigchld, NULL);
 	conmgr_add_work_signal(SIGQUIT, _on_sigquit, NULL);
-	conmgr_add_work_signal(SIGTSTP, _on_sigtstp, NULL);
 	conmgr_add_work_signal(SIGHUP, _on_sighup, NULL);
 	conmgr_add_work_signal(SIGUSR1, _on_sigusr1, NULL);
 	conmgr_add_work_signal(SIGUSR2, _on_sigusr2, NULL);
@@ -1190,8 +1185,8 @@ extern void slurmscriptd_run_slurmscriptd(int argc, char **argv,
 		      __func__);
 		_exit(1);
 	} else if (i != sizeof(int)) {
-		error("%s: slurmscriptd: slurmctld failed to send ack: %m",
-		      __func__);
+		error("%s: slurmscriptd: slurmctld failed to send expected ack: received %zd bytes when %zd bytes was expected.",
+		      __func__, i, sizeof(int));
 		_exit(1);
 	}
 
@@ -1586,6 +1581,8 @@ extern void slurmscriptd_run_prepilog(uint32_t job_id, bool is_epilog,
 	slurmscriptd_msg_t *send_args = xmalloc(sizeof(*send_args));
 	char *script_name;
 	script_type_t script_type;
+	int timeout = is_epilog ?
+		slurm_conf.epilog_timeout : slurm_conf.prolog_timeout;
 
 	if (is_epilog) {
 		script_name = "EpilogSlurmctld";
@@ -1596,8 +1593,7 @@ extern void slurmscriptd_run_prepilog(uint32_t job_id, bool is_epilog,
 	}
 
 	run_script_msg = _init_run_script_msg(env, script_name, script,
-					      script_type,
-					      slurm_conf.prolog_epilog_timeout);
+					      script_type, timeout);
 	run_script_msg->argc = 1;
 	run_script_msg->argv = xcalloc(2, sizeof(char *)); /* NULL terminated */
 	run_script_msg->argv[0] = xstrdup(script);
