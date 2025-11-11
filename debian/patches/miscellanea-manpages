@@ -15,10 +15,10 @@ to the miscellanea section since they are not related to commands
  doc/man/man5/slurm.conf.5 |   4 +-
  doc/man/man7/Makefile.am  |  23 ++
  doc/man/man7/slurm.7      |  71 ++++++
- doc/man/man7/spank.7      | 581 ++++++++++++++++++++++++++++++++++++++++++++++
+ doc/man/man7/spank.7      | 583 ++++++++++++++++++++++++++++++++++++++++++++++
  doc/man/man8/Makefile.am  |   6 +-
- doc/man/man8/spank.8      | 581 ----------------------------------------------
- 10 files changed, 681 insertions(+), 660 deletions(-)
+ doc/man/man8/spank.8      | 583 ----------------------------------------------
+ 10 files changed, 683 insertions(+), 662 deletions(-)
  delete mode 100644 doc/man/man1/slurm.1
  create mode 100644 doc/man/man7/Makefile.am
  create mode 100644 doc/man/man7/slurm.7
@@ -26,7 +26,7 @@ to the miscellanea section since they are not related to commands
  delete mode 100644 doc/man/man8/spank.8
 
 diff --git a/configure.ac b/configure.ac
-index 49ca899..f063bdb 100644
+index 1931096..ca223d6 100644
 --- a/configure.ac
 +++ b/configure.ac
 @@ -399,6 +399,7 @@ AC_CONFIG_FILES([Makefile
@@ -58,11 +58,11 @@ index 5e6d437..c1e7239 100644
  	sreport.1 \
 diff --git a/doc/man/man1/slurm.1 b/doc/man/man1/slurm.1
 deleted file mode 100644
-index 4d5a26d..0000000
+index a5a7b2d..0000000
 --- a/doc/man/man1/slurm.1
 +++ /dev/null
 @@ -1,71 +0,0 @@
--.TH Slurm "1" "Slurm System" "June 2018" "Slurm System"
+-.TH slurm "1" "Slurm Commands" "Slurm 25.11" "Slurm Commands"
 -
 -.SH "NAME"
 -Slurm \- Slurm Workload Manager overview.
@@ -80,7 +80,7 @@ index 4d5a26d..0000000
 -pending work.
 -Optional plugins can be used for accounting, advanced reservation,
 -gang scheduling (time sharing for parallel jobs), backfill scheduling,
--resource limits by user or bank account,
+-resource limits by user or account,
 -and sophisticated multifactor job prioritization algorithms.
 -
 -Slurm has a centralized manager, \fBslurmctld\fR, to monitor resources and
@@ -134,10 +134,10 @@ index 4d5a26d..0000000
 -\fBslurmctld\fR(8), \fBslurmd\fR(8), \fBslurmdbd\fR(8), \fBslurmstepd\fR(8),
 -\fBspank\fR(8)
 diff --git a/doc/man/man5/slurm.conf.5 b/doc/man/man5/slurm.conf.5
-index 6545b97..fa3680c 100644
+index 117c641..475715d 100644
 --- a/doc/man/man5/slurm.conf.5
 +++ b/doc/man/man5/slurm.conf.5
-@@ -2748,7 +2748,7 @@ This provides support for a highly configurable set of plugins to
+@@ -2840,7 +2840,7 @@ This provides support for a highly configurable set of plugins to
  be called before and/or after execution of each task spawned as
  part of a user's job step. Default location is "plugstack.conf"
  in the same directory as the system slurm.conf. For more information
@@ -146,7 +146,7 @@ index 6545b97..fa3680c 100644
  .IP
  
  .TP
-@@ -8424,4 +8424,4 @@ details.
+@@ -8601,4 +8601,4 @@ details.
  \fBgetrlimit\fR(2), \fBgres.conf\fR(5), \fBgroup\fR(5), \fBhostname\fR(1),
  \fBscontrol\fR(1), \fBslurmctld\fR(8), \fBslurmd\fR(8),
  \fBslurmdbd\fR(8), \fBslurmdbd.conf\fR(5), \fBsrun\fR(1),
@@ -183,11 +183,11 @@ index 0000000..dfdbe95
 +
 diff --git a/doc/man/man7/slurm.7 b/doc/man/man7/slurm.7
 new file mode 100644
-index 0000000..558f523
+index 0000000..05c4470
 --- /dev/null
 +++ b/doc/man/man7/slurm.7
 @@ -0,0 +1,71 @@
-+.TH Slurm "7" "Slurm System" "June 2018" "Slurm System"
++.TH Slurm "7" "Slurm Commands" "Slurm 25.11" "Slurm Commands"
 +
 +.SH "NAME"
 +Slurm \- Slurm Workload Manager overview.
@@ -205,7 +205,7 @@ index 0000000..558f523
 +pending work.
 +Optional plugins can be used for accounting, advanced reservation,
 +gang scheduling (time sharing for parallel jobs), backfill scheduling,
-+resource limits by user or bank account,
++resource limits by user or account,
 +and sophisticated multifactor job prioritization algorithms.
 +
 +Slurm has a centralized manager, \fBslurmctld\fR, to monitor resources and
@@ -260,11 +260,11 @@ index 0000000..558f523
 +\fBspank\fR(7)
 diff --git a/doc/man/man7/spank.7 b/doc/man/man7/spank.7
 new file mode 100644
-index 0000000..ccc3844
+index 0000000..8c6920c
 --- /dev/null
 +++ b/doc/man/man7/spank.7
-@@ -0,0 +1,581 @@
-+.TH SPANK "7" "Slurm Component" "December 2023" "Slurm Component"
+@@ -0,0 +1,583 @@
++.TH SPANK "7" "Slurm Component" "Slurm 25.11" "Slurm Component"
 +
 +.SH "NAME"
 +\fBSPANK\fR \- Slurm Plug\-in Architecture for Node and job (K)control
@@ -389,7 +389,8 @@ index 0000000..ccc3844
 +.TP
 +\fBslurm_spank_task_init_privileged\fR
 +Called for each task just after fork, but before all elevated privileges
-+are dropped. (remote context only)
++are dropped. This can run in parallel with \fBslurm_spank_task_post_fork\fR.
++(remote context only)
 +.IP
 +
 +.TP
@@ -404,7 +405,8 @@ index 0000000..ccc3844
 +Called for each task from parent process after fork (2) is complete.
 +Due to the fact that \fBslurmd\fR does not exec any tasks until all
 +tasks have completed fork (2), this call is guaranteed to run before
-+the user task is executed. (remote context only)
++the user task is executed. This can run in parallel with
++\fBslurm_spank_task_init_privileged\fR. (remote context only)
 +.IP
 +
 +.TP
@@ -871,11 +873,11 @@ index 15d2f79..10d0f31 100644
  
 diff --git a/doc/man/man8/spank.8 b/doc/man/man8/spank.8
 deleted file mode 100644
-index 726d480..0000000
+index 02ed6e0..0000000
 --- a/doc/man/man8/spank.8
 +++ /dev/null
-@@ -1,581 +0,0 @@
--.TH SPANK "8" "Slurm Component" "December 2023" "Slurm Component"
+@@ -1,583 +0,0 @@
+-.TH SPANK "8" "Slurm Component" "Slurm 25.11" "Slurm Component"
 -
 -.SH "NAME"
 -\fBSPANK\fR \- Slurm Plug\-in Architecture for Node and job (K)control
@@ -1000,7 +1002,8 @@ index 726d480..0000000
 -.TP
 -\fBslurm_spank_task_init_privileged\fR
 -Called for each task just after fork, but before all elevated privileges
--are dropped. (remote context only)
+-are dropped. This can run in parallel with \fBslurm_spank_task_post_fork\fR.
+-(remote context only)
 -.IP
 -
 -.TP
@@ -1015,7 +1018,8 @@ index 726d480..0000000
 -Called for each task from parent process after fork (2) is complete.
 -Due to the fact that \fBslurmd\fR does not exec any tasks until all
 -tasks have completed fork (2), this call is guaranteed to run before
--the user task is executed. (remote context only)
+-the user task is executed. This can run in parallel with
+-\fBslurm_spank_task_init_privileged\fR. (remote context only)
 -.IP
 -
 -.TP

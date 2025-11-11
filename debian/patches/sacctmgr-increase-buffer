@@ -14,7 +14,7 @@ macro definition in other related file.
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/sacctmgr/file_functions.c b/src/sacctmgr/file_functions.c
-index d871685..6ddeaf6 100644
+index c1c5f49..5a98a51 100644
 --- a/src/sacctmgr/file_functions.c
 +++ b/src/sacctmgr/file_functions.c
 @@ -42,7 +42,7 @@

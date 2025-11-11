@@ -26,7 +26,7 @@ index 3a32b5f..038ab33 100644
      AC_MSG_RESULT([shared]);
    fi
 diff --git a/configure.ac b/configure.ac
-index a50fb6e..49ca899 100644
+index 1ec094e..1931096 100644
 --- a/configure.ac
 +++ b/configure.ac
 @@ -3,7 +3,7 @@

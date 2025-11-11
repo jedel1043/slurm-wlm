@@ -13,7 +13,7 @@ This patch changes the default command to /usr/bin/mail in various
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/doc/man/man1/strigger.1 b/doc/man/man1/strigger.1
-index 5d8bb2d..8818d0a 100644
+index dc3104e..fb27f92 100644
 --- a/doc/man/man1/strigger.1
 +++ b/doc/man/man1/strigger.1
 @@ -384,7 +384,7 @@ $ cat /usr/sbin/primary_slurmctld_failure

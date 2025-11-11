@@ -13,10 +13,10 @@ This patch points default pidfild paths under /run
  2 files changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/src/common/read_config.h b/src/common/read_config.h
-index cf41b81..6cd6746 100644
+index e27fb4b..64adf8f 100644
 --- a/src/common/read_config.h
 +++ b/src/common/read_config.h
-@@ -137,9 +137,9 @@ typedef struct node_record node_record_t;
+@@ -138,9 +138,9 @@ typedef struct node_record node_record_t;
  #define DEFAULT_SCHED_TIME_SLICE    30
  #define DEFAULT_SCHEDTYPE           "sched/backfill"
  #define DEFAULT_SELECT_TYPE         "select/cons_tres"
@@ -29,7 +29,7 @@ index cf41b81..6cd6746 100644
  #define DEFAULT_SPOOLDIR            "/var/spool/slurmd"
  #define DEFAULT_STORAGE_HOST        "localhost"
 diff --git a/src/slurmdbd/read_config.h b/src/slurmdbd/read_config.h
-index 653ae72..97b30b4 100644
+index 398d092..c833e60 100644
 --- a/src/slurmdbd/read_config.h
 +++ b/src/slurmdbd/read_config.h
 @@ -48,7 +48,7 @@
