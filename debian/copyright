@@ -29,21 +29,7 @@ Files: src/common/sack_api.?
        src/slurmctld/sackd_mgr.?
        src/slurmd/common/privileges.?
        src/slurmd/slurmd/cred_context.?
-       testsuite/python/tests/test_144_7.py
 Copyright: SchedMD LLC.
-License: GPL-2+ with OpenSSL exception
-
-Files: src/plugins/data_parser/v0.0.40/alloc.?
-       src/plugins/data_parser/v0.0.40/api.?
-       src/plugins/data_parser/v0.0.40/events.?
-       src/plugins/data_parser/v0.0.40/parsers.?
-       src/plugins/data_parser/v0.0.40/parsing.?
-       src/plugins/data_parser/v0.0.40/slurmdb_helpers.?
-Copyright: 2022 SchedMD LLC.
-License: GPL-2+ with OpenSSL exception
-
-Files: src/plugins/data_parser/v0.0.40/openapi.?
-Copyright: 2023 SchedMD LLC.
 License: GPL-2+ with OpenSSL exception
 
 Files: debian/*
@@ -72,14 +58,12 @@ Files: src/api/pmi_server.c
        src/srun/step_ctx.h
        src/sview/submit_info.c
        src/sview/sview.h
-       testsuite/expect/regression.py
 Copyright: 2002-2007 The Regents of the University of California
 License: GPL-2+
 
 Files: src/sview/bb_info.c
        src/sview/gthread_helper.c
        src/sview/gthread_helper.h
-       testsuite/expect/globals_federation
 Copyright: 2012,2014-2016 SchedMD LLC
 License: GPL-2+
 
@@ -92,28 +76,9 @@ Files: contribs/pam/pam_slurm.c
        src/sattach/sattach.c
        src/sview/admin_info.c
        src/sview/common.c
-       src/sview/front_end_info.c
-       testsuite/expect/globals_accounting
 Copyright: 2002-2007 The Regents of the University of California
            2008-2010 Lawrence Livermore National Security, LLC
 License: GPL-2+
-
-Files: testsuite/expect/globals
-       testsuite/expect/test*
-       testsuite/expect/inc*
-       src/sview/resv_info.c
-Copyright: 2002-2009 The Regents of the University of California
-           2008-2012 Lawrence Livermore National Security, LLC
-           2011-2018 SchedMD LLC
-License: GPL-2+
-
-Files: testsuite/expect/test7.17.prog.c
-       testsuite/expect/test7.4
-       testsuite/expect/test7.6
-Copyright: 2014 SchedMD LLC
-           2004-2007 The Regents of the University of California
-           2008-2011 Lawrence Livermore National Security
-License: GPL-2+ with OpenSSL exception
 
 Files: */Makefile.in
        auxdir/libtool.m4
@@ -121,7 +86,7 @@ Files: */Makefile.in
        auxdir/ltsugar.m4
        auxdir/ltversion.m4
        auxdir/lt~obsolete.m4
-Copyright: 1994-2021 Free Software Foundation, Inc
+Copyright: 1994-2024 Free Software Foundation, Inc
 License: FSF-unlimited
 
 Files: src/slurmrestd/plugins/openapi/*
@@ -132,41 +97,6 @@ License: GPL-2+ with OpenSSL exception or apache-2.0
 Files: src/slurmrestd/plugins/openapi/slurmctld/reservations.c
 Copyright: 2020 UT-Battelle, LLC.
 License: GPL-2+ with OpenSSL exception or apache-2.0
-
-Files: testsuite/expect/test1.102
-       testsuite/expect/test1.103
-       testsuite/expect/test1.104
-       testsuite/expect/test1.105
-       testsuite/expect/test1.106
-       testsuite/expect/test1.107
-       testsuite/expect/test1.108
-       testsuite/expect/test1.109
-       testsuite/expect/test1.110
-       testsuite/expect/test1.111
-       testsuite/expect/test1.112
-       testsuite/expect/test15.30
-       testsuite/expect/test15.31
-       testsuite/expect/test15.32
-       testsuite/expect/test15.33
-       testsuite/expect/test15.34
-       testsuite/expect/test15.35
-       testsuite/expect/test15.36
-       testsuite/expect/test15.37
-       testsuite/expect/test15.38
-       testsuite/expect/test17.51
-       testsuite/expect/test17.52
-       testsuite/expect/test17.53
-       testsuite/expect/test17.54
-       testsuite/expect/test17.55
-       testsuite/expect/test17.56
-       testsuite/expect/test17.57
-       testsuite/expect/test17.58
-       testsuite/expect/test17.59
-       testsuite/expect/test17.60
-       testsuite/expect/test17.61
-       testsuite/expect/test17.64
-Copyright: 2015-2016 CEA/DAM/DIF
-License: GPL-2+
 
 Files: src/interfaces/mcs.?
        src/common/xhash.c
@@ -325,12 +255,6 @@ Copyright: 2005-2008 Hewlett-Packard Development Company, L.P
            2010-2015 SchedMD LLC
 License: GPL-2+ with OpenSSL exception
 
-Files: contribs/skilling.c
-       src/plugins/topology/3d_torus/hilbert.c
-       src/plugins/topology/3d_torus/hilbert.h
-Copyright: 1996-2003 Maximum Entropy Data Consultants Ltd
-License: LGPL-2.1+
-
 Files: contribs/torque/pbsnodes.pl
        contribs/torque/qdel.pl
        contribs/torque/qhold.pl
@@ -413,11 +337,6 @@ Copyright: 2002-2007 The Regents of the University of California
            2008 Vijay Ramasubramanian
 License: GPL-2+ with OpenSSL exception
 
-Files: testsuite/expect/test1.76
-       testsuite/expect/test12.6
-Copyright: 2013-2014 Bull
-License: GPL-2+
-
 Files: src/slurmd/common/xcpuinfo.c
 Copyright: 2009,2013 CEA/DAM/DIF
            2012,2014 Bull
@@ -495,11 +414,6 @@ Files: contribs/sgather/sgather
 Copyright: 2013 ZIH, TU Dresden, Federal Republic of Germany
 License: None
 
-Files: testsuite/expect/test12.6.prog.c
-       testsuite/expect/test21.31
-Copyright: 2012-2013 Bull
-License: GPL-2
-
 Files: auxdir/config.guess
        auxdir/config.sub
 Copyright: 1992-2022 Free Software Foundation, Inc
@@ -544,23 +458,6 @@ Copyright: 2004-2007 The Regents of the University of California
            2010 SchedMD LLC
            2014 Silicon Graphics, Inc
 License: GPL-2+ with OpenSSL exception
-
-Files: src/plugins/mpi/pmix/tests/test_common.h
-Copyright: 2013-2015 Intel Inc
-           2015 Artem Polyakov
-License: None
-
-Files: src/plugins/mpi/pmix/tests/pmix_client.c
-Copyright: 2004-2010 The Trustees of Indiana University and Indiana
-           2004-2011 The University of Tennessee and The University
-           2004-2005 High Performance Computing Center Stuttgart
-           2004-2005 The Regents of the University of California
-           2006-2013 Los Alamos National Security, LLC
-           2009-2012 Cisco Systems, Inc
-           2011 Oak Ridge National Labs
-           2013-2014 Intel Inc
-           2015 Mellanox Technologies, Inc
-License: None
 
 Files: src/plugins/mpi/pmi2/tree.c
 Copyright: 2011-2012 National University of Defense Technology, China
@@ -675,15 +572,6 @@ Files: contribs/slurm_completion_help/slurm_completion.sh
 Copyright: 2012 Damien François
 License: GPL-2+ with OpenSSL exception
 
-Files: testsuite/expect/inc3.11.9
-Copyright: 2013 Barcelona Supercomputing Center
-License: GPL-2+
-
-Files: testsuite/expect/test1.53.prog.c
-Copyright: 2002-2007 The Regents of the University of California
-           2008-2009 Lawrence Livermore National Security, LLC
-License: None
-
 Files: auxdir/ax_lib_hdf5.m4
 Copyright: 2009 Timothy Brown
            2010 Rhys Ulerich
@@ -731,6 +619,8 @@ License: GPL-2+ with OpenSSL exception
 Files: auxdir/ax_have_epoll.m4
 Copyright: 2008 Peter Simons
 License: FSF-all-permissive
+
+Files: testsuite/slurm_unit/topology/Makefile.in
 
 License: GPL-2+ with OpenSSL exception
  This file is part of SLURM, a resource management program.
