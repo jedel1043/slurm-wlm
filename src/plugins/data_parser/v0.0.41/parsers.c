@@ -1381,10 +1381,12 @@ static void _fill_job_stp(job_std_pattern_t *job_stp, slurmdb_job_rec_t *job)
 
 	job_stp->array_job_id = job->array_job_id;
 	job_stp->array_task_id = job->array_task_id;
-	job_stp->first_step_id = SLURM_BATCH_SCRIPT;
 	job_stp->first_step_node = step ? step->nodes : NULL;
-	job_stp->jobid = job->jobid;
 	job_stp->jobname = job->jobname;
+	job_stp->step_id = SLURM_STEP_ID_INITIALIZER;
+	job_stp->step_id.job_id = job->jobid;
+	job_stp->step_id.sluid = job->db_index;
+	job_stp->step_id.step_id = SLURM_BATCH_SCRIPT;
 	job_stp->user = job->user;
 	job_stp->work_dir = job->work_dir;
 }
@@ -2218,10 +2220,7 @@ static int PARSE_FUNC(GROUP_ID)(const parser_t *const parser, void *obj,
 				   "Invalid group field: %pd", src);
 	case DATA_TYPE_NONE:
 	case DATA_TYPE_MAX:
-		return parse_error(
-			parser, args, parent_path, ESLURM_DATA_CONV_FAILED,
-			"Invalid group field, data type out of bounds: %s",
-			data_get_type_string(src));
+		fatal_abort("invalid type");
 	}
 
 	if (gid >= INT_MAX)
@@ -6772,7 +6771,6 @@ static const parser_t PARSER_ARRAY(ASSOC_SHORT)[] = {
 static const flag_bit_t PARSER_FLAG_ARRAY(ASSOC_FLAGS)[] = {
 	add_flag_eq(ASSOC_FLAG_NONE, ASSOC_FLAG_BASE, "NONE", true, "no flags set"),
 	add_flag_eq(ASSOC_FLAG_BASE, ASSOC_FLAG_BASE, "BASE_MASK", true, "mask for flags not stored in database"),
-	add_flag_eq(ASSOC_FLAG_INVALID, INFINITE64, "INVALID", true, "invalid flag detected"),
 	add_flag(ASSOC_FLAG_DELETED, ASSOC_FLAG_BASE, "DELETED", false, "association deleted"),
 	add_flag(ASSOC_FLAG_NO_UPDATE, ASSOC_FLAG_BASE, "NoUpdate", false, "No update requested"),
 	add_flag(ASSOC_FLAG_EXACT, ASSOC_FLAG_BASE, "Exact", false, "only match partition association"),
@@ -7097,7 +7095,6 @@ static const parser_t PARSER_ARRAY(JOB)[] = {
 static const flag_bit_t PARSER_FLAG_ARRAY(ACCOUNT_FLAGS)[] = {
 	add_flag_eq(SLURMDB_ACCT_FLAG_NONE, SLURMDB_ACCT_FLAG_BASE, "NONE", true, "no flags set"),
 	add_flag_eq(SLURMDB_ACCT_FLAG_BASE, SLURMDB_ACCT_FLAG_BASE, "BASE_MASK", true, "mask for flags not stored in database"),
-	add_flag_eq(SLURMDB_ACCT_FLAG_INVALID, INFINITE64, "INVALID", true, "invalid flag detected"),
 	add_flag(SLURMDB_ACCT_FLAG_DELETED, SLURMDB_ACCT_FLAG_BASE, "DELETED", false, "include deleted associations"),
 	add_flag(SLURMDB_ACCT_FLAG_WASSOC, SLURMDB_ACCT_FLAG_BASE, "WithAssociations", false, "query includes associations"),
 	add_flag(SLURMDB_ACCT_FLAG_WCOORD, SLURMDB_ACCT_FLAG_BASE, "WithCoordinators", false,  "query includes coordinators"),
@@ -7480,8 +7477,10 @@ static const parser_t PARSER_ARRAY(ASSOC_USAGE)[] = {
 	add_parser(stats_info_response_msg_t, mtype, false, field, 0, path, desc)
 #define add_cparse(mtype, path, desc) \
 	add_complex_parser(stats_info_response_msg_t, mtype, false, path, desc)
+#define add_removed(mtype, path, desc, deprec) \
+	add_parser_removed(stats_info_response_msg_t, mtype, false, path, desc, deprec)
 static const parser_t PARSER_ARRAY(STATS_MSG)[] = {
-	add_parse(UINT32, parts_packed, "parts_packed", "Zero if only RPC statistic included"),
+	add_removed(UINT32, "parts_packed", "Zero if only RPC statistic included", SLURM_25_11_PROTOCOL_VERSION),
 	add_parse(TIMESTAMP_NO_VAL, req_time, "req_time", "When the request was made (UNIX timestamp)"),
 	add_parse(TIMESTAMP_NO_VAL, req_time_start, "req_time_start", "When the data in the report started (UNIX timestamp)"),
 	add_parse(UINT32, server_thread_count, "server_thread_count", "Number of current active slurmctld threads"),
@@ -7492,7 +7491,7 @@ static const parser_t PARSER_ARRAY(STATS_MSG)[] = {
 	add_parse(UINT32, gettimeofday_latency, "gettimeofday_latency", "Latency of 1000 calls to the gettimeofday() syscall in microseconds, as measured at controller startup"),
 	add_parse(UINT32, schedule_cycle_max, "schedule_cycle_max", "Max time of any scheduling cycle in microseconds since last reset"),
 	add_parse(UINT32, schedule_cycle_last, "schedule_cycle_last", "Time in microseconds for last scheduling cycle"),
-	add_parse(UINT32, schedule_cycle_sum, "schedule_cycle_sum", "Total run time in microseconds for all scheduling cycles since last reset"),
+	add_parse(UINT64, schedule_cycle_sum, "schedule_cycle_sum", "Total run time in microseconds for all scheduling cycles since last reset"),
 	add_parse(UINT32, schedule_cycle_counter, "schedule_cycle_total", "Number of scheduling cycles since last reset"),
 	add_cparse(STATS_MSG_CYCLE_MEAN, "schedule_cycle_mean", "Mean time in microseconds for all scheduling cycles since last reset"),
 	add_cparse(STATS_MSG_CYCLE_MEAN_DEPTH, "schedule_cycle_mean_depth", "Mean of the number of jobs processed in a scheduling cycle"),
@@ -7554,6 +7553,7 @@ static const parser_t PARSER_ARRAY(STATS_MSG)[] = {
 	add_skip(rpc_dump_types), /* handled by STATS_MSG_RPCS_DUMP */
 	add_skip(rpc_dump_hostlist), /* handled by STATS_MSG_RPCS_DUMP */
 };
+#undef add_removed
 #undef add_parse
 #undef add_cparse
 #undef add_skip
@@ -7869,7 +7869,7 @@ static const parser_t PARSER_ARRAY(JOB_INFO)[] = {
 	add_parse(UINT32_NO_VAL, het_job_id, "het_job_id", "Heterogeneous job ID, if applicable"),
 	add_parse(STRING, het_job_id_set, "het_job_id_set", "Job ID range for all heterogeneous job components"),
 	add_parse(UINT32_NO_VAL, het_job_offset, "het_job_offset", "Unique sequence number applied to this component of the heterogeneous job"),
-	add_parse(UINT32, job_id, "job_id", "Job ID"),
+	add_parse(UINT32, step_id.job_id, "job_id", "Job ID"),
 	add_parse(JOB_RES_PTR, job_resrcs, "job_resources", "Resources used by the job"),
 	add_parse(CSV_STRING, job_size_str, "job_size_str", "Number of nodes (in a range) required for this job"),
 	add_parse_bit_flag_array(slurm_job_info_t, JOB_STATE, false, job_state, "job_state", "Current state"),
@@ -7922,8 +7922,8 @@ static const parser_t PARSER_ARRAY(JOB_INFO)[] = {
 	add_parse(STRING, sched_nodes, "scheduled_nodes", "List of nodes scheduled to be used for the job"),
 	add_parse(STRING, selinux_context, "selinux_context", "SELinux context"),
 	add_parse_overload(JOB_SHARED, shared, 2, "shared", "How the job can share resources with other jobs, if at all"),
-	add_parse_deprec(JOB_EXCLUSIVE, shared, 2, "exclusive", NULL, SLURM_23_11_PROTOCOL_VERSION),
-	add_parse_deprec(BOOL16, shared, 2, "oversubscribe", NULL, SLURM_23_11_PROTOCOL_VERSION),
+	add_parse_deprec(JOB_EXCLUSIVE, shared, 2, "exclusive", NULL, SLURM_24_05_PROTOCOL_VERSION),
+	add_parse_deprec(BOOL16, shared, 2, "oversubscribe", NULL, SLURM_24_05_PROTOCOL_VERSION),
 	add_removed(JOB_SHOW_FLAGS, "show_flags", NULL, SLURM_24_11_PROTOCOL_VERSION),
 	add_parse(UINT16, sockets_per_board, "sockets_per_board", "Number of sockets per board required"),
 	add_parse(UINT16_NO_VAL, sockets_per_node, "sockets_per_node", "Number of sockets per node required"),
@@ -8304,8 +8304,8 @@ static const parser_t PARSER_ARRAY(RESERVATION_INFO)[] = {
 #define add_parse_overload(mtype, field, overloads, path, desc) \
 	add_parser(submit_response_msg_t, mtype, false, field, overloads, path, desc)
 static const parser_t PARSER_ARRAY(JOB_SUBMIT_RESPONSE_MSG)[] = {
-	add_parse(UINT32, job_id, "job_id", "New job ID"),
-	add_parse(STEP_ID, step_id, "step_id", "New job step ID"),
+	add_parse(UINT32, step_id.job_id, "job_id", "New job ID"),
+	add_parse(STEP_ID, step_id.step_id, "step_id", "New job step ID"),
 	add_parse_overload(UINT32, error_code, 1, "error_code", "Error code"),
 	add_parse_overload(ERROR, error_code, 1, "error", "Error message"),
 	add_parse(STRING, job_submit_user_msg, "job_submit_user_msg", "Message to user from job_submit plugin"),
@@ -8361,7 +8361,6 @@ static const flag_bit_t PARSER_FLAG_ARRAY(MEMORY_BINDING_TYPE)[] = {
 	add_flag_equal(MEM_BIND_MASK, MEM_BIND_TYPE_MASK, "MASK"),
 	add_flag_equal(MEM_BIND_LOCAL, MEM_BIND_TYPE_MASK, "LOCAL"),
 	add_flag_masked_bit(MEM_BIND_VERBOSE, MEM_BIND_VERBOSE, "VERBOSE"),
-	add_flag_masked_bit(MEM_BIND_SORT, MEM_BIND_TYPE_FLAGS_MASK, "SORT"),
 	add_flag_masked_bit(MEM_BIND_PREFER, MEM_BIND_TYPE_FLAGS_MASK, "PREFER"),
 };
 
@@ -8464,7 +8463,7 @@ static const parser_t PARSER_ARRAY(JOB_DESC_MSG)[] = {
 	add_parse(GROUP_ID, group_id, "group_id", "Group ID of the user that owns the job"),
 	add_parse(UINT32, het_job_offset, "hetjob_group", "Unique sequence number applied to this component of the heterogeneous job"),
 	add_parse(BOOL16, immediate, "immediate", "If true, exit if resources are not available within the time period specified"),
-	add_parse(UINT32, job_id, "job_id", "Job ID"),
+	add_parse(UINT32, step_id.job_id, "job_id", "Job ID"),
 	add_skip(job_id_str),
 	add_parse(BOOL16, kill_on_node_fail, "kill_on_node_fail", "If true, kill job on node failure"),
 	add_parse(STRING, licenses, "licenses", "License(s) required by the job"),
@@ -8503,8 +8502,8 @@ static const parser_t PARSER_ARRAY(JOB_DESC_MSG)[] = {
 	add_skip(script_buf),
 	add_skip(script_hash),
 	add_parse_overload(JOB_SHARED, shared, 2, "shared", "How the job can share resources with other jobs, if at all"),
-	add_parse_deprec(JOB_EXCLUSIVE, shared, 2, "exclusive", NULL, SLURM_23_11_PROTOCOL_VERSION),
-	add_parse_deprec(BOOL16, shared, 2, "oversubscribe", NULL, SLURM_23_11_PROTOCOL_VERSION),
+	add_parse_deprec(JOB_EXCLUSIVE, shared, 2, "exclusive", NULL, SLURM_24_05_PROTOCOL_VERSION),
+	add_parse_deprec(BOOL16, shared, 2, "oversubscribe", NULL, SLURM_24_05_PROTOCOL_VERSION),
 	add_parse(UINT32, site_factor, "site_factor", "Site-specific priority factor"),
 	add_cparse(JOB_DESC_MSG_SPANK_ENV, "spank_environment", "Environment variables for job prolog/epilog scripts as set by SPANK plugins"),
 	add_skip(spank_job_env),
@@ -9232,16 +9231,16 @@ static const flag_bit_t PARSER_FLAG_ARRAY(NEED_PREREQS_FLAGS)[] = {
 };
 
 static const flag_bit_t PARSER_FLAG_ARRAY(CR_TYPE)[] = {
-	add_flag_equal(CR_CPU, (CR_CPU|CR_SOCKET|CR_CORE), "CPU"),
-	add_flag_equal(CR_SOCKET, (CR_CPU|CR_SOCKET|CR_CORE), "SOCKET"),
-	add_flag_equal(CR_CORE, (CR_CPU|CR_SOCKET|CR_CORE), "CORE"),
-	add_flag_bit(CR_BOARD, "BOARD"),
-	add_flag_bit(CR_MEMORY, "MEMORY"),
-	add_flag_bit(CR_ONE_TASK_PER_CORE, "ONE_TASK_PER_CORE"),
-	add_flag_bit(CR_PACK_NODES, "PACK_NODES"),
-	add_flag_bit(CR_CORE_DEFAULT_DIST_BLOCK, "CORE_DEFAULT_DIST_BLOCK"),
-	add_flag_bit(CR_LLN, "LLN"),
-	add_flag_bit(CR_LINEAR, "LINEAR"),
+	add_flag_equal(SELECT_CPU, (SELECT_CPU|SELECT_SOCKET|SELECT_CORE), "CPU"),
+	add_flag_equal(SELECT_SOCKET, (SELECT_CPU|SELECT_SOCKET|SELECT_CORE), "SOCKET"),
+	add_flag_equal(SELECT_CORE, (SELECT_CPU|SELECT_SOCKET|SELECT_CORE), "CORE"),
+	add_flag_bit(SELECT_BOARD, "BOARD"),
+	add_flag_bit(SELECT_MEMORY, "MEMORY"),
+	add_flag_bit(SELECT_ONE_TASK_PER_CORE, "ONE_TASK_PER_CORE"),
+	add_flag_bit(SELECT_PACK_NODES, "PACK_NODES"),
+	add_flag_bit(SELECT_CORE_DEFAULT_DIST_BLOCK, "CORE_DEFAULT_DIST_BLOCK"),
+	add_flag_bit(SELECT_LLN, "LLN"),
+	add_flag_bit(SELECT_LINEAR, "LINEAR"),
 };
 
 /* Descriptions from _node_state_str() */
@@ -9507,9 +9506,9 @@ add_openapi_response_single(OPENAPI_KILL_JOBS_RESP, KILL_JOBS_RESP_MSG_PTR, "sta
 	add_parser_deprec(openapi_job_post_response_t, mtype, false, field, overloads, path, desc, deprec)
 static const parser_t PARSER_ARRAY(OPENAPI_JOB_POST_RESPONSE)[] = {
 	add_parse(JOB_ARRAY_RESPONSE_MSG_PTR, results, "results", "Job update results"),
-	add_parse_deprec(STRING, job_id, 0, "job_id", "First updated Job ID - Use results instead", SLURM_23_11_PROTOCOL_VERSION),
-	add_parse_deprec(STRING, step_id, 0, "step_id", "First updated Step ID - Use results instead", SLURM_23_11_PROTOCOL_VERSION),
-	add_parse_deprec(STRING, job_submit_user_msg, 0, "job_submit_user_msg", "First updated Job submission user message - Use results instead", SLURM_23_11_PROTOCOL_VERSION),
+	add_parse_deprec(STRING, job_id, 0, "job_id", "First updated Job ID - Use results instead", SLURM_24_05_PROTOCOL_VERSION),
+	add_parse_deprec(STRING, step_id, 0, "step_id", "First updated Step ID - Use results instead", SLURM_24_05_PROTOCOL_VERSION),
+	add_parse_deprec(STRING, job_submit_user_msg, 0, "job_submit_user_msg", "First updated Job submission user message - Use results instead", SLURM_24_05_PROTOCOL_VERSION),
 	add_openapi_response_meta(openapi_job_post_response_t),
 	add_openapi_response_errors(openapi_job_post_response_t),
 	add_openapi_response_warnings(openapi_job_post_response_t),
@@ -9522,9 +9521,9 @@ static const parser_t PARSER_ARRAY(OPENAPI_JOB_POST_RESPONSE)[] = {
 #define add_parse_deprec(mtype, field, overloads, path, desc, deprec) \
 	add_parser_deprec(openapi_job_submit_response_t, mtype, false, field, overloads, path, desc, deprec)
 static const parser_t PARSER_ARRAY(OPENAPI_JOB_SUBMIT_RESPONSE)[] = {
-	add_parse_deprec(JOB_SUBMIT_RESPONSE_MSG, resp, 0, "result", "Job submission", SLURM_23_11_PROTOCOL_VERSION),
-	add_parse(UINT32, resp.job_id, "job_id", "Submitted Job ID"),
-	add_parse(STEP_ID, resp.step_id, "step_id", "Submitted Step ID"),
+	add_parse_deprec(JOB_SUBMIT_RESPONSE_MSG, resp, 0, "result", "Job submission", SLURM_24_05_PROTOCOL_VERSION),
+	add_parse(UINT32, resp.step_id.job_id, "job_id", "Submitted Job ID"),
+	add_parse(STEP_ID, resp.step_id.step_id, "step_id", "Submitted Step ID"),
 	add_parse(STRING, resp.job_submit_user_msg, "job_submit_user_msg", "Job submission user message"),
 	add_openapi_response_meta(openapi_job_submit_response_t),
 	add_openapi_response_errors(openapi_job_submit_response_t),

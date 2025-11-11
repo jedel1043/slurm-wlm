@@ -217,7 +217,6 @@ typedef enum {
 extern char *command_name;
 extern int exit_code;	/* sacctmgr's exit code, =1 on any error at any time */
 extern int exit_flag;	/* program to terminate if =1 */
-extern int input_words;	/* number of words of input permitted */
 extern int one_liner;	/* one record per line if =1 */
 extern int quiet_flag;	/* quiet=1, verbose=-1, normal=0 */
 extern int rollback_flag;/* immediate execute=0, else = 1 */
@@ -237,18 +236,21 @@ extern bool tree_display;
 extern bool have_db_conn;
 
 extern int sacctmgr_set_assoc_cond(slurmdb_assoc_cond_t *assoc_cond,
-					 char *type, char *value,
-					 int command_len, int option);
+				   char *type, char *value,
+				   int command_len);
 extern int sacctmgr_set_assoc_rec(slurmdb_assoc_rec_t *assoc_rec,
-					char *type, char *value,
-					int command_len, int option);
+				  char *type, char *value,
+				  int command_len, int option,
+				  bool *allow_option);
+extern void sacctmgr_print_default_qos(uint32_t def_qos_id,
+				       print_field_t *field, bool last);
 extern void sacctmgr_print_assoc_rec(slurmdb_assoc_rec_t *assoc,
 				     print_field_t *field, list_t *tree_list,
 				     bool last);
-
 extern int sacctmgr_set_qos_rec(slurmdb_qos_rec_t *qos,
 				char *type, char *value,
-				int command_len, int option);
+				int command_len, int option,
+				bool *allow_option);
 extern void sacctmgr_print_qos_rec(slurmdb_qos_rec_t *qos,
 				   print_field_t *field,
 				   bool last);
@@ -300,7 +302,9 @@ extern int sacctmgr_archive_dump(int argc, char **argv);
 extern int sacctmgr_archive_load(int argc, char **argv);
 
 /* common.c */
-extern int parse_option_end(char *option);
+extern int parse_option_end(char *option, int *op_type, int *command_end);
+extern bool common_verify_option_syntax(char *option, int op_type,
+					bool allow_op);
 extern char *strip_quotes(char *option, int *increased, bool make_lower);
 extern void notice_thread_init(void);
 extern void notice_thread_fini(void);

@@ -154,7 +154,7 @@ static void _dump_job_res(struct job_resources *job)
 /*
  * Check if there are no allocatable sockets with the given configuration due to
  * core specialization.
- * NOTE: this assumes the caller already checked CR_SOCKET is configured and
+ * NOTE: this assumes the caller already checked SELECT_SOCKET is configured and
  *	 AllowSpecResourceUsage=NO.
  */
 static void _check_allocatable_sockets(node_record_t *node_ptr)
@@ -183,10 +183,6 @@ static void _check_allocatable_sockets(node_record_t *node_ptr)
 		      node_ptr->name, node_ptr->core_spec_cnt);
 }
 
-/*
- * init() is called when the plugin is loaded, before any other functions
- * are called.  Put global initialization here.
- */
 extern int init(void)
 {
 	if (slurm_conf.preempt_mode & PREEMPT_MODE_GANG)
@@ -199,7 +195,7 @@ extern int init(void)
 	return SLURM_SUCCESS;
 }
 
-extern int fini(void)
+extern void fini(void)
 {
 	if (slurm_conf.debug_flags & DEBUG_FLAG_SELECT_TYPE)
 		info("%s shutting down ...", plugin_type);
@@ -211,15 +207,13 @@ extern int fini(void)
 	part_data_destroy_res(select_part_record);
 	select_part_record = NULL;
 	cr_fini_global_core_data();
-
-	return SLURM_SUCCESS;
 }
 
 /* This is Part 1 of a 2-part procedure which can be found in
  * src/slurmctld/read_config.c. The whole story goes like this:
  *
  * Step 1: select_g_node_init          : initializes the global node arrays
- * Step 2: select_g_select_nodeinfo_set: called from reset_job_bitmaps() with
+ * Step 2: select_g_select_nodeinfo_set: called from _sync_jobs_to_conf() with
  *                                       each valid recovered job_ptr AND from
  *                                       select_nodes(), this procedure adds
  *                                       job data to the 'select_part_record'
@@ -231,7 +225,8 @@ extern int select_p_node_init(void)
 	int i;
 	node_record_t *node_ptr;
 
-	if (!(slurm_conf.select_type_param & (CR_CPU | CR_CORE | CR_SOCKET))) {
+	if (!(slurm_conf.select_type_param &
+	      (SELECT_CPU | SELECT_CORE | SELECT_SOCKET))) {
 		fatal("Invalid SelectTypeParameters: %s (%u), "
 		      "You need at least CR_(CPU|CORE|SOCKET)*",
 		      select_type_param_string(slurm_conf.select_type_param),
@@ -259,6 +254,10 @@ extern int select_p_node_init(void)
 		      preempt_reorder_cnt);
 		preempt_reorder_cnt = 1;	/* Use default value */
 	}
+
+	soft_time_limit = false;
+	if (xstrcasestr(slurm_conf.sched_params, "time_min_as_soft_limit"))
+		soft_time_limit = true;
 
 	if ((tmp_ptr = xstrcasestr(slurm_conf.sched_params,
 				   "bf_window_linear="))) {
@@ -301,7 +300,7 @@ extern int select_p_node_init(void)
 				     sizeof(node_use_record_t));
 
 	for (i = 0; (node_ptr = next_node(&i)); i++) {
-		if ((slurm_conf.select_type_param & CR_SOCKET) &&
+		if ((slurm_conf.select_type_param & SELECT_SOCKET) &&
 		    (slurm_conf.conf_flags & CONF_FLAG_ASRU) == 0)
 			_check_allocatable_sockets(node_ptr);
 

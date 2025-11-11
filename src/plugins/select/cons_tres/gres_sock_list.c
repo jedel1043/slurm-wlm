@@ -225,7 +225,6 @@ static sock_gres_t *_build_sock_gres_by_topo(
 	uint32_t res_cores_per_gpu = create_args->res_cores_per_gpu;
 	char *node_name = create_args->node_name;
 	bool enforce_binding = create_args->enforce_binding;
-	uint32_t s_p_n = NO_VAL; /* No need to optimize socket */
 
 	gres_node_state_t *alt_gres_ns = NULL;
 	int i, j, s, c;
@@ -319,7 +318,7 @@ static sock_gres_t *_build_sock_gres_by_topo(
 		/* By default only allow one sharing gres per job */
 		if (gres_id_shared(gres_state_node->config_flags) &&
 		    !(slurm_conf.select_type_param &
-		      MULTIPLE_SHARING_GRES_PJ) &&
+		      SELECT_MULTIPLE_SHARING_GRES_PJ) &&
 		    (avail_gres > sock_gres->max_node_gres) && !use_total_gres)
 			/*
 			 * Test use_total_gres so we don't reject shared gres
@@ -389,7 +388,7 @@ static sock_gres_t *_build_sock_gres_by_topo(
 		}
 
 		/* Constrained by core */
-		for (s = 0; ((s < sockets) && avail_gres); s++) {
+		for (s = 0; (s < sockets); s++) {
 			if (enforce_binding && core_bitmap) {
 				for (c = 0; c < cores_per_sock; c++) {
 					j = (s * cores_per_sock) + c;
@@ -426,11 +425,13 @@ static sock_gres_t *_build_sock_gres_by_topo(
 					sock_gres->bits_by_sock[s],
 					create_args->node_inx);
 				sock_gres->cnt_by_sock[s] += avail_gres;
-				sock_gres->total_cnt += avail_gres;
-				avail_gres = 0;
 				match = true;
 				break;
 			}
+		}
+		if (match) {
+			sock_gres->total_cnt += avail_gres;
+			avail_gres = 0;
 		}
 	}
 
@@ -462,54 +463,6 @@ static sock_gres_t *_build_sock_gres_by_topo(
 				sock_gres->total_cnt -= i;
 			}
 		}
-	}
-
-	/* Maximize GRES per node */
-	if (gres_js->gres_per_job && !gres_js->gres_per_socket)
-		s_p_n = create_args->s_p_n;
-
-	/*
-	 * Satisfy sockets-per-node (s_p_n) limit by selecting the sockets with
-	 * the most GRES. Sockets with low GRES counts have their core_bitmap
-	 * cleared so that _allocate_sc() in cons_tres/job_test.c does not
-	 * remove sockets needed to satisfy the job's GRES specification.
-	 */
-	if (match && enforce_binding && core_bitmap && (s_p_n < sockets)) {
-		int avail_sock = 0;
-		bool *avail_sock_flag = xcalloc(sockets, sizeof(bool));
-		for (s = 0; s < sockets; s++) {
-			if (sock_gres->cnt_by_sock[s] == 0)
-				continue;
-			for (c = 0; c < cores_per_sock; c++) {
-				i = (s * cores_per_sock) + c;
-				if (!bit_test(core_bitmap, i))
-					continue;
-				avail_sock++;
-				avail_sock_flag[s] = true;
-				break;
-			}
-		}
-		while (avail_sock > s_p_n) {
-			int low_gres_sock_inx = -1;
-			for (s = 0; s < sockets; s++) {
-				if (!avail_sock_flag[s])
-					continue;
-				if ((low_gres_sock_inx == -1) ||
-				    (sock_gres->cnt_by_sock[s] <
-				     sock_gres->cnt_by_sock[low_gres_sock_inx]))
-					low_gres_sock_inx = s;
-			}
-			if (low_gres_sock_inx == -1)
-				break;
-			s = low_gres_sock_inx;
-			i = s * cores_per_sock;
-			bit_nclear(core_bitmap, i, i + cores_per_sock - 1);
-			sock_gres->total_cnt -= sock_gres->cnt_by_sock[s];
-			sock_gres->cnt_by_sock[s] = 0;
-			avail_sock--;
-			avail_sock_flag[s] = false;
-		}
-		xfree(avail_sock_flag);
 	}
 
 	if (match) {
@@ -814,8 +767,8 @@ static int _foreach_restricted_gpu(void *x, void *arg)
 	foreach_res_gpu_t *args = arg;
 	gres_job_state_t  *gres_js;
 
-	if ((gres_state_job->plugin_id != gres_get_gpu_plugin_id()) ||
-	    !args->res_cores_per_gpu)
+	/* Currently all shared gres are gpu alt gres */
+	if (!gres_find_gpu_or_alt(gres_state_job, NULL))
 		return SLURM_SUCCESS;
 	gres_js = gres_state_job->gres_data;
 
@@ -842,7 +795,8 @@ static void _gres_limit_reserved_cores(gres_sock_list_create_t *create_args)
 	};
 
 	if (!create_args->gpu_spec_bitmap || !create_args->core_bitmap ||
-	    !create_args->job_gres_list || !create_args->node_gres_list)
+	    !create_args->job_gres_list || !create_args->node_gres_list ||
+	    !create_args->res_cores_per_gpu)
 		return;
 
 	gres_state_node = list_find_first(create_args->node_gres_list,
@@ -879,6 +833,9 @@ static int _foreach_gres_sock_list_create(void *x, void *arg)
 				gres_find_id,
 				&gres_state_job->plugin_id);
 	node_record_t *node_ptr = node_record_table_ptr[create_args->node_inx];
+
+	if (gres_id_sharing(gres_state_job->plugin_id))
+		create_args->need_gpu = true;
 
 	if (!gres_state_node) {
 		/* node lack GRES of type required by the job */
@@ -961,9 +918,8 @@ extern void gres_sock_list_create(gres_sock_list_create_t *create_args)
 	}
 	if (!create_args->node_gres_list) /* Node lacks GRES to match */
 		return;
-	(void) gres_init();
 
-	if (!(create_args->cr_type & CR_SOCKET))
+	if (!(create_args->cr_type & SELECT_SOCKET))
 		_gres_limit_reserved_cores(create_args);
 
 	if (create_args->resv_exc_ptr) {

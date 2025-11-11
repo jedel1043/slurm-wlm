@@ -66,6 +66,7 @@
 #include "src/common/fd.h"
 #include "src/common/group_cache.h"
 #include "src/common/hostlist.h"
+#include "src/common/http_switch.h"
 #include "src/common/list.h"
 #include "src/common/log.h"
 #include "src/common/macros.h"
@@ -102,6 +103,7 @@
 #include "src/interfaces/jobacct_gather.h"
 #include "src/interfaces/jobcomp.h"
 #include "src/interfaces/mcs.h"
+#include "src/interfaces/metrics.h"
 #include "src/interfaces/mpi.h"
 #include "src/interfaces/node_features.h"
 #include "src/interfaces/preempt.h"
@@ -119,6 +121,7 @@
 #include "src/slurmctld/fed_mgr.h"
 #include "src/slurmctld/gang.h"
 #include "src/slurmctld/heartbeat.h"
+#include "src/slurmctld/http.h"
 #include "src/slurmctld/job_scheduler.h"
 #include "src/slurmctld/licenses.h"
 #include "src/slurmctld/locks.h"
@@ -133,6 +136,7 @@
 #include "src/slurmctld/slurmctld.h"
 #include "src/slurmctld/slurmscriptd.h"
 #include "src/slurmctld/state_save.h"
+#include "src/slurmctld/statistics.h"
 #include "src/slurmctld/trigger_mgr.h"
 
 #include "src/stepmgr/srun_comm.h"
@@ -140,7 +144,7 @@
 
 decl_static_data(usage_txt);
 
-#define SLURMCTLD_CONMGR_DEFAULT_MAX_CONNECTIONS 50
+#define SLURMCTLD_CONMGR_DEFAULT_MAX_CONNECTIONS 512
 #define MIN_CHECKIN_TIME  3	/* Nodes have this number of seconds to
 				 * check-in before we ping them */
 #define SHUTDOWN_WAIT     2	/* Time to wait for backup server shutdown */
@@ -242,9 +246,8 @@ static char *	slurm_conf_filename;
 static int reconfig_rc = SLURM_SUCCESS;
 static bool reconfig = false;
 static list_t *reconfig_reqs = NULL;
-static pthread_mutex_t shutdown_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t shutdown_cond = PTHREAD_COND_INITIALIZER;
 static bool under_systemd = false;
+static bool reply_async = false;
 
 /* Array of listening sockets */
 static struct {
@@ -280,9 +283,9 @@ static void         _remove_qos(slurmdb_qos_rec_t *rec);
 static void         _restore_job_dependencies(void);
 static void         _run_primary_prog(bool primary_on);
 static void         _send_future_cloud_to_db();
-static void _service_connection(conmgr_callback_args_t conmgr_args,
-				int input_fd, int output_fd, void *tls_conn,
-				void *arg);
+static int _service_connection(slurmctld_rpc_t *this_rpc, slurm_msg_t *msg);
+static void _on_extract(conmgr_callback_args_t conmgr_args, void *conn,
+			void *arg);
 static void         _set_work_dir(void);
 static int          _shutdown_backup_controller(void);
 static void *       _slurmctld_background(void *no_data);
@@ -302,10 +305,12 @@ static void _send_reconfig_replies(void)
 	slurm_msg_t *msg = NULL;
 
 	while ((msg = list_pop(reconfig_reqs))) {
-		/* Must avoid sending reply via msg->conmgr_fd */
+		/* Must avoid sending reply via msg->conmgr_con */
+		xassert(!msg->conmgr_con);
+
 		(void) slurm_send_rc_msg(msg, reconfig_rc);
-		conn_g_destroy(msg->tls_conn, true);
-		slurm_free_msg(msg);
+		conn_g_destroy(msg->conn, true);
+		FREE_NULL_MSG(msg);
 	}
 }
 
@@ -348,23 +353,35 @@ static void _attempt_reconfig(void)
 
 static void _on_sigint(conmgr_callback_args_t conmgr_args, void *arg)
 {
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
+
 	info("Terminate signal SIGINT received");
 	slurmctld_shutdown();
 }
 
 static void _on_sigterm(conmgr_callback_args_t conmgr_args, void *arg)
 {
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
+
 	info("Terminate signal SIGTERM received");
 	slurmctld_shutdown();
 }
 
 static void _on_sigchld(conmgr_callback_args_t conmgr_args, void *arg)
 {
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
+
 	debug5("Caught SIGCHLD. Ignoring");
 }
 
 static void _on_sigquit(conmgr_callback_args_t conmgr_args, void *arg)
 {
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
+
 	info("Terminate signal SIGQUIT received");
 	slurmctld_shutdown();
 }
@@ -372,6 +389,9 @@ static void _on_sigquit(conmgr_callback_args_t conmgr_args, void *arg)
 static void _on_sighup(conmgr_callback_args_t conmgr_args, void *arg)
 {
 	bool standby_mode;
+
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
 
 	info("Reconfigure signal (SIGHUP) received");
 
@@ -390,6 +410,9 @@ static void _on_sighup(conmgr_callback_args_t conmgr_args, void *arg)
 
 static void _on_sigusr1(conmgr_callback_args_t conmgr_args, void *arg)
 {
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
+
 	debug5("Caught SIGUSR1. Ignoring.");
 }
 
@@ -398,6 +421,9 @@ static void _on_sigusr2(conmgr_callback_args_t conmgr_args, void *arg)
 	static const slurmctld_lock_t conf_write_lock = {
 		.conf = WRITE_LOCK,
 	};
+
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
 
 	info("Logrotate signal (SIGUSR2) received");
 
@@ -418,16 +444,25 @@ static void _on_sigusr2(conmgr_callback_args_t conmgr_args, void *arg)
 
 static void _on_sigpipe(conmgr_callback_args_t conmgr_args, void *arg)
 {
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
+
 	debug5("Caught SIGPIPE. Ignoring.");
 }
 
 static void _on_sigxcpu(conmgr_callback_args_t conmgr_args, void *arg)
 {
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
+
 	debug5("Caught SIGXCPU. Ignoring.");
 }
 
 static void _on_sigabrt(conmgr_callback_args_t conmgr_args, void *arg)
 {
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
+
 	info("SIGABRT received");
 	slurmctld_shutdown();
 	dump_core = true;
@@ -435,7 +470,18 @@ static void _on_sigabrt(conmgr_callback_args_t conmgr_args, void *arg)
 
 static void _on_sigalrm(conmgr_callback_args_t conmgr_args, void *arg)
 {
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
+
 	debug5("Caught SIGALRM. Ignoring.");
+}
+
+static void _on_sigprof(conmgr_callback_args_t conmgr_args, void *arg)
+{
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED)
+		return;
+
+	conmgr_log_diagnostics();
 }
 
 static void _register_signal_handlers(conmgr_callback_args_t conmgr_args,
@@ -452,6 +498,7 @@ static void _register_signal_handlers(conmgr_callback_args_t conmgr_args,
 	conmgr_add_work_signal(SIGXCPU, _on_sigxcpu, NULL);
 	conmgr_add_work_signal(SIGABRT, _on_sigabrt, NULL);
 	conmgr_add_work_signal(SIGALRM, _on_sigalrm, NULL);
+	conmgr_add_work_signal(SIGPROF, _on_sigprof, NULL);
 }
 
 static void _reopen_stdio(void)
@@ -531,9 +578,10 @@ static void _retry_init_db_conn(assoc_init_args_t *args)
 		struct timespec ts = timespec_now();
 		ts.tv_sec += 2;
 
-		slurm_mutex_lock(&shutdown_mutex);
-		slurm_cond_timedwait(&shutdown_cond, &shutdown_mutex, &ts);
-		slurm_mutex_unlock(&shutdown_mutex);
+		slurm_mutex_lock(&slurmctld_config.shutdown_lock);
+		slurm_cond_timedwait(&slurmctld_config.shutdown_cond,
+				     &slurmctld_config.shutdown_lock, &ts);
+		slurm_mutex_unlock(&slurmctld_config.shutdown_lock);
 
 		if (slurmctld_config.shutdown_time)
 			fatal("slurmdbd must be up at slurmctld start time");
@@ -552,7 +600,7 @@ static void _retry_init_db_conn(assoc_init_args_t *args)
 /* main - slurmctld main function, start various threads and process RPCs */
 int main(int argc, char **argv)
 {
-	int error_code;
+	int error_code = EINVAL;
 	struct timeval start, now;
 	struct stat stat_buf;
 	struct rlimit rlim;
@@ -563,12 +611,14 @@ int main(int argc, char **argv)
 		.prolog_slurmctld = prep_prolog_slurmctld_callback,
 		.epilog_slurmctld = prep_epilog_slurmctld_callback,
 	};
+	bool push_reconfig = false;
 	bool backup_has_control = false;
 	bool slurmscriptd_mode = false;
 	char *conf_file;
-	stepmgr_ops_t stepmgr_ops = {0};
+	stepmgr_ops_t stepmgr_ops = { 0 };
 
 	stepmgr_ops.agent_queue_request = agent_queue_request;
+	stepmgr_ops.find_job = find_job;
 	stepmgr_ops.find_job_array_rec = find_job_array_rec;
 	stepmgr_ops.find_job_record = find_job_record;
 	stepmgr_ops.job_config_fini = job_config_fini;
@@ -675,8 +725,7 @@ int main(int argc, char **argv)
 	if (slurm_conf.slurmctld_params)
 		conmgr_set_params(slurm_conf.slurmctld_params);
 
-	conmgr_init(0, SLURMCTLD_CONMGR_DEFAULT_MAX_CONNECTIONS,
-		    (conmgr_callbacks_t) { 0 });
+	conmgr_init(0, 0, SLURMCTLD_CONMGR_DEFAULT_MAX_CONNECTIONS);
 
 	conmgr_add_work_fifo(_register_signal_handlers, NULL);
 
@@ -704,13 +753,31 @@ int main(int argc, char **argv)
 		become_slurm_user();
 	}
 
+	/*
+	 * When enabled, push a reconfig to nodes at startup instead of only on
+	 * an explicit 'scontrol reconfigure' command.
+	 */
+	if (xstrcasestr(slurm_conf.slurmctld_params, "reconfig_on_restart"))
+		push_reconfig = true;
+
 	reconfig_reqs = list_create(NULL);
 
 	rate_limit_init();
 	rpc_queue_init();
 
+	/* Load HTTP switching plugins and handlers */
+	http_switch_init();
+	if (http_switch_http_enabled())
+		http_init();
+
+	/* Check if asynchronous reples are enabled */
+	if (xstrcasestr(slurm_conf.slurmctld_params, "enable_async_reply")) {
+		reply_async = true;
+		log_flag(NET, "Asynchronous replies are enabled");
+	}
+
 	/* open ports must happen after become_slurm_user() */
-	 _open_ports();
+	_open_ports();
 
 	/*
 	 * Create StateSaveLocation directory if necessary.
@@ -827,6 +894,8 @@ int main(int argc, char **argv)
 		fatal("failed to initialize node_features plugin");
 	if (mpi_g_daemon_init() != SLURM_SUCCESS)
 		fatal("Failed to initialize MPI plugins.");
+	if (metrics_g_init() != SLURM_SUCCESS)
+		fatal("failed to initialize metrics plugin");
 	/* Fatal if we use extra_constraints without json serializer */
 	if (extra_constraints_enabled())
 		serializer_required(MIME_TYPE_JSON);
@@ -996,8 +1065,11 @@ int main(int argc, char **argv)
 			notify_parent_of_success();
 			if (!under_systemd)
 				_update_pidfile();
-			_post_reconfig();
+			push_reconfig = true;
 		}
+
+		if (push_reconfig)
+			_post_reconfig();
 
 		/*
 		 * process slurm background activities, could run as pthread
@@ -1134,6 +1206,7 @@ int main(int argc, char **argv)
 	certmgr_g_fini();
 	switch_g_fini();
 	site_factor_g_fini();
+	metrics_g_fini();
 
 	/* purge remaining data structures */
 	group_cache_purge();
@@ -1153,6 +1226,8 @@ int main(int argc, char **argv)
 
 	conmgr_request_shutdown();
 	conmgr_fini();
+	http_fini();
+	http_switch_fini();
 
 	rate_limit_shutdown();
 	log_fini();
@@ -1268,9 +1343,18 @@ static void  _init_config(void)
 	slurmctld_config.acct_update_list =
 		list_create(slurmdb_destroy_update_object);
 	slurm_mutex_init(&slurmctld_config.acct_update_lock);
+	slurm_mutex_init(&slurmctld_config.thread_count_lock);
+	slurm_mutex_init(&slurmctld_config.backup_finish_lock);
+	slurm_mutex_init(&slurmctld_config.shutdown_lock);
+	slurm_mutex_lock(&slurmctld_config.acct_update_lock);
+	slurm_mutex_lock(&slurmctld_config.thread_count_lock);
+	slurm_mutex_lock(&slurmctld_config.backup_finish_lock);
+	slurm_mutex_lock(&slurmctld_config.shutdown_lock);
+
 	slurm_cond_init(&slurmctld_config.acct_update_cond, NULL);
 	slurm_cond_init(&slurmctld_config.backup_finish_cond, NULL);
-	slurm_mutex_init(&slurmctld_config.backup_finish_lock);
+	slurm_cond_init(&slurmctld_config.shutdown_cond, NULL);
+	slurm_cond_init(&slurmctld_config.thread_count_cond, NULL);
 	slurmctld_config.boot_time      = time(NULL);
 	slurmctld_config.resume_backup  = false;
 	slurmctld_config.server_thread_count = 0;
@@ -1279,9 +1363,11 @@ static void  _init_config(void)
 	slurmctld_config.scheduling_disabled  = false;
 	slurmctld_config.submissions_disabled = false;
 	track_script_init();
-	slurm_mutex_init(&slurmctld_config.thread_count_lock);
-	slurm_cond_init(&slurmctld_config.thread_count_cond, NULL);
 	slurmctld_config.thread_id_main    = (pthread_t) 0;
+	slurm_mutex_unlock(&slurmctld_config.shutdown_lock);
+	slurm_mutex_unlock(&slurmctld_config.backup_finish_lock);
+	slurm_mutex_unlock(&slurmctld_config.thread_count_lock);
+	slurm_mutex_unlock(&slurmctld_config.acct_update_lock);
 }
 
 static int _try_to_reconfig(void)
@@ -1431,6 +1517,11 @@ rwfail:
 	(void) close(fd);
 }
 
+extern bool is_reconfiguring(void)
+{
+	return reconfig || !list_is_empty(reconfig_reqs);
+}
+
 extern void reconfigure_slurm(slurm_msg_t *msg)
 {
 	xassert(msg);
@@ -1528,6 +1619,7 @@ static void _on_primary_finish(conmgr_fd_t *con, void *arg)
 static int _on_primary_msg(conmgr_fd_t *con, slurm_msg_t *msg, void *arg)
 {
 	int rc = SLURM_SUCCESS;
+	slurmctld_rpc_t *this_rpc = NULL;
 
 	if (!msg->auth_ids_set)
 		fatal_abort("this should never happen");
@@ -1542,12 +1634,29 @@ static int _on_primary_msg(conmgr_fd_t *con, slurm_msg_t *msg, void *arg)
 	 */
 	if (rate_limit_exceeded(msg)) {
 		rc = slurm_send_rc_msg(msg, SLURMCTLD_COMMUNICATIONS_BACKOFF);
-		slurm_free_msg(msg);
-	} else if ((rc = conmgr_queue_extract_con_fd(
-			    con, _service_connection,
-			    XSTRINGIFY(_service_connection), msg))) {
-		error("%s: [%s] Extracting FDs failed: %s",
-		      __func__, conmgr_fd_get_name(con), slurm_strerror(rc));
+		FREE_NULL_MSG(msg);
+	} else if (!(this_rpc = find_rpc(msg->msg_type))) {
+		error("[%s] Received invalid RPC msg_type[0x%x]=%s",
+		      conmgr_fd_get_name(con), (uint32_t) msg->msg_type,
+		      rpc_num2string(msg->msg_type));
+		rc = slurm_send_rc_msg(msg, EINVAL);
+		FREE_NULL_MSG(msg);
+		return rc;
+	} else if (reply_async && !this_rpc->keep_msg) {
+		rc = _service_connection(this_rpc, msg);
+	} else {
+		/*
+		 * The fd will be extracted from conmgr, so the conmgr
+		 * connection ref should be removed from msg first.
+		 */
+		conmgr_fd_free_ref(&msg->conmgr_con);
+
+		if ((rc = conmgr_queue_extract_con_fd(con, _on_extract,
+						      XSTRINGIFY(_on_extract),
+								 msg)))
+			error("%s: [%s] Extracting FDs failed: %s",
+			      __func__, conmgr_fd_get_name(con),
+			      slurm_strerror(rc));
 	}
 
 	return rc;
@@ -1581,6 +1690,11 @@ static void _on_finish(conmgr_fd_t *con, void *arg)
 		return on_backup_finish(con, arg);
 }
 
+static int _on_data(conmgr_fd_t *con, void *arg)
+{
+	return http_switch_on_data(con, on_http_connection);
+}
+
 static int _on_msg(conmgr_fd_t *con, slurm_msg_t *msg, int unpack_rc, void *arg)
 {
 	bool standby_mode;
@@ -1594,13 +1708,13 @@ static int _on_msg(conmgr_fd_t *con, slurm_msg_t *msg, int unpack_rc, void *arg)
 		 */
 		msg->flags |= SLURM_NO_AUTH_CRED;
 		slurm_send_rc_msg(msg, SLURM_PROTOCOL_AUTHENTICATION_ERROR);
-		slurm_free_msg(msg);
+		FREE_NULL_MSG(msg);
 		return SLURM_SUCCESS;
 	} else if (unpack_rc) {
 		error("%s: [%s] rejecting malformed RPC and closing connection: %s",
 		      __func__, conmgr_fd_get_name(con),
 		      slurm_strerror(unpack_rc));
-		slurm_free_msg(msg);
+		FREE_NULL_MSG(msg);
 		return unpack_rc;
 	}
 
@@ -1670,6 +1784,32 @@ extern void listeners_unquiesce(void)
 	slurm_mutex_unlock(&listeners.mutex);
 }
 
+extern bool listeners_quiesced(void)
+{
+	bool quiesced;
+
+	slurm_mutex_lock(&listeners.mutex);
+
+	quiesced = listeners.quiesced;
+
+	slurm_mutex_unlock(&listeners.mutex);
+
+	return quiesced;
+}
+
+extern bool is_primary(void)
+{
+	bool primary;
+
+	slurm_mutex_lock(&listeners.mutex);
+
+	primary = !listeners.standby_mode;
+
+	slurm_mutex_unlock(&listeners.mutex);
+
+	return primary;
+}
+
 /*
  * _open_ports - Open all ports for the slurmctld to listen on.
  */
@@ -1679,6 +1819,7 @@ static void _open_ports(void)
 		.on_listen_connect = _on_listen_connect,
 		.on_listen_finish = _on_listen_finish,
 		.on_connection = _on_connection,
+		.on_data = _on_data,
 		.on_msg = _on_msg,
 		.on_finish = _on_finish,
 	};
@@ -1709,7 +1850,7 @@ static void _open_ports(void)
 	}
 
 	for (uint64_t i = 0; i < listeners.count; i++) {
-		static conmgr_con_flags_t flags =
+		static const conmgr_con_flags_t flags =
 			(CON_FLAG_RPC_KEEP_BUFFER | CON_FLAG_QUIESCE |
 			 CON_FLAG_WATCH_WRITE_TIMEOUT |
 			 CON_FLAG_WATCH_READ_TIMEOUT |
@@ -1719,11 +1860,11 @@ static void _open_ports(void)
 		index_ptr = xmalloc(sizeof(*index_ptr));
 		*index_ptr = i;
 
-		if (tls_enabled())
-			flags |= CON_FLAG_TLS_SERVER;
-
 		if ((rc = conmgr_process_fd_listen(listeners.fd[i],
-						   CON_TYPE_RPC, &events, flags,
+						   http_switch_con_type(),
+						   &events,
+						   (flags |
+						    http_switch_con_flags()),
 						   index_ptr))) {
 			if (rc == SLURM_COMMUNICATIONS_INVALID_FD)
 				fatal("%s: Unable to listen to file descriptors. Existing slurmctld process likely already is listening on the ports.",
@@ -1738,85 +1879,97 @@ static void _open_ports(void)
 }
 
 /*
- * _service_connection - service the RPC
- * IN/OUT arg - really just the connection's file descriptor, freed
- *	upon completion
- * RET - NULL
+ * Service connection msg
+ * IN this_rpc - resolve RPC type
+ * IN msg - message to service (takes ownership)
  */
-static void _service_connection(conmgr_callback_args_t conmgr_args,
-				int input_fd, int output_fd, void *tls_conn,
-				void *arg)
+static int _service_connection(slurmctld_rpc_t *this_rpc, slurm_msg_t *msg)
 {
-	int rc;
-	slurm_msg_t *msg = arg;
-	slurmctld_rpc_t *this_rpc = NULL;
+	int rc = EINVAL;
 
-	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED) {
-		debug3("%s: [fd:%d] connection work cancelled",
-		       __func__, input_fd);
-		goto invalid;
-	}
-
-	if ((input_fd < 0) || (output_fd < 0)) {
-		error("%s: Rejecting partially open connection input_fd=%d output_fd=%d",
-		      __func__, input_fd, output_fd);
-		goto invalid;
-	}
-
-	/*
-	 * The fd was extracted from conmgr, so the conmgr connection is
-	 * invalid.
-	 */
-	msg->conmgr_fd = NULL;
-	if (tls_conn) {
-		msg->tls_conn = tls_conn;
-	} else {
-		conn_args_t tls_args = {
-			.input_fd = input_fd,
-			.output_fd = input_fd,
-		};
-		msg->tls_conn = conn_g_create(&tls_args);
-	}
+	xassert(this_rpc);
+	xassert(msg);
+	xassert(msg->msg_type == this_rpc->msg_type);
+	/* msg must only have 1 connection pointer populated */
+	xassert((((uint64_t) (bool) msg->conmgr_con) +
+		 ((uint64_t) (bool) msg->pcon) +
+		 ((uint64_t) (bool) msg->conn)) == 1);
 
 	server_thread_incr();
 
-	if (!(rc = rpc_enqueue(msg))) {
-		server_thread_decr();
-		return;
-	}
-
-	if (rc == SLURMCTLD_COMMUNICATIONS_BACKOFF) {
-		slurm_send_rc_msg(msg, SLURMCTLD_COMMUNICATIONS_BACKOFF);
-	} else if (rc == SLURMCTLD_COMMUNICATIONS_HARD_DROP) {
-		slurm_send_rc_msg(msg, SLURMCTLD_COMMUNICATIONS_HARD_DROP);
-	} else if ((this_rpc = find_rpc(msg->msg_type))) {
+	if (!(rc = rpc_enqueue(this_rpc, msg))) {
+		/* do nothing */
+	} else if ((rc == SLURMCTLD_COMMUNICATIONS_BACKOFF) ||
+		   (rc == SLURMCTLD_COMMUNICATIONS_HARD_DROP)) {
+		rc = slurm_send_rc_msg(msg, rc);
+		FREE_NULL_CONN(msg->conn);
+		FREE_NULL_MSG(msg);
+	} else {
 		/* directly process the request */
 		slurmctld_req(msg, this_rpc);
-	} else {
-		error("invalid RPC msg_type=%s", rpc_num2string(msg->msg_type));
-		slurm_send_rc_msg(msg, EINVAL);
-	}
+		rc = SLURM_SUCCESS;
 
-	if (!this_rpc || !this_rpc->keep_msg) {
-		conn_g_destroy(msg->tls_conn, true);
-		msg->tls_conn = NULL;
-		log_flag(TLS, "Destroyed server TLS connection for incoming RPC on fd %d->%d",
-			 input_fd, output_fd);
-		slurm_free_msg(msg);
+		if (!this_rpc->keep_msg) {
+			xassert(!msg->pcon);
+
+			if (msg->conmgr_con)
+				log_flag(NET, "%s: [%s] destroyed connection for incoming RPC msg_type[0x%x]=%s rc=%s",
+					__func__,
+					conmgr_con_get_name(msg->conmgr_con),
+					(uint32_t) msg->msg_type,
+					rpc_num2string(msg->msg_type),
+					slurm_strerror(rc));
+			else if (msg->conn)
+				log_flag(NET, "%s: [fd:%d] destroyed connection for incoming RPC msg_type[0x%x]=%s rc=%s",
+					__func__,
+					conn_g_get_fd(msg->conn),
+					(uint32_t) msg->msg_type,
+					rpc_num2string(msg->msg_type),
+					slurm_strerror(rc));
+
+			FREE_NULL_CONN(msg->conn);
+			FREE_NULL_MSG(msg);
+		}
 	}
 
 	server_thread_decr();
-	return;
+	return rc;
+}
 
-invalid:
-	/* Cleanup for invalid RPC */
-	if (!tls_conn) {
-		if (input_fd != output_fd)
-			fd_close(&output_fd);
-		fd_close(&input_fd);
+/*
+ * Handle post-extracted connection
+ * IN conmgr_args - conmgr work callback args
+ * IN conn - pointer to extracted connection
+ * IN/OUT arg - pointer to slurm_msg_t
+ */
+static void _on_extract(conmgr_callback_args_t conmgr_args, void *conn,
+			void *arg)
+{
+	slurm_msg_t *msg = arg;
+	slurmctld_rpc_t *this_rpc = find_rpc(msg->msg_type);
+
+	/* _on_primary_msg() already verified resolving msg_type */
+	xassert(this_rpc);
+
+	/* should never be a persistent connection */
+	xassert(!msg->pcon);
+
+	/* already released in _on_primary_msg() */
+	xassert(!msg->conmgr_con);
+
+	/* Set connection into message for replies */
+	xassert(!msg->conn || (msg->conn == conn));
+	msg->conn = conn;
+
+	if (conmgr_args.status == CONMGR_WORK_STATUS_CANCELLED) {
+		log_flag(NET, "%s: [%s] connection work cancelled",
+			 __func__, conmgr_fd_get_name(conmgr_args.con));
+		FREE_NULL_CONN(msg->conn);
+		FREE_NULL_MSG(msg);
+		return;
 	}
-	slurm_free_msg(msg);
-	conn_g_destroy(tls_conn, true);
+
+	(void) _service_connection(this_rpc, msg);
 }
 
 /* Decrement slurmctld thread count (as applies to thread limit) */
@@ -1965,11 +2118,11 @@ static int _foreach_part_resize_qos(void *x, void *arg)
 	part_record_t *part_ptr = x;
 
 	if (part_ptr->allow_qos)
-		qos_list_build(part_ptr->allow_qos, false,
+		qos_list_build(part_ptr->allow_qos, false, true,
 			       &part_ptr->allow_qos_bitstr);
 
 	if (part_ptr->deny_qos)
-		qos_list_build(part_ptr->deny_qos, false,
+		qos_list_build(part_ptr->deny_qos, false, true,
 			       &part_ptr->deny_qos_bitstr);
 	return 0;
 }
@@ -2412,7 +2565,7 @@ static void *_slurmctld_background(void *no_data)
 	while (1) {
 		bool call_schedule = false, full_queue = false;
 
-		slurm_mutex_lock(&shutdown_mutex);
+		slurm_mutex_lock(&slurmctld_config.shutdown_lock);
 		if (!slurmctld_config.shutdown_time) {
 			struct timespec ts = {0, 0};
 
@@ -2420,10 +2573,11 @@ static void *_slurmctld_background(void *no_data)
 			listeners_unquiesce();
 
 			ts.tv_sec = time(NULL) + 1;
-			slurm_cond_timedwait(&shutdown_cond, &shutdown_mutex,
+			slurm_cond_timedwait(&slurmctld_config.shutdown_cond,
+					     &slurmctld_config.shutdown_lock,
 					     &ts);
 		}
-		slurm_mutex_unlock(&shutdown_mutex);
+		slurm_mutex_unlock(&slurmctld_config.shutdown_lock);
 
 		now = time(NULL);
 		START_TIMER;
@@ -2523,7 +2677,9 @@ static void *_slurmctld_background(void *no_data)
 			unlock_slurmctld(node_write_lock);
 		}
 
-		if (slurm_conf.health_check_interval &&
+		if (!(slurm_conf.health_check_node_state &
+		      HEALTH_CHECK_START_ONLY) &&
+		    slurm_conf.health_check_interval &&
 		    (difftime(now, last_health_check_time) >=
 		     slurm_conf.health_check_interval) &&
 		    is_ping_done()) {
@@ -3035,7 +3191,7 @@ int slurmctld_shutdown(void)
 {
 	sched_debug("slurmctld terminating");
 	slurmctld_config.shutdown_time = time(NULL);
-	slurm_cond_signal(&shutdown_cond);
+	slurm_cond_signal(&slurmctld_config.shutdown_cond);
 	pthread_kill(pthread_self(), SIGUSR1);
 	return SLURM_SUCCESS;
 }
@@ -3673,11 +3829,11 @@ static int _foreach_cache_update_part(void *x, void *arg)
 	part_record_t *part_ptr = x;
 
 	if (part_ptr->allow_qos)
-		qos_list_build(part_ptr->allow_qos, true,
+		qos_list_build(part_ptr->allow_qos, true, true,
 			       &part_ptr->allow_qos_bitstr);
 
 	if (part_ptr->deny_qos)
-		qos_list_build(part_ptr->deny_qos, true,
+		qos_list_build(part_ptr->deny_qos, true, true,
 			       &part_ptr->deny_qos_bitstr);
 
 	if (part_ptr->qos_char) {
@@ -3686,10 +3842,11 @@ static int _foreach_cache_update_part(void *x, void *arg)
 		};
 
 		part_ptr->qos_ptr = NULL;
-		if (assoc_mgr_fill_in_qos(acct_db_conn, &qos_rec,
-					  accounting_enforce,
-					  &part_ptr->qos_ptr,
-					  true) != SLURM_SUCCESS) {
+		if ((assoc_mgr_fill_in_qos(acct_db_conn, &qos_rec,
+					   accounting_enforce,
+					   &part_ptr->qos_ptr,
+					   true) != SLURM_SUCCESS) ||
+		    !part_ptr->qos_ptr) {
 			fatal("Partition %s has an invalid qos (%s), "
 			      "please check your configuration",
 			      part_ptr->name, qos_rec.name);
@@ -3712,30 +3869,8 @@ static void *_assoc_cache_mgr(void *no_data)
 		{ .assoc = READ_LOCK, .qos = WRITE_LOCK, .tres = WRITE_LOCK,
 		  .user = READ_LOCK };
 
-	if (running_cache != RUNNING_CACHE_STATE_RUNNING) {
-		slurm_mutex_lock(&assoc_cache_mutex);
+	if (running_cache != RUNNING_CACHE_STATE_RUNNING)
 		lock_slurmctld(job_write_lock);
-		/*
-		 * It is ok to have the job_write_lock here as long as
-		 * running_cache != RUNNING_CACHE_STATE_NOTRUNNING. This short
-		 * circuits the association manager to not call callbacks. If
-		 * we come out of cache we need the job_write_lock locked until
-		 * the end to prevent a race condition on the job_list (some
-		 * running without new info and some running with the cached
-		 * info).
-		 *
-		 * Make sure not to have the assoc_mgr or the
-		 * slurmdbd_lock locked when refresh_lists is called or you may
-		 * get deadlock.
-		 */
-		assoc_mgr_refresh_lists(acct_db_conn, 0);
-		if (g_tres_count != slurmctld_tres_cnt) {
-			info("TRES in database does not match cache (%u != %u).  Updating...",
-			     g_tres_count, slurmctld_tres_cnt);
-			_init_tres();
-		}
-		slurm_mutex_unlock(&assoc_cache_mutex);
-	}
 
 	while (running_cache == RUNNING_CACHE_STATE_RUNNING) {
 		slurm_mutex_lock(&assoc_cache_mutex);

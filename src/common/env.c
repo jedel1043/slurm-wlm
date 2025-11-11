@@ -498,7 +498,6 @@ int setup_env(env_t *env, bool preserve_env)
 	if (env->mem_bind_type && (env->stepid != SLURM_INTERACTIVE_STEP)) {
 		char *str_verbose, *str_bind_type = NULL, *str_bind_list;
 		char *str_prefer = NULL, *str_bind = NULL;
-		char *str_bind_sort = NULL;
 
 		if (env->batch_flag) {
 			unsetenvp(env->env, "SBATCH_MEM_BIND");
@@ -510,7 +509,6 @@ int setup_env(env_t *env, bool preserve_env)
 			unsetenvp(env->env, "SLURM_MEM_BIND");
 			unsetenvp(env->env, "SLURM_MEM_BIND_LIST");
 			unsetenvp(env->env, "SLURM_MEM_BIND_PREFER");
-			unsetenvp(env->env, "SLURM_MEM_BIND_SORT");
 			unsetenvp(env->env, "SLURM_MEM_BIND_TYPE");
 			unsetenvp(env->env, "SLURM_MEM_BIND_VERBOSE");
 		}
@@ -532,9 +530,6 @@ int setup_env(env_t *env, bool preserve_env)
 		} else if (env->mem_bind_type & MEM_BIND_LOCAL) {
 			str_bind_type = "local";
 		}
-
-		if (env->mem_bind_type & MEM_BIND_SORT)
-			str_bind_sort = "sort";
 
 		if (env->mem_bind)
 			str_bind_list = env->mem_bind;
@@ -569,12 +564,6 @@ int setup_env(env_t *env, bool preserve_env)
 				error("Unable to set SBATCH_MEM_BIND_PREFER");
 				rc = SLURM_ERROR;
 			}
-			if (str_bind_sort &&
-			    setenvf(&env->env, "SBATCH_MEM_BIND_SORT", "%s",
-				    str_bind_sort)) {
-				error("Unable to set SBATCH_MEM_BIND_SORT");
-				rc = SLURM_ERROR;
-			}
 			if (setenvf(&env->env, "SBATCH_MEM_BIND_TYPE", "%s",
 				    str_bind_type)) {
 				error("Unable to set SBATCH_MEM_BIND_TYPE");
@@ -599,12 +588,6 @@ int setup_env(env_t *env, bool preserve_env)
 			    setenvf(&env->env, "SLURM_MEM_BIND_PREFER", "%s",
 				    str_prefer)) {
 				error("Unable to set SLURM_MEM_BIND_PREFER");
-				rc = SLURM_ERROR;
-			}
-			if (str_bind_sort &&
-			    setenvf(&env->env, "SLURM_MEM_BIND_SORT", "%s",
-				    str_bind_sort)) {
-				error("Unable to set SLURM_MEM_BIND_SORT");
 				rc = SLURM_ERROR;
 			}
 			if (setenvf(&env->env, "SLURM_MEM_BIND_TYPE", "%s",
@@ -874,6 +857,15 @@ int setup_env(env_t *env, bool preserve_env)
 		}
 	}
 
+	if (env->tls_cert) {
+		if (setenvf(&env->env, "SLURM_SRUN_TLS_CERT", "%s",
+			    env->tls_cert)) {
+			error("%s: can't set SLURM_SRUN_TLS_CERT env variable",
+			      __func__);
+			rc = SLURM_ERROR;
+		}
+	}
+
 	return rc;
 }
 
@@ -1013,10 +1005,10 @@ extern int env_array_for_job(char ***dest,
 
 	if (het_job_offset < 1) {
 		env_array_overwrite_fmt(dest, "SLURM_JOB_ID", "%u",
-					alloc->job_id);
+					alloc->step_id.job_id);
 	}
-	env_array_overwrite_het_fmt(dest, "SLURM_JOB_ID", het_job_offset,
-				    "%u", alloc->job_id);
+	env_array_overwrite_het_fmt(dest, "SLURM_JOB_ID", het_job_offset, "%u",
+				    alloc->step_id.job_id);
 	env_array_overwrite_het_fmt(dest, "SLURM_JOB_NAME", het_job_offset,
 				    "%s", desc->name);
 	env_array_overwrite_het_fmt(dest, "SLURM_JOB_NUM_NODES", het_job_offset,
@@ -1063,7 +1055,7 @@ extern int env_array_for_job(char ***dest,
 
 	/* OBSOLETE, but needed by MPI, do not remove */
 	env_array_overwrite_het_fmt(dest, "SLURM_JOBID", het_job_offset, "%u",
-				    alloc->job_id);
+				    alloc->step_id.job_id);
 	env_array_overwrite_het_fmt(dest, "SLURM_NNODES", het_job_offset, "%u",
 				    step_layout_req.num_hosts);
 	env_array_overwrite_het_fmt(dest, "SLURM_NODELIST", het_job_offset, "%s",
@@ -1223,6 +1215,12 @@ extern int env_array_for_job(char ***dest,
 					     desc->ntasks_per_node);
 	}
 
+	if (alloc->segment_size) {
+		env_array_overwrite_het_fmt(dest, "SLURM_JOB_SEGMENT_SIZE",
+					    het_job_offset, "%u",
+					    alloc->segment_size);
+	}
+
 	return rc;
 }
 
@@ -1301,7 +1299,8 @@ env_array_for_batch_job(char ***dest, const batch_job_launch_msg_t *batch,
 	env_array_overwrite_fmt(dest, "SLURM_CLUSTER_NAME", "%s",
 	                        slurm_conf.cluster_name);
 
-	env_array_overwrite_fmt(dest, "SLURM_JOB_ID", "%u", batch->job_id);
+	env_array_overwrite_fmt(dest, "SLURM_JOB_ID", "%u",
+				batch->step_id.job_id);
 	env_array_overwrite_fmt(dest, "SLURM_JOB_NUM_NODES", "%u",
 				step_layout_req.num_hosts);
 	if (batch->array_task_id != NO_VAL) {
@@ -1325,7 +1324,8 @@ env_array_for_batch_job(char ***dest, const batch_job_launch_msg_t *batch,
 		env_array_overwrite_fmt(dest, "HOSTNAME", "%s", node_name);
 
 	/* OBSOLETE, but needed by MPI, do not remove */
-	env_array_overwrite_fmt(dest, "SLURM_JOBID", "%u", batch->job_id);
+	env_array_overwrite_fmt(dest, "SLURM_JOBID", "%u",
+				batch->step_id.job_id);
 	env_array_overwrite_fmt(dest, "SLURM_NNODES", "%u",
 				step_layout_req.num_hosts);
 	env_array_overwrite_fmt(dest, "SLURM_NODELIST", "%s", batch->nodes);
@@ -1470,7 +1470,8 @@ env_array_for_step(char ***dest,
 		return;
 
 	node_cnt = step->step_layout->node_cnt;
-	env_array_overwrite_fmt(dest, "SLURM_STEP_ID", "%u", step->job_step_id);
+	env_array_overwrite_fmt(dest, "SLURM_STEP_ID", "%u",
+				step->step_id.step_id);
 
 	if (launch->het_job_node_list) {
 		tmp = launch->het_job_node_list;
@@ -1517,7 +1518,8 @@ env_array_for_step(char ***dest,
 	}
 
 	/* OBSOLETE, but needed by some MPI implementations, do not remove */
-	env_array_overwrite_fmt(dest, "SLURM_STEPID", "%u", step->job_step_id);
+	env_array_overwrite_fmt(dest, "SLURM_STEPID", "%u",
+				step->step_id.step_id);
 	if (!preserve_env) {
 		env_array_overwrite_fmt(dest, "SLURM_NNODES", "%u", node_cnt);
 		env_array_overwrite_fmt(dest, "SLURM_NTASKS", "%u", task_cnt);
@@ -1945,23 +1947,28 @@ char **env_array_from_file(const char *fname)
 	/*
 	 * Read in the user's environment data.
 	 */
-	buf = ptr = xmalloc(buf_size);
+	buf = xmalloc(buf_size);
 	buf_left = buf_size;
-	while ((tmp_size = read(fd, ptr, buf_left))) {
+	while ((tmp_size = read(fd, &buf[file_size], buf_left))) {
 		if (tmp_size < 0) {
 			if (errno == EINTR)
 				continue;
 			error("read(environment_file): %m");
 			break;
 		}
-		buf_left  -= tmp_size;
-		file_size += tmp_size;
-		if (buf_left == 0) {
+
+		if (buf_left <= tmp_size) {
 			buf_size += BUFSIZ;
 			xrealloc(buf, buf_size);
 		}
-		ptr = buf + file_size;
+
+		file_size += tmp_size;
 		buf_left = buf_size - file_size;
+		if (buf_left < 0) {
+			error("%s: We don't have a large enough buffer.",
+			      __func__);
+			break;
+		}
 	}
 	close(fd);
 

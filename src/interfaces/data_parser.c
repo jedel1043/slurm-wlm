@@ -78,7 +78,6 @@ typedef struct {
 		     char *params);
 	void (*free)(void *arg);
 	int (*assign)(void *arg, data_parser_attr_type_t type, void *obj);
-	int (*specify)(void *arg, data_t *dst);
 	openapi_type_t (*resolve_openapi_type)(void *arg,
 					       data_parser_type_t type,
 					       const char *field);
@@ -93,6 +92,7 @@ typedef struct {
 				   data_t *schemas);
 	void (*release_refs)(void *arg, void **references_ptr);
 	bool (*is_complex)(void *arg);
+	bool (*is_deprecated)(void *arg);
 	int (*dump_flags)(void *arg, data_t *dst);
 } parse_funcs_t;
 
@@ -110,7 +110,6 @@ static const char *parse_syms[] = {
 	"data_parser_p_new",
 	"data_parser_p_free",
 	"data_parser_p_assign",
-	"data_parser_p_specify",
 	"data_parser_p_resolve_openapi_type",
 	"data_parser_p_resolve_type_string",
 	"data_parser_p_increment_reference",
@@ -118,6 +117,7 @@ static const char *parse_syms[] = {
 	"data_parser_p_populate_parameters",
 	"data_parser_p_release_references",
 	"data_parser_p_is_complex",
+	"data_parser_p_is_deprecated",
 	"data_parser_p_dump_flags",
 };
 
@@ -301,7 +301,7 @@ static int _load_plugins(plugin_param_t *pparams, plugrack_foreach_t listf,
 
 static int _find_plugin_by_type(const char *plugin_type)
 {
-	if (!plugin_type)
+	if (!plugin_type || !plugins)
 		return -1;
 
 	/* quick match by pointer address */
@@ -623,7 +623,7 @@ extern openapi_resp_meta_t *data_parser_cli_meta(int argc, char **argv,
 		.plugin = {
 			.data_parser = NULL,
 			.accounting_storage =
-				slurm_conf.accounting_storage_type,
+				xstrdup(slurm_conf.accounting_storage_type),
 		},
 		.command = argvnt,
 		.client = {
@@ -814,29 +814,6 @@ cleanup:
 	return rc;
 }
 
-extern int data_parser_g_specify(data_parser_t *parser, data_t *dst)
-{
-	int rc;
-	DEF_TIMERS;
-	const parse_funcs_t *funcs;
-
-	if (!parser)
-		return ESLURM_DATA_INVALID_PARSER;
-
-	funcs = plugins->functions[parser->plugin_offset];
-
-	xassert(parser);
-	xassert(plugins);
-	xassert(parser->magic == PARSE_MAGIC);
-	xassert(parser->plugin_offset < plugins->count);
-
-	START_TIMER;
-	rc = funcs->specify(parser->arg, dst);
-	END_TIMER2(__func__);
-
-	return rc;
-}
-
 extern data_parser_t *data_parser_cli_parser(const char *data_parser, void *arg)
 {
 	char *default_data_parser = (slurm_conf.data_parser_parameters ?
@@ -971,6 +948,21 @@ extern bool data_parser_g_is_complex(data_parser_t *parser)
 	xassert(parser->plugin_offset < plugins->count);
 
 	return funcs->is_complex(parser->arg);
+}
+
+extern bool data_parser_g_is_deprecated(data_parser_t *parser)
+{
+	const parse_funcs_t *funcs;
+
+	if (!parser)
+		return true;
+
+	funcs = plugins->functions[parser->plugin_offset];
+
+	xassert(parser->magic == PARSE_MAGIC);
+	xassert(parser->plugin_offset < plugins->count);
+
+	return funcs->is_deprecated(parser->arg);
 }
 
 extern int data_parser_g_dump_flags(data_parser_t *parser, data_t *dst)

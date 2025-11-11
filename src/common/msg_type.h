@@ -43,6 +43,7 @@
  *
  * NOTE: Never alter the enum value of an existing message.
  *       That would break backwards-compatibility.
+ * NOTE: NO_VAL16 is used as the placeholder for an unset msg_type
  */
 typedef enum {
 	REQUEST_NODE_REGISTRATION_STATUS = 1001,
@@ -171,8 +172,8 @@ typedef enum {
 	RESPONSE_SUBMIT_BATCH_JOB,
 	REQUEST_BATCH_JOB_LAUNCH,
 	REQUEST_CANCEL_JOB,
-	DEFUNCT_RPC_4007,
-	DEFUNCT_RPC_4008,
+	REQUEST_RESOURCE_LAYOUT,
+	RESPONSE_RESOURCE_LAYOUT,
 	DEFUNCT_RPC_4009,
 	DEFUNCT_RPC_4010,		/* 4010 */
 	DEFUNCT_RPC_4011,

@@ -52,6 +52,8 @@
 
 #include "sdiag.h"
 
+#define MAX_HOSTLIST_LEN 80
+
 /********************
  * Global Variables *
  ********************/
@@ -161,7 +163,7 @@ static int _print_stats(void)
 	printf("\tMax cycle:    %u\n", buf->schedule_cycle_max);
 	printf("\tTotal cycles: %u\n", buf->schedule_cycle_counter);
 	if (buf->schedule_cycle_counter > 0) {
-		printf("\tMean cycle:   %u\n",
+		printf("\tMean cycle:   %"PRIu64"\n",
 		       buf->schedule_cycle_sum / buf->schedule_cycle_counter);
 		printf("\tMean depth cycle:  %u\n",
 		       buf->schedule_cycle_depth / buf->schedule_cycle_counter);
@@ -278,9 +280,14 @@ static int _print_stats(void)
 	}
 
 	for (i = 0; i < buf->rpc_dump_count; i++) {
-		printf("\t%2u: %-36s %s\n",
-		       i+1,
-		       rpc_num2string(buf->rpc_dump_types[i]),
+		/* Truncate to 80 characters only if needed */
+		int len = strlen(buf->rpc_dump_hostlist[i]);
+
+		if (!params.no_trunc && (len > MAX_HOSTLIST_LEN))
+			len = MAX_HOSTLIST_LEN;
+
+		printf("\t%2u: %-36s %.*s\n", (i + 1),
+		       rpc_num2string(buf->rpc_dump_types[i]), len,
 		       buf->rpc_dump_hostlist[i]);
 	}
 

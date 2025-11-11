@@ -69,6 +69,7 @@
 #define OPT_LONG_SIBLING 0x104
 #define OPT_LONG_ME      0x105
 #define OPT_LONG_AUTOCOMP 0x106
+#define OPT_LONG_ADMIN_COMMENT 0x107
 
 /* forward declarations of static functions
  *
@@ -197,6 +198,7 @@ _xlate_state_name(const char *state_name, bool env_var)
 static void _opt_default(void)
 {
 	opt.account	= NULL;
+	opt.admin_comment = NULL;
 	opt.batch	= false;
 	opt.clusters    = NULL;
 	opt.ctld	= false;
@@ -368,6 +370,7 @@ static void _opt_args(int argc, char **argv)
 	static struct option long_options[] = {
 		{"autocomplete", required_argument, 0, OPT_LONG_AUTOCOMP},
 		{"account",	required_argument, 0, 'A'},
+		{"admin-comment", required_argument, 0, OPT_LONG_ADMIN_COMMENT},
 		{"batch",	no_argument,       0, 'b'},
 		{"ctld",	no_argument,	   0, OPT_LONG_CTLD},
 		{"cron",	no_argument,	   0, 'c'},
@@ -407,6 +410,7 @@ static void _opt_args(int argc, char **argv)
 			exit(1);
 			break;
 		case (int)'A':
+			xfree(opt.account);
 			opt.account = xstrdup(optarg);
 			xstrtolower(opt.account);
 			break;
@@ -432,22 +436,27 @@ static void _opt_args(int argc, char **argv)
 			_opt_clusters(optarg);
 			break;
 		case OPT_LONG_ME:
+			xfree(opt.user_name);
 			opt.user_name = xstrdup_printf("%u", getuid());
 			break;
 		case (int)'n':
+			xfree(opt.job_name);
 			opt.job_name = xstrdup(optarg);
 			break;
 		case (int)'p':
+			xfree(opt.partition);
 			opt.partition = xstrdup(optarg);
 			break;
 		case (int)'Q':
 			opt.verbose = -1;
 			break;
 		case (int)'q':
+			xfree(opt.qos);
 			opt.qos = xstrdup(optarg);
 			xstrtolower(opt.qos);
 			break;
 		case (int)'R':
+			xfree(opt.reservation);
 			opt.reservation = xstrdup(optarg);
 			break;
 		case (int)'s':
@@ -462,6 +471,7 @@ static void _opt_args(int argc, char **argv)
 			opt.state = _xlate_state_name(optarg, false);
 			break;
 		case (int)'u':
+			xfree(opt.user_name);
 			opt.user_name = xstrdup(optarg);
 			break;
 		case (int)'v':
@@ -471,12 +481,20 @@ static void _opt_args(int argc, char **argv)
 			print_slurm_version ();
 			exit(0);
 		case (int)'w':
+			xfree(opt.nodelist);
 			opt.nodelist = xstrdup(optarg);
 			break;
+		case OPT_LONG_ADMIN_COMMENT:
+			opt.ctld = true;
+			xfree(opt.admin_comment);
+			opt.admin_comment = xstrdup(optarg);
+			break;
 		case OPT_LONG_SIBLING:
+			xfree(opt.sibling);
 			opt.sibling = xstrdup(optarg);
 			break;
 		case OPT_LONG_WCKEY:
+			xfree(opt.wckey);
 			opt.wckey = xstrdup(optarg);
 			break;
 		case OPT_LONG_HELP:
@@ -744,6 +762,7 @@ static void _help(void)
 {
 	printf("Usage: scancel [OPTIONS] [job_id[_array_id][.step_id]]\n");
 	printf("  -A, --account=account           act only on jobs charging this account\n");
+	printf("      --admin-comment=comment     set AdminComment on canceled jobs\n");
 	printf("  -b, --batch                     signal batch shell for specified job\n");
 	printf("      --ctld                      send request directly to slurmctld\n");
 	printf("  -c, --cron                      cancel an scrontab job\n");

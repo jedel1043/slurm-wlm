@@ -181,6 +181,12 @@ typedef enum {
 	DATA_PARSER_JOB_LIST, /* list of slurmdb_job_rec_t* */
 	DATA_PARSER_JOB, /* slurmdb_job_rec_t */
 	DATA_PARSER_JOB_PTR, /* slurmdb_job_rec_t* */
+	DATA_PARSER_JOB_MODIFY, /* slurmdb_job_rec_t */
+	DATA_PARSER_JOB_MODIFY_PTR, /* slurmdb_job_rec_t */
+	DATA_PARSER_OPENAPI_JOB_MODIFY_REQ, /* openapi_resp_single_t */
+	DATA_PARSER_OPENAPI_JOB_MODIFY_REQ_PTR, /* openapi_resp_single_t */
+	DATA_PARSER_OPENAPI_JOB_MODIFY_RESP, /* list of strings in openapi_resp_single_t */
+	DATA_PARSER_OPENAPI_JOB_MODIFY_RESP_PTR, /* list of strings in openapi_resp_single_t */
 	DATA_PARSER_JOB_ASSOC_ID, /* slurmdb_job_rec_t->associd,cluster */
 	DATA_PARSER_JOB_CONDITION, /* slurmdb_job_cond_t */
 	DATA_PARSER_JOB_CONDITION_FLAGS, /* uint32_t - JOBCOND_FLAG_* */
@@ -386,6 +392,8 @@ typedef enum {
 	DATA_PARSER_NODE_SELECT_TRES_WEIGHTED, /* DEPRECATED v43: was removed field node_info_t->select_nodeinfo  */
 	DATA_PARSER_UPDATE_NODE_MSG, /* update_node_msg_t */
 	DATA_PARSER_UPDATE_NODE_MSG_PTR, /* update_node_msg_t* */
+	DATA_PARSER_OPENAPI_CREATE_NODE_REQ, /* openapi_resp_single_t */
+	DATA_PARSER_OPENAPI_CREATE_NODE_REQ_PTR, /* openapi_resp_single_t* */
 	DATA_PARSER_OPENAPI_LICENSES_RESP, /* openapi_resp_license_info_msg_t */
 	DATA_PARSER_OPENAPI_LICENSES_RESP_PTR, /* openapi_resp_license_info_msg_t* */
 	DATA_PARSER_LICENSES, /* license_info_msg_t */
@@ -452,10 +460,15 @@ typedef enum {
 	DATA_PARSER_JOB_SHARED, /* uint16_t - JOB_SHARED_* */
 	DATA_PARSER_JOB_EXCLUSIVE, /* uint16_t - JOB_SHARED_* */
 	DATA_PARSER_JOB_EXCLUSIVE_FLAGS, /* uint16_t - JOB_SHARED_* */
-	DATA_PARSER_ALLOCATED_CORES, /* DEPRECATED v41: uint32_t if slurm_conf.select_type_param & (CR_CORE|CR_SOCKET) */
-	DATA_PARSER_ALLOCATED_CPUS, /* DEPRECATED v41: uint32_t if slurm_conf.select_type_param & CR_CPU */
+	DATA_PARSER_ALLOCATED_CORES, /* DEPRECATED v41: uint32_t if slurm_conf.select_type_param & (SELECT_CORE|SELECT_SOCKET) */
+	DATA_PARSER_ALLOCATED_CPUS, /* DEPRECATED v41: uint32_t if slurm_conf.select_type_param & SELECT_CPU */
 	DATA_PARSER_HOSTLIST, /* hostlist_t* */
 	DATA_PARSER_HOSTLIST_STRING, /* char * - acts like hostlist_t* */
+	DATA_PARSER_HOSTLIST_STRING_TO_STRING, /* char * - parse/dump string */
+	DATA_PARSER_OPENAPI_HOSTNAMES_REQ_RESP, /* openapi_resp_single_t */
+	DATA_PARSER_OPENAPI_HOSTNAMES_REQ_RESP_PTR, /* openapi_resp_single_t* */
+	DATA_PARSER_OPENAPI_HOSTLIST_REQ_RESP, /* openapi_resp_single_t */
+	DATA_PARSER_OPENAPI_HOSTLIST_REQ_RESP_PTR, /* openapi_resp_single_t* */
 	DATA_PARSER_POWER_FLAGS, /* REMOVED 24.05: uint8_t & SLURM_POWER_FLAGS_* */
 	DATA_PARSER_PARTITION_INFO, /* partition_info_t */
 	DATA_PARSER_PARTITION_INFO_PTR, /* partition_info_t* */
@@ -645,6 +658,27 @@ typedef enum {
 	DATA_PARSER_H_LAYER_PTR, /* hierarchy_layer_t* */
 	DATA_PARSER_H_LAYER_LIST, /* list_t* hierarchy_layer_t* */
 	DATA_PARSER_H_RESOURCES_AS_LICENSE_LIST, /* parse H_RESOURCE_LIST to list_t* of licenses_t*  */
+	DATA_PARSER_H_VARIABLE, /* hierarchy_layer_t */
+	DATA_PARSER_H_VARIABLE_PTR, /* hierarchy_layer_t* */
+	DATA_PARSER_H_VARIABLE_LIST, /* list_t* hierarchy_layer_t* */
+	DATA_PARSER_SLUID, /* sluid_t */
+	DATA_PARSER_SLUID_PTR, /* sluid_t* */
+	DATA_PARSER_OPENAPI_RESOURCE_LAYOUT_RESP, /* openapi_resp_resource_layout_t */
+	DATA_PARSER_OPENAPI_RESOURCE_LAYOUT_RESP_PTR, /* openapi_resp_resource_layout_t* */
+	DATA_PARSER_NODE_RESOURCE_LAYOUT, /* node_resource_layout_t */
+	DATA_PARSER_NODE_RESOURCE_LAYOUT_PTR, /* node_resource_layout_t* */
+	DATA_PARSER_NODE_RESOURCE_LAYOUT_LIST, /* list_t* node_resource_layout_t* */
+	DATA_PARSER_NODE_GRES_LAYOUT, /* node_gres_layout_t */
+	DATA_PARSER_NODE_GRES_LAYOUT_PTR, /* node_gres_layout_t* */
+	DATA_PARSER_NODE_GRES_LAYOUT_LIST, /* list_t* node_gres_layout_t* */
+	DATA_PARSER_NAMESPACE_FULL_CONF, /* ns_full_conf_t */
+	DATA_PARSER_NAMESPACE_FULL_CONF_PTR, /* ns_full_conf_t* */
+	DATA_PARSER_NAMESPACE_NODE_CONF, /* ns_node_conf_t */
+	DATA_PARSER_NAMESPACE_NODE_CONF_PTR, /* ns_node_conf_t* */
+	DATA_PARSER_NAMESPACE_NODE_CONF_LIST, /* list_t * of ns_node_conf_t* */
+	DATA_PARSER_NAMESPACE_NODE_CONF_COMPLEX, /* ns_node_conf_t* */
+	DATA_PARSER_NAMESPACE_CONF, /* ns_conf_t */
+	DATA_PARSER_NAMESPACE_CONF_PTR, /* ns_conf_t* */
 	DATA_PARSER_TYPE_MAX
 } data_parser_type_t;
 
@@ -1024,14 +1058,6 @@ extern int data_parser_dump_cli_stdout(data_parser_type_t type, void *obj,
 	} while (false)
 
 /*
- * Populate OpenAPI schema for each parser
- * IN parser - parser to add schemas from
- * IN/OUT dst - OpenAPI specification to populate
- * RET SLURM_SUCCESS or ESLURM_NOT_SUPPORTED (to skip) or error
- */
-extern int data_parser_g_specify(data_parser_t *parser, data_t *dst);
-
-/*
  * Create data_parser instance for CLI
  * IN data_parser - data_parser parameters
  * RET parser ptr
@@ -1126,5 +1152,12 @@ extern bool data_parser_g_is_complex(data_parser_t *parser);
  * RET - SLURM_SUCCESS on success else error
  */
 extern int data_parser_g_dump_flags(data_parser_t *parser, data_t *dst);
+
+/*
+ * Check if parser is deprecated
+ * IN parser - parser to query
+ * RET True if parser is deprecated
+ */
+extern bool data_parser_g_is_deprecated(data_parser_t *parser);
 
 #endif
