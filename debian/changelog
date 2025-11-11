@@ -1,3 +1,10 @@
+slurm-wlm (25.05.3-1ppa2) noble; urgency=medium
+
+  [ José Julián Espina ]
+  * Fix incorrect font in sackd manpage
+
+ -- José Julián Espina Del Ángel <julian.espina@canonical.com>  Fri, 12 Sep 2025 12:12:50 -0600
+
 slurm-wlm (25.05.3-1ppa1) noble; urgency=medium
 
   * New upstream release
