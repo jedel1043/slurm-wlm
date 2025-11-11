@@ -266,6 +266,10 @@ static int _check_is_def_acct_before_remove(remove_common_args_t *args)
 		DASSOC_COUNT
 	};
 
+	/* We allow removing it when AllowNoDefAcct=yes */
+	if (slurmdbd_conf->flags & DBD_CONF_FLAG_ALLOW_NO_DEF_ACCT)
+		return args->default_account;
+
 	xstrcat(tmp_char, dassoc_inx[0]);
 	for (i = 1; i < DASSOC_COUNT; i++)
 		xstrfmtcat(tmp_char, ", %s", dassoc_inx[i]);
@@ -428,7 +432,11 @@ static bool _check_jobs_before_remove(remove_common_args_t *args)
 			.wckey = READ_LOCK,
 		};
 
-		assoc_mgr_lock(&locks);
+		if (!args->qos_wckey_locked)
+			assoc_mgr_lock(&locks);
+
+		xassert(verify_assoc_lock(QOS_LOCK, locks.qos));
+		xassert(verify_assoc_lock(WCKEY_LOCK, locks.wckey));
 
 		while ((row = mysql_fetch_row(result))) {
 			slurmdb_qos_rec_t qos_req = {
@@ -473,7 +481,8 @@ static bool _check_jobs_before_remove(remove_common_args_t *args)
 
 			list_append(ret_list, object);
 		}
-		assoc_mgr_unlock(&locks);
+		if (!args->qos_wckey_locked)
+			assoc_mgr_unlock(&locks);
 	}
 	mysql_free_result(result);
 	return rc;
@@ -2266,7 +2275,7 @@ static int _remove_from_assoc_table(remove_common_args_t *args)
 	time_t now = args->now;
 	char *table = args->table;
 
-	int rc;
+	int rc = SLURM_SUCCESS;
 	char *query;
 	char *loc_assoc_char = NULL;
 	MYSQL_RES *result = NULL;
@@ -2307,7 +2316,6 @@ static int _remove_from_assoc_table(remove_common_args_t *args)
 		}
 		xfree(query);
 
-		rc = 0;
 		xfree(loc_assoc_char);
 		while ((row = mysql_fetch_row(result))) {
 			slurmdb_assoc_rec_t *rem_assoc = NULL;
@@ -2636,7 +2644,8 @@ extern void mod_tres_str(char **out, char *mod, char *cur,
 {
 	uint32_t tres_str_flags = TRES_STR_FLAG_REMOVE |
 		TRES_STR_FLAG_SORT_ID | TRES_STR_FLAG_SIMPLE |
-		TRES_STR_FLAG_NO_NULL;
+		TRES_STR_FLAG_NO_NULL | TRES_STR_FLAG_ALLOW_AMEND |
+		TRES_STR_FLAG_COMB_AMEND;
 
 	xassert(out);
 	xassert(name);
@@ -2865,32 +2874,28 @@ static void _check_database_collations(mysql_conn_t *mysql_conn)
 
 static int _send_ctld_update(void *x, void *arg)
 {
-	slurmdbd_conn_t *db_conn = x;
+	slurmdbd_conn_t *dbd_conn = x;
 	list_t *update_list = arg;
 
-	if ((db_conn->conn->flags & PERSIST_FLAG_EXT_DBD) ||
-	    (db_conn->conn->flags & PERSIST_FLAG_DONT_UPDATE_CLUSTER))
+	if ((dbd_conn->pcon->flags & PERSIST_FLAG_EXT_DBD) ||
+	    (dbd_conn->pcon->flags & PERSIST_FLAG_DONT_UPDATE_CLUSTER))
 		return 0;
 
-	slurm_mutex_lock(&db_conn->conn_send_lock);
+	slurm_mutex_lock(&dbd_conn->pcon_send_lock);
 
-	if (!db_conn->conn_send) {
-		debug("slurmctld for cluster %s left at the moment we were about to send to it.", db_conn->conn->cluster_name);
-		slurm_mutex_unlock(&db_conn->conn_send_lock);
+	if (!dbd_conn->pcon_send) {
+		debug("slurmctld for cluster %s left at the moment we were about to send to it.", dbd_conn->pcon->cluster_name);
+		slurm_mutex_unlock(&dbd_conn->pcon_send_lock);
 		return 0;
 	}
 
 	(void) slurmdb_send_accounting_update_persist(
-		update_list, db_conn->conn_send);
+		update_list, dbd_conn->pcon_send);
 
-	slurm_mutex_unlock(&db_conn->conn_send_lock);
+	slurm_mutex_unlock(&dbd_conn->pcon_send_lock);
 	return 0;
 }
 
-/*
- * init() is called when the plugin is loaded, before any other functions
- * are called.  Put global initialization here.
- */
 extern int init(void)
 {
 	int rc = SLURM_SUCCESS;
@@ -2958,7 +2963,7 @@ extern int init(void)
 	return rc;
 }
 
-extern int fini ( void )
+extern void fini(void)
 {
 	slurm_rwlock_wrlock(&as_mysql_cluster_list_lock);
 	FREE_NULL_LIST(as_mysql_cluster_list);
@@ -2971,7 +2976,6 @@ extern int fini ( void )
 	xfree(default_qos_str);
 
 	mysql_db_cleanup();
-	return SLURM_SUCCESS;
 }
 
 /*
@@ -3786,6 +3790,11 @@ extern int acct_storage_p_flush_jobs_on_cluster(
 
 extern int acct_storage_p_reconfig(mysql_conn_t *mysql_conn, bool dbd)
 {
+	debug2("Reloading mysql_db_info based on reconfig request");
+	/* Destroy old database info and create new one with updated config */
+	destroy_mysql_db_info(mysql_db_info);
+	mysql_db_info = create_mysql_db_info(SLURM_MYSQL_PLUGIN_AS);
+
 	return SLURM_SUCCESS;
 }
 

@@ -41,13 +41,12 @@
 
 /*
  * Any time you have to add to an existing convert update this number.
- * NOTE: 14 was the first version of 23.11.
- * NOTE: 15 was the second version of 23.11.
+ * NOTE: 15 was the last version before 24.11.
  * NOTE: 16 was the first version of 24.11.
  */
 #define CONVERT_VERSION 16
 
-#define MIN_CONVERT_VERSION 14
+#define MIN_CONVERT_VERSION 15
 
 #define JOB_CONVERT_LIMIT_CNT 1000
 
@@ -257,19 +256,6 @@ static int _convert_assoc_table_post(mysql_conn_t *mysql_conn,
 {
 	int rc = SLURM_SUCCESS;
 
-	if (db_curr_ver < 15) {
-		/*
-		 * There was a bug in version 14 that didn't add the partition
-		 * to the lineage. This fixes that.
-		 */
-		char *query = xstrdup_printf(
-			"update \"%s_%s\" set lineage=concat(lineage, `partition`, '/') where `partition`!='' and (`partition` is not null) and (lineage not like concat('%%/', `partition`, '/'));",
-			cluster_name, assoc_table);
-		DB_DEBUG(DB_QUERY, mysql_conn->conn, "query\n%s", query);
-		rc = mysql_db_query(mysql_conn, query);
-		xfree(query);
-	}
-
 	return rc;
 }
 
@@ -285,8 +271,8 @@ static int _foreach_post_create(void *x, void *arg)
 		return rc;
 
 	if (db_curr_ver < 16) {
-		uint16_t id = as_mysql_cluster_get_unique_id(
-			mysql_conn, cluster_name);
+		uint16_t id = as_mysql_cluster_get_unique_id(mysql_conn,
+							     cluster_name, 0);
 		char *query = xstrdup_printf(
 			"update %s set id=%u, mod_time=UNIX_TIMESTAMP() where name='%s'",
 			cluster_table, id, cluster_name);

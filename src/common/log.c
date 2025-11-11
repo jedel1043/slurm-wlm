@@ -73,6 +73,7 @@
 #include "src/common/fd.h"
 #include "src/common/log.h"
 #include "src/common/macros.h"
+#include "src/common/sluid.h"
 #include "src/common/slurm_protocol_api.h"
 #include "src/common/slurm_time.h"
 #include "src/common/xmalloc.h"
@@ -881,6 +882,7 @@ extern char *vxstrfmt(const char *fmt, va_list ap)
 				case 'A':
 				case 'd':
 				case 'D':
+				case 'I':
 				case 'J':
 				case 's':
 				case 'S':
@@ -978,6 +980,30 @@ extern char *vxstrfmt(const char *fmt, va_list ap)
 						&intermediate_pos,
 						_print_data_t(
 							d,
+							substitute_on_stack,
+							sizeof(substitute_on_stack)));
+					va_end(ap_copy);
+					break;
+				}
+				/*
+				 * "%pI" => "JobID=... SLUID=..." on a
+				 * slurm_step_id_t
+				 */
+				case 'I':
+				{
+					void *ptr = NULL;
+					slurm_step_id_t *step_id = NULL;
+					va_list ap_copy;
+
+					va_copy(ap_copy, ap);
+					for (int i = 0; i < cnt; i++)
+						ptr = va_arg(ap_copy, void *);
+					step_id = ptr;
+					xstrcatat(
+						intermediate_fmt,
+						&intermediate_pos,
+						log_build_job_id_str(
+							step_id,
 							substitute_on_stack,
 							sizeof(substitute_on_stack)));
 					va_end(ap_copy);
@@ -1632,6 +1658,35 @@ extern int get_sched_log_level(void)
 	return MAX(highest_log_level, highest_sched_log_level);
 }
 
+extern char *log_build_job_id_str(slurm_step_id_t *step_id, char *buf,
+				  int buf_size)
+{
+	xassert(buf);
+	xassert(buf_size > 1);
+
+	buf[0] = '\0';
+
+	if (!step_id) {
+		snprintf(buf, buf_size, "%%.0sJobId=Invalid SLUID=Invalid");
+	} else if (step_id->job_id && (step_id->job_id != NO_VAL) &&
+		   !step_id->sluid) {
+		snprintf(buf, buf_size, "%%.0sJobId=%u", step_id->job_id);
+	} else if (step_id->job_id && (step_id->job_id != NO_VAL)) {
+		int pos = snprintf(buf, buf_size,
+				   "%%.0sJobId=%u SLUID=", step_id->job_id);
+		if (pos > 0)
+			print_sluid(step_id->sluid, buf + pos, buf_size - pos);
+	} else if (step_id->sluid) {
+		int pos = snprintf(buf, buf_size, "%%.0sSLUID=");
+		if (pos > 0)
+			print_sluid(step_id->sluid, buf + pos, buf_size - pos);
+	} else {
+		snprintf(buf, buf_size, "%%.0sJobId=Invalid SLUID=Invalid");
+	}
+
+	return buf;
+}
+
 /*
  * log_build_step_id_str() - print a slurm_step_id_t as " StepId=...", with
  * Batch and Extern used as appropriate.
@@ -1733,4 +1788,45 @@ extern void _log_flag_hex(const void *data, size_t len, ssize_t start,
 	}
 
 	xfree(prepend);
+}
+
+log_closeall_skip_t log_closeall_pre(void)
+{
+	log_closeall_skip_t skip = {
+		.log_fd = -1,
+		.sched_log_fd = -1,
+	};
+
+	slurm_mutex_lock(&log_lock);
+
+	if (log && log->logfp)
+		skip.log_fd = fileno(log->logfp);
+	else
+		skip.log_fd = fileno(stderr);
+
+	if (sched_log && sched_log->logfp)
+		skip.sched_log_fd = fileno(sched_log->logfp);
+
+	closelog();
+	syslog_open = false;
+
+	slurm_mutex_unlock(&log_lock);
+
+	return skip;
+}
+
+void log_closeall_post(void)
+{
+	slurm_mutex_lock(&log_lock);
+
+	/*
+	 * Re-open syslog file descriptor after closeall() with same settings
+	 * if logging had already been initialized.
+	 */
+	if (log && log->initialized) {
+		openlog(log->argv0, LOG_PID, log->facility);
+		syslog_open = true;
+	}
+
+	slurm_mutex_unlock(&log_lock);
 }

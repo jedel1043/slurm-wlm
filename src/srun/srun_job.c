@@ -52,8 +52,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "src/api/step_launch.h"
+
 #include "src/common/bitstring.h"
-#include "src/interfaces/cli_filter.h"
 #include "src/common/cbuf.h"
 #include "src/common/fd.h"
 #include "src/common/forward.h"
@@ -62,6 +63,7 @@
 #include "src/common/macros.h"
 #include "src/common/proc_args.h"
 #include "src/common/read_config.h"
+#include "src/common/sluid.h"
 #include "src/common/slurm_opt.h"
 #include "src/common/slurm_protocol_api.h"
 #include "src/common/slurm_rlimits_info.h"
@@ -71,14 +73,14 @@
 #include "src/common/xsignal.h"
 #include "src/common/xstring.h"
 
-#include "src/api/step_launch.h"
+#include "src/interfaces/cli_filter.h"
 
 #include "src/srun/allocate.h"
 #include "src/srun/debugger.h"
 #include "src/srun/fname.h"
 #include "src/srun/launch.h"
-#include "src/srun/opt.h"
 #include "src/srun/multi_prog.h"
+#include "src/srun/opt.h"
 #include "src/srun/srun_job.h"
 
 /*
@@ -164,6 +166,9 @@ job_create_noalloc(void)
 	slurm_opt_t *opt_local = &opt;
 	hostlist_t *hl = hostlist_create(opt_local->nodelist);
 
+	/* Use the reserved slurmdbd cluster_id */
+	sluid_init(0x001, 0);
+
 	if (!hl) {
 		error("Invalid node list `%s' specified", opt_local->nodelist);
 		goto error;
@@ -172,6 +177,7 @@ job_create_noalloc(void)
 	ai->step_id.job_id = MIN_NOALLOC_JOBID +
 		((uint32_t) lrand48() %
 		 (MAX_NOALLOC_JOBID - MIN_NOALLOC_JOBID + 1));
+	ai->step_id.sluid = generate_sluid();
 	ai->step_id.step_id = (uint32_t) (lrand48());
 	ai->step_id.step_het_comp = NO_VAL;
 	ai->nodelist       = opt_local->nodelist;
@@ -276,7 +282,6 @@ extern srun_job_t *job_step_create_allocation(
 			slurm_opt_t *opt_local)
 {
 	srun_opt_t *srun_opt = opt_local->srun_opt;
-	uint32_t job_id = resp->job_id;
 	srun_job_t *job = NULL;
 	allocation_info_t *ai = xmalloc(sizeof(allocation_info_t));
 	hostlist_t *hl = NULL;
@@ -286,9 +291,10 @@ extern srun_job_t *job_step_create_allocation(
 	char *step_nodelist = NULL;
 	xassert(srun_opt);
 
-	ai->step_id.job_id          = job_id;
-	ai->step_id.step_id         = NO_VAL;
-	ai->step_id.step_het_comp = NO_VAL;
+	ai->step_id = resp->step_id;
+	xassert(ai->step_id.step_id == NO_VAL);
+	xassert(ai->step_id.step_het_comp == NO_VAL);
+
 	if (srun_opt->alloc_nodelist)
 		ai->nodelist = xstrdup(srun_opt->alloc_nodelist);
 	else
@@ -388,12 +394,9 @@ extern srun_job_t *job_step_create_allocation(
 			xfree(opt_local->nodelist);
 			opt_local->nodelist = buf;
 		} else {
-			if (count > ai->nnodes) {
-				/* remove more nodes than needed for
-				 * allocation */
-				int i;
-				for (i = count; i >= ai->nnodes; i--)
-					hostlist_delete_nth(hl, i);
+			/* remove more nodes than needed for allocation */
+			for (int i = count; i > ai->nnodes; i--) {
+				hostlist_delete_nth(hl, i - 1);
 			}
 			xfree(opt_local->nodelist);
 			opt_local->nodelist = hostlist_ranged_string_xmalloc(hl);
@@ -478,6 +481,10 @@ extern srun_job_t *job_step_create_allocation(
 	 * Create job
 	 */
 	job = _job_create_structure(ai, opt_local);
+
+	if (job) {
+		job->use_protocol_ver = resp->start_protocol_ver;
+	}
 error:
 	xfree(ai->nodelist);
    	xfree(ai);
@@ -495,12 +502,13 @@ extern srun_job_t *job_create_allocation(
 	srun_job_t *job;
 	allocation_info_t *i = xmalloc(sizeof(allocation_info_t));
 
+	i->step_id = resp->step_id;
+	xassert(i->step_id.step_id == NO_VAL);
+	xassert(i->step_id.step_het_comp == NO_VAL);
+
 	i->nodelist       = _normalize_hostlist(resp->node_list);
 	i->nnodes	  = resp->node_cnt;
 	i->partition      = resp->partition;
-	i->step_id.job_id          = resp->job_id;
-	i->step_id.step_id         = NO_VAL;
-	i->step_id.step_het_comp = NO_VAL;
 	i->num_cpu_groups = resp->num_cpu_groups;
 	i->cpus_per_node  = resp->cpus_per_node;
 	i->cpu_count_reps = resp->cpu_count_reps;
@@ -518,6 +526,7 @@ extern srun_job_t *job_create_allocation(
 		job->account = xstrdup(resp->account);
 		job->qos = xstrdup(resp->qos);
 		job->resv_name = xstrdup(resp->resv_name);
+		job->use_protocol_ver = resp->start_protocol_ver;
 	}
 
 	xfree(i->nodelist);
@@ -945,7 +954,7 @@ static int _create_job_step(srun_job_t *job, bool use_all_cpus,
 			task_offset += job->ntasks;
 
 			/*
-			 * If packing nodes (CR_PACK_NODES, -mpack), the step
+			 * If packing nodes (SELECT_PACK_NODES, -mpack), the step
 			 * may have an updated layout. Need to update each
 			 * component's het_job_nnodes with the updated counts.
 			 */
@@ -1017,7 +1026,7 @@ static int _create_job_step(srun_job_t *job, bool use_all_cpus,
 
 		if (het_job_id) {
 			/*
-			 * If packing nodes (CR_PACK_NODES, -mpack), the step
+			 * If packing nodes (SELECT_PACK_NODES, -mpack), the step
 			 * may have an updated layout.
 			 */
 			job->het_job_nnodes = job->nhosts;
@@ -1202,7 +1211,8 @@ extern void create_srun_job(void **p_job, bool *got_alloc)
 	srun_job_t *job = NULL;
 	int i, max_list_offset, max_het_job_offset, het_job_offset = -1,
 		het_step_offset = -1;
-	uint32_t my_job_id = 0, het_job_id = 0;
+	slurm_step_id_t my_step_id = SLURM_STEP_ID_INITIALIZER;
+	uint32_t het_job_id = 0;
 	char *het_job_nodelist = NULL;
 	bool begin_error_logged = false;
 	bool core_spec_error_logged = false;
@@ -1280,8 +1290,8 @@ extern void create_srun_job(void **p_job, bool *got_alloc)
 		resp_iter = list_iterator_create(job_resp_list);
 		while ((resp = list_next(resp_iter))) {
 			bool merge_nodelist = true;
-			if (my_job_id == 0) {
-				my_job_id = resp->job_id;
+			if (my_step_id.job_id == NO_VAL) {
+				my_step_id = resp->step_id;
 				if (resp->working_cluster_rec)
 					slurm_setup_remote_working_cluster(resp);
 			}
@@ -1409,8 +1419,8 @@ extern void create_srun_job(void **p_job, bool *got_alloc)
 			FREE_NULL_LIST(srun_job_list);	/* Just use "job" */
 		if (list_count(job_resp_list) > 1) {
 			/* only set if actually a hetjob */
-			if (!local_het_step && my_job_id)
-				het_job_id = my_job_id;
+			if (!local_het_step && (my_step_id.job_id != NO_VAL))
+				het_job_id = my_step_id.job_id;
 			het_job_nodelist =
 				_compress_het_job_nodelist(used_resp_list);
 		}
@@ -1418,7 +1428,7 @@ extern void create_srun_job(void **p_job, bool *got_alloc)
 		if (_create_job_step(job, false, srun_job_list, het_job_id,
 				     het_job_nodelist) < 0) {
 			if (*got_alloc)
-				slurm_complete_job(my_job_id, 1);
+				slurm_complete_job(&my_step_id, 1);
 			else
 				_cancel_steps(srun_job_list);
 			exit(error_exit);
@@ -1445,8 +1455,8 @@ extern void create_srun_job(void **p_job, bool *got_alloc)
 			while ((resp = list_next(resp_iter))) {
 				slurm_opt_t *opt_local;
 
-				if (my_job_id == 0) {
-					my_job_id = resp->job_id;
+				if (my_step_id.job_id == NO_VAL) {
+					my_step_id = resp->step_id;
 					*got_alloc = true;
 				}
 				opt_local = list_next(opt_iter);
@@ -1456,7 +1466,7 @@ extern void create_srun_job(void **p_job, bool *got_alloc)
 				_set_env_vars(resp, ++het_job_offset);
 				_set_env_vars2(resp, het_job_offset);
 				if (_validate_relative(resp, opt_local)) {
-					slurm_complete_job(my_job_id, 1);
+					slurm_complete_job(&my_step_id, 1);
 					exit(error_exit);
 				}
 				job = job_create_allocation(resp, opt_local);
@@ -1483,28 +1493,29 @@ extern void create_srun_job(void **p_job, bool *got_alloc)
 			if (!(resp = allocate_nodes(&opt)))
 				exit(error_exit);
 			*got_alloc = true;
-			my_job_id = resp->job_id;
+			my_step_id = resp->step_id;
 			_print_job_information(resp);
 			_set_env_vars(resp, -1);
 			if (_validate_relative(resp, &opt)) {
-				slurm_complete_job(resp->job_id, 1);
+				slurm_complete_job(&resp->step_id, 1);
 				exit(error_exit);
 			}
 			job = job_create_allocation(resp, &opt);
 			_set_step_opts(&opt, resp);
 		}
 		if (srun_job_list && (list_count(srun_job_list) > 1) &&
-		    opt_list && (list_count(opt_list) > 1) && my_job_id) {
+		    opt_list && (list_count(opt_list) > 1) &&
+		    (my_step_id.job_id != NO_VAL)) {
 			/* only set if actually a hetjob */
 			if (!local_het_step)
-				het_job_id = my_job_id;
+				het_job_id = my_step_id.job_id;
 			het_job_nodelist =
 				_compress_het_job_nodelist(job_resp_list);
 		}
 
 		if (_create_job_step(job, true, srun_job_list, het_job_id,
 				     het_job_nodelist) < 0) {
-			slurm_complete_job(my_job_id, 1);
+			slurm_complete_job(&my_step_id, 1);
 			exit(error_exit);
 		}
 		xfree(het_job_nodelist);
@@ -1533,7 +1544,8 @@ extern void create_srun_job(void **p_job, bool *got_alloc)
 		*p_job = (void *) job;
 
 	if (job)
-	        _srun_cli_filter_post_submit(my_job_id, job->step_id.step_id);
+		_srun_cli_filter_post_submit(my_step_id.job_id,
+					     job->step_id.step_id);
 }
 
 extern void pre_launch_srun_job(srun_job_t *job, slurm_opt_t *opt_local)
@@ -1558,9 +1570,9 @@ extern void fini_srun(srun_job_t *job, bool got_alloc, uint32_t *global_rc)
 
 		/* Tell slurmctld that we were cancelled */
 		if (job->state >= SRUN_JOB_CANCELLED)
-			slurm_complete_job(job->step_id.job_id, NO_VAL);
+			slurm_complete_job(&job->step_id, NO_VAL);
 		else
-			slurm_complete_job(job->step_id.job_id, *global_rc);
+			slurm_complete_job(&job->step_id, *global_rc);
 	}
 	_shepherd_notify(shepherd_fd);
 
@@ -1625,8 +1637,7 @@ job_force_termination(srun_job_t *job)
 		}
 		if (kill_sent == 1) {
 			/* Try sending SIGKILL through slurmctld */
-			slurm_kill_job_step(job->step_id.job_id,
-					    job->step_id.step_id, SIGKILL, 0);
+			slurm_kill_job_step(&job->step_id, SIGKILL, 0);
 		}
 	}
 	kill_sent++;
@@ -1829,7 +1840,7 @@ static void _print_job_information(resource_allocation_response_msg_t *resp)
 		return;
 
 	xstrfmtcat(str, "jobid %u: nodes(%u):`%s', cpu counts: ",
-		   resp->job_id, resp->node_cnt, resp->node_list);
+		   resp->step_id.job_id, resp->node_cnt, resp->node_list);
 
 	for (i = 0; i < resp->num_cpu_groups; i++) {
 		xstrfmtcat(str, "%s%u(x%u)",
@@ -1991,6 +2002,15 @@ static void _set_env_vars(resource_allocation_response_msg_t *resp,
 		xfree(key);
 	}
 
+	if (resp->segment_size) {
+		key = _build_key("SLURM_JOB_SEGMENT_SIZE", het_job_offset);
+		if (!getenv(key) &&
+		    (setenvf(NULL, key, "%u", resp->segment_size) < 0)) {
+			error("unable to set %s in environment", key);
+		}
+		xfree(key);
+	}
+
 	return;
 }
 
@@ -2013,7 +2033,7 @@ static void _set_env_vars2(resource_allocation_response_msg_t *resp,
 
 	key = _build_key("SLURM_JOB_ID", het_job_offset);
 	if (!getenv(key) &&
-	    (setenvf(NULL, key, "%u", resp->job_id) < 0)) {
+	    (setenvf(NULL, key, "%u", resp->step_id.job_id) < 0)) {
 		error("unable to set %s in environment", key);
 	}
 	xfree(key);
@@ -2218,17 +2238,15 @@ static int _shepherd_spawn(srun_job_t *job, list_t *srun_job_list,
 		list_itr_t *job_iter;
 		job_iter  = list_iterator_create(srun_job_list);
 		while ((job = list_next(job_iter))) {
-			(void) slurm_kill_job_step(job->step_id.job_id, job->step_id.step_id,
-						   SIGKILL, 0);
+			(void) slurm_kill_job_step(&job->step_id, SIGKILL, 0);
 			if (got_alloc)
-				slurm_complete_job(job->step_id.job_id, NO_VAL);
+				slurm_complete_job(&job->step_id, NO_VAL);
 		}
 		list_iterator_destroy(job_iter);
 	} else {
-		(void) slurm_kill_job_step(job->step_id.job_id,
-					   job->step_id.step_id, SIGKILL, 0);
+		(void) slurm_kill_job_step(&job->step_id, SIGKILL, 0);
 		if (got_alloc)
-			slurm_complete_job(job->step_id.job_id, NO_VAL);
+			slurm_complete_job(&job->step_id, NO_VAL);
 	}
 
 	_exit(0);

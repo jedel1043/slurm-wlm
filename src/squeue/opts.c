@@ -54,6 +54,7 @@
 #include "src/common/ref.h"
 #include "src/common/uid.h"
 #include "src/interfaces/serializer.h"
+#include "src/common/parse_time.h"
 
 #include "src/squeue/squeue.h"
 
@@ -76,6 +77,8 @@
 #define OPT_LONG_HELPFORMAT2  0x116
 #define OPT_LONG_ONLY_JOB_STATE   0x117
 #define OPT_LONG_EXPAND_PATTERNS 0x118
+#define OPT_LONG_R_OVER 0x119
+#define OPT_LONG_R_UNDER 0x120
 
 /* FUNCTIONS */
 static list_t *_build_job_list(char *str);
@@ -147,6 +150,8 @@ extern void parse_command_line(int argc, char **argv)
 		{"priority",   no_argument,       0, 'P'},
 		{"qos",        required_argument, 0, 'q'},
 		{"reservation",required_argument, 0, 'R'},
+		{"running-over", required_argument, 0, OPT_LONG_R_OVER},
+		{"running-under", required_argument, 0, OPT_LONG_R_UNDER},
 		{"sib",        no_argument,       0, OPT_LONG_SIBLING},
 		{"sibling",    no_argument,       0, OPT_LONG_SIBLING},
 		{"sort",       required_argument, 0, 'S'},
@@ -217,6 +222,8 @@ extern void parse_command_line(int argc, char **argv)
 			break;
 		case (int) 'j':
 			if (optarg) {
+				xfree(params.jobs);
+				FREE_NULL_LIST(params.job_list);
 				params.jobs = xstrdup(optarg);
 				params.job_list =
 					_build_job_list(params.jobs);
@@ -291,6 +298,8 @@ extern void parse_command_line(int argc, char **argv)
 			break;
 		case (int) 's':
 			if (optarg) {
+				xfree(params.steps);
+				FREE_NULL_LIST(params.step_list);
 				params.steps = xstrdup(optarg);
 				params.step_list =
 					_build_step_list(params.steps);
@@ -398,6 +407,18 @@ extern void parse_command_line(int argc, char **argv)
 			_help_format2(params.step_flag);
 			exit(0);
 			break;
+		case OPT_LONG_R_OVER:
+			params.time_running_over = time_str2secs(optarg);
+			if (((int32_t) params.time_running_over <= 0) &&
+			    (params.time_running_over != INFINITE))
+				fatal("Invalid time limit specification");
+			break;
+		case OPT_LONG_R_UNDER:
+			params.time_running_under = time_str2secs(optarg);
+			if (((int32_t) params.time_running_under <= 0) &&
+			    (params.time_running_under != INFINITE))
+				fatal("Invalid time limit specification");
+			break;
 		}
 	}
 
@@ -418,12 +439,15 @@ extern void parse_command_line(int argc, char **argv)
 			params.format_long = xstrdup(env_val);
 	}
 
-	params.cluster_flags = slurmdb_setup_cluster_flags();
 	if (optind < argc) {
 		if (params.job_flag) {
+			xfree(params.jobs);
+			FREE_NULL_LIST(params.job_list);
 			params.jobs = xstrdup(argv[optind++]);
 			params.job_list = _build_job_list(params.jobs);
 		} else if (params.step_flag) {
+			xfree(params.steps);
+			FREE_NULL_LIST(params.step_list);
 			params.steps = xstrdup(argv[optind++]);
 			params.step_list = _build_step_list(params.steps);
 		}
@@ -473,8 +497,7 @@ extern void parse_command_line(int argc, char **argv)
 		params.name_list = _build_str_list( params.names );
 	}
 
-	if ( ( params.partitions == NULL ) &&
-	     ( env_val = getenv("SQUEUE_LICENSES") ) ) {
+	if (!params.licenses && (env_val = getenv("SQUEUE_LICENSES"))) {
 		params.licenses = xstrdup(env_val);
 		params.licenses_list = _build_str_list( params.licenses );
 	}
@@ -531,6 +554,18 @@ extern void parse_command_line(int argc, char **argv)
 		list_iterator_destroy(iterator);
 	}
 
+	if (params.time_running_over && params.time_running_under) {
+		if (params.time_running_over > params.time_running_under) {
+			char buffer_o[32], buffer_u[32];
+			secs2time_str((time_t) params.time_running_over,
+				      buffer_o, sizeof(buffer_o));
+			secs2time_str((time_t) params.time_running_under,
+				      buffer_u, sizeof(buffer_u));
+			fatal("--running-over=%s and --running-under=%s will return 0 jobs.",
+			      buffer_o, buffer_u);
+		}
+	}
+
 	if ( params.verbose )
 		_print_options();
 }
@@ -552,6 +587,8 @@ static const char *_job_state_list(void)
 	xstrcat(state_names, job_state_string(JOB_COMPLETING));
 	xstrcat(state_names, ",");
 	xstrcat(state_names, job_state_string(JOB_CONFIGURING));
+	xstrcat(state_names, ",");
+	xstrcat(state_names, job_state_string(JOB_EXPEDITING));
 	xstrcat(state_names, ",");
 	xstrcat(state_names, job_state_string(JOB_RESIZING));
 	xstrcat(state_names, ",");
@@ -712,6 +749,7 @@ static fmt_data_job_t fmt_data_job[] = {
 	{"SiblingsViable", 0, _print_job_fed_siblings_viable, 0},
 	{"SiblingsViableRaw", 0, _print_job_fed_siblings_viable_raw, 0},
 	{"Shared", 'h', _print_job_over_subscribe, FMT_FLAG_HIDDEN},
+	{"SLUID", 's', _print_sluid, 0},
 	{"Sockets", 'H', _print_sockets, 0},
 	{"SPerBoard", 0, _print_job_sockets_per_board, 0},
 	{"StartTime", 'S', _print_job_time_start, 0},
@@ -755,41 +793,30 @@ static fmt_data_step_t fmt_data_step[] = {
 	{"JobId", 0, _print_step_job_id, 0},
 	{"mem-per-tres", 0, _print_step_mem_per_tres, 0},
 	{"Network", 0, _print_step_network, 0},
-	{"Nodes", 0, _print_step_nodes, 0},
+	{"Nodes", 'N', _print_step_nodes, 0},
 	{"NumCPUs", 0, _print_step_num_cpus, 0},
-	{"NumTasks", 0, _print_step_num_tasks, 0},
-	{"Partition", 0, _print_step_partition, 0},
+	{"NumTasks", 'A', _print_step_num_tasks, 0},
+	{"Partition", 'P', _print_step_partition, 0},
 	{"ResvPorts", 0, _print_step_resv_ports, 0},
-	{"StartTime", 0, _print_step_time_start, 0},
+	{"StartTime", 'S', _print_step_time_start, 0},
 	{"StdErr", 0, _print_step_std_err, 0},
 	{"StdIn", 0, _print_step_std_in, 0},
 	{"StdOut", 0, _print_step_std_out, 0},
-	{"StepId", 0, _print_step_id, 0},
-	{"StepName", 0, _print_step_name, 0},
+	{"StepId", 'i', _print_step_id, 0},
+	{"StepName", 'j', _print_step_name, 0},
 	{"StepState", 0, _print_step_state, 0},
-	{"TimeLimit", 0, _print_step_time_limit, 0},
-	{"TimeUsed", 0, _print_step_time_used, 0},
+	{"TimeLimit", 'l', _print_step_time_limit, 0},
+	{"TimeUsed", 'M', _print_step_time_used, 0},
 	{"tres-bind", 0, _print_step_tres_bind, 0},
 	{"tres-freq", 0, _print_step_tres_freq, 0},
 	{"tres-per-job", 0, _print_step_tres_per_step, 0},
-	{"tres-per-node", 0, _print_step_tres_per_node,
+	{"tres-per-node", 'b', _print_step_tres_per_node,
 	 FMT_FLAG_HIDDEN}, /* vestigial */
 	{"tres-per-socket", 0, _print_step_tres_per_socket, 0},
 	{"tres-per-step", 0, _print_step_tres_per_step, 0},
 	{"tres-per-task", 0, _print_step_tres_per_task, 0},
-	{"UserId", 0, _print_step_user_id, 0},
-	{"UserName", 0, _print_step_user_name, 0},
-	{NULL, 'A', _print_step_num_tasks, 0},
-	{NULL, 'b', _print_step_tres_per_node, FMT_FLAG_HIDDEN}, /* vestigial */
-	{NULL, 'i', _print_step_id, 0},
-	{NULL, 'j', _print_step_name, 0},
-	{NULL, 'l', _print_step_time_limit, 0},
-	{NULL, 'M', _print_step_time_used, 0},
-	{NULL, 'N', _print_step_nodes, 0},
-	{NULL, 'P', _print_step_partition, 0},
-	{NULL, 'S', _print_step_time_start, 0},
-	{NULL, 'u', _print_step_user_name, 0},
-	{NULL, 'U', _print_step_user_id, 0},
+	{"UserId", 'U', _print_step_user_id, 0},
+	{"UserName", 'u', _print_step_user_name, 0},
 	{NULL, 0, NULL, 0},
 };
 

@@ -387,9 +387,9 @@ void slurm_write_ctl_conf ( slurm_ctl_conf_info_msg_t * slurm_ctl_conf_ptr,
 		if (p[i].flags & PART_FLAG_ROOT_ONLY)
 	                fprintf(fp, " RootOnly=YES");
 
-		if (p[i].cr_type & CR_CORE)
+		if (p[i].cr_type & SELECT_CORE)
 			fprintf(fp, " SelectTypeParameters=CR_CORE");
-		else if (p[i].cr_type & CR_SOCKET)
+		else if (p[i].cr_type & SELECT_SOCKET)
 			fprintf(fp, " SelectTypeParameters=CR_SOCKET");
 
 		if (p[i].flags & PART_FLAG_PDOI)
@@ -625,9 +625,6 @@ extern void *slurm_ctl_conf_2_key_pairs(slurm_conf_t *conf)
 	add_key_pair(ret_list, "AccountingStorageType", "%s",
 		     conf->accounting_storage_type);
 
-	add_key_pair(ret_list, "AccountingStorageUser", "%s",
-		     conf->accounting_storage_user);
-
 	add_key_pair_own(ret_list, "AccountingStoreFlags",
 			 _accountingstoreflags(conf->conf_flags));
 
@@ -677,6 +674,8 @@ extern void *slurm_ctl_conf_2_key_pairs(slurm_conf_t *conf)
 	add_key_pair(ret_list, "CertmgrParameters", "%s", conf->certmgr_params);
 	add_key_pair(ret_list, "CertmgrType", "%s", conf->certmgr_type);
 
+	add_key_pair(ret_list, "CliFilterParameters", "%s",
+		     conf->cli_filter_params);
 	add_key_pair(ret_list, "CliFilterPlugins", "%s",
 		     conf->cli_filter_plugins);
 
@@ -778,6 +777,7 @@ extern void *slurm_ctl_conf_2_key_pairs(slurm_conf_t *conf)
 
 	add_key_pair(ret_list, "HealthCheckProgram", "%s",
 		     conf->health_check_program);
+	add_key_pair(ret_list, "HttpParserType", "%s", conf->http_parser_type);
 
 	add_key_pair(ret_list, "InactiveLimit", "%u sec",
 		     conf->inactive_limit);
@@ -800,14 +800,15 @@ extern void *slurm_ctl_conf_2_key_pairs(slurm_conf_t *conf)
 
 	add_key_pair(ret_list, "JobCompParams", "%s", conf->job_comp_params);
 
+	/* JobCompPass intentionally omitted */
+
+	add_key_pair(ret_list, "JobCompPass", "%s", conf->job_comp_pass_script);
+
 	add_key_pair(ret_list, "JobCompPort", "%u", conf->job_comp_port);
 
 	add_key_pair(ret_list, "JobCompType", "%s", conf->job_comp_type);
 
 	add_key_pair(ret_list, "JobCompUser", "%s", conf->job_comp_user);
-
-	add_key_pair(ret_list, "JobContainerType", "%s",
-		     conf->job_container_plugin);
 
 	add_key_pair_own(ret_list, "JobDefaults",
 			 job_defaults_str(conf->job_defaults_list));
@@ -869,6 +870,8 @@ extern void *slurm_ctl_conf_2_key_pairs(slurm_conf_t *conf)
 
 	add_key_pair(ret_list, "MessageTimeout", "%u sec", conf->msg_timeout);
 
+	add_key_pair(ret_list, "MetricsType", "%s", conf->metrics_type);
+
 	add_key_pair(ret_list, "MinJobAge", "%u sec", conf->min_job_age);
 
 	add_key_pair(ret_list, "MpiDefault", "%s", conf->mpi_default);
@@ -877,6 +880,8 @@ extern void *slurm_ctl_conf_2_key_pairs(slurm_conf_t *conf)
 
 	if (cluster_flags & CLUSTER_FLAG_MULTSD)
 		add_key_pair_bool(ret_list, "MULTIPLE_SLURMD", true);
+
+	add_key_pair(ret_list, "NamespaceType", "%s", conf->namespace_plugin);
 
 	add_key_pair(ret_list, "NEXT_JOB_ID", "%u", conf->next_job_id);
 
@@ -1230,6 +1235,8 @@ extern void *slurm_ctl_conf_2_key_pairs(slurm_conf_t *conf)
 	add_key_pair(ret_list, "UnkillableStepTimeout", "%u sec",
 		     conf->unkillable_timeout);
 
+	add_key_pair(ret_list, "UrlParserType", "%s", conf->url_parser_type);
+
 	add_key_pair(ret_list, "VSizeFactor", "%u percent",
 		     conf->vsize_factor);
 
@@ -1576,7 +1583,6 @@ static void _write_key_pairs(FILE* out, void *key_pairs)
 		    !xstrcasecmp(key_pair->name, "AccountingStorageHost") ||
 		    !xstrcasecmp(key_pair->name, "AccountingStoragePort") ||
 		    !xstrcasecmp(key_pair->name, "AccountingStorageType") ||
-		    !xstrcasecmp(key_pair->name, "AccountingStorageUser") ||
 		    !xstrcasecmp(key_pair->name, "AccountingStoreFlags") ||
 		    !xstrcasecmp(key_pair->name, "AcctGatherEnergyType") ||
 		    !xstrcasecmp(key_pair->name, "AcctGatherFilesystemType") ||

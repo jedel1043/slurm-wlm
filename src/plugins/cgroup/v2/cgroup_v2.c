@@ -63,7 +63,7 @@
 #include "src/plugins/cgroup/v2/cgroup_dbus.h"
 #include "src/plugins/cgroup/v2/ebpf.h"
 
-#define SYSTEM_CGSLICE "system.slice"
+#define DEFAULT_SYSTEM_CGSLICE "system.slice"
 #define SYSTEM_CGSCOPE "slurmstepd"
 #define SYSTEM_CGDIR "system"
 
@@ -80,6 +80,7 @@ static bpf_program_t p[CG_LEVEL_CNT];
 static char *stepd_scope_path = NULL;
 static uint32_t task_special_id = NO_VAL;
 static char *invoc_id;
+static int token_fd = -1;
 static char *ctl_names[] = {
 	[CG_TRACK] = "freezer",
 	[CG_CPUS] = "cpuset",
@@ -428,13 +429,18 @@ static void _set_int_cg_ns()
 		return;
 	}
 
+	/* The slice is a cgroup/v2 parameter only, so set the default here. */
+	if (!slurm_cgroup_conf.cgroup_slice)
+		slurm_cgroup_conf.cgroup_slice =
+			xstrdup(DEFAULT_SYSTEM_CGSLICE);
+
 #ifdef MULTIPLE_SLURMD
 	xstrfmtcat(stepd_scope_path, "%s/%s/%s_%s.scope",
-		   int_cg_ns.init_cg_path, SYSTEM_CGSLICE, conf->node_name,
-		   SYSTEM_CGSCOPE);
+		   int_cg_ns.init_cg_path, slurm_cgroup_conf.cgroup_slice,
+		   conf->node_name, SYSTEM_CGSCOPE);
 #else
 	xstrfmtcat(stepd_scope_path, "%s/%s/%s.scope", int_cg_ns.init_cg_path,
-		   SYSTEM_CGSLICE, SYSTEM_CGSCOPE);
+		   slurm_cgroup_conf.cgroup_slice, SYSTEM_CGSCOPE);
 #endif
 	int_cg_ns.mnt_point = _get_proc_cg_path("self");
 }
@@ -593,29 +599,41 @@ static int _enable_system_controllers()
 {
 	char *slice_path = NULL;
 	bitstr_t *system_ctrls = bit_alloc(CG_CTL_CNT);
+	int rc = SLURM_ERROR;
 
 	if (_get_controllers(slurm_cgroup_conf.cgroup_mountpoint,
 			     system_ctrls) != SLURM_SUCCESS) {
-		FREE_NULL_BITMAP(system_ctrls);
-		return SLURM_ERROR;
+		error("Could not obtain system controllers from %s",
+		      slurm_cgroup_conf.cgroup_mountpoint);
+		goto end;
 	}
+
 	if (_enable_controllers(int_cg_ns.mnt_point, system_ctrls) !=
 	    SLURM_SUCCESS) {
 		error("Could not enable controllers for cgroup path %s",
 		      int_cg_ns.mnt_point);
-		return SLURM_ERROR;
+		goto end;
 	}
 
 	/*
 	 * Enable it for system.slice, where the stepd scope will reside when
-	 * it is created later.
+	 * it is created later. Do not do it when ignoresystemd is true as it
+	 * will be done when the stepd_scope_path is created.
 	 */
-	slice_path = xdirname(stepd_scope_path);
-	_enable_subtree_control(slice_path, system_ctrls);
+	if (!slurm_cgroup_conf.ignore_systemd) {
+		slice_path = xdirname(stepd_scope_path);
+		if (_enable_subtree_control(slice_path, system_ctrls) !=
+		    SLURM_SUCCESS) {
+			error("Could not enable subtree control at %s",
+			      slice_path);
+			goto end;
+		}
+	}
+	rc = SLURM_SUCCESS;
+end:
 	xfree(slice_path);
-
 	FREE_NULL_BITMAP(system_ctrls);
-	return SLURM_SUCCESS;
+	return rc;
 }
 
 /*
@@ -1069,7 +1087,7 @@ static int _init_new_scope_dbus(char *scope_path)
 
 	/*
 	 * Assuming the scope is created, let's mkdir the /system dir which will
-	 * allocate the sleep inifnity pid. This way the slurmstepd scope won't
+	 * allocate the sleep infinity pid. This way the slurmstepd scope won't
 	 * be a leaf anymore and we'll be able to create more directories.
 	 * _init_new_scope here is simply used as a mkdir.
 	 */
@@ -1727,7 +1745,7 @@ extern int cgroup_p_setup_scope(char *scope_path)
 	return SLURM_SUCCESS;
 }
 
-extern int fini(void)
+extern void fini(void)
 {
 	/*
 	 * Clear up the namespace and cgroups memory. Don't rmdir anything since
@@ -1744,7 +1762,6 @@ extern int fini(void)
 	xfree(stepd_scope_path);
 
 	debug("unloading %s", plugin_name);
-	return SLURM_SUCCESS;
 }
 
 /*
@@ -1856,14 +1873,13 @@ extern int cgroup_p_step_create(cgroup_ctl_type_t ctl, stepd_step_rec_t *step)
 	xstrfmtcat(new_path, "/job_%u", step->step_id.job_id);
 	if (common_cgroup_create(&int_cg_ns, &int_cg[CG_LEVEL_JOB],
 				 new_path, 0, 0) != SLURM_SUCCESS) {
-		error("unable to create job %u cgroup", step->step_id.job_id);
+		error("unable to create %pI cgroup", &step->step_id);
 		rc = SLURM_ERROR;
 		goto endit;
 	}
 	if (common_cgroup_instantiate(&int_cg[CG_LEVEL_JOB]) != SLURM_SUCCESS) {
 		common_cgroup_destroy(&int_cg[CG_LEVEL_JOB]);
-		error("unable to instantiate job %u cgroup",
-		      step->step_id.job_id);
+		error("unable to instantiate %pI cgroup", &step->step_id);
 		rc = SLURM_ERROR;
 		goto endit;
 	}
@@ -2403,7 +2419,8 @@ extern int cgroup_p_constrain_apply(cgroup_ctl_type_t ctl, cgroup_level_t level,
 			 * last cgroup in the hierarchy.
 			 */
 			return load_ebpf_prog(program, cgroup_path,
-					      (level != CG_LEVEL_TASK));
+					      (level != CG_LEVEL_TASK),
+					      token_fd);
 		} else {
 			log_flag(CGROUP, "EBPF Not loading the program into %s because it is a noop",
 				 cgroup_path);
@@ -2980,4 +2997,45 @@ extern int cgroup_p_is_task_empty(uint32_t taskid)
 	cg = task_cg_info->task_cg;
 
 	return _is_cgroup_empty(&cg);
+}
+
+extern int cgroup_p_bpf_fsopen(void)
+{
+	return bpf_fsopen();
+}
+
+extern int cgroup_p_bpf_fsconfig(int fd)
+{
+	return bpf_fsconfig(fd);
+}
+
+extern int cgroup_p_bpf_create_token(int fd)
+{
+	int tok_fd;
+	/*
+	 * The token should only be generated once. If the static is already
+	 * set, something strange happened.
+	 */
+	if (token_fd != -1) {
+		error("The BPF token is already generated, this should not happen");
+		return token_fd;
+	}
+
+	tok_fd = bpf_create_token(fd);
+	if (tok_fd < 0) {
+		error("Error generating BPF token");
+		return SLURM_ERROR;
+	}
+
+	return tok_fd;
+}
+
+extern void cgroup_p_bpf_set_token(int fd)
+{
+	token_fd = fd;
+}
+
+extern int cgroup_p_bpf_get_token()
+{
+	return token_fd;
 }

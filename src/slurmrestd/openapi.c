@@ -34,6 +34,7 @@
 \*****************************************************************************/
 
 #include "src/common/data.h"
+#include "src/common/http.h"
 #include "src/common/plugrack.h"
 #include "src/common/read_config.h"
 #include "src/common/xassert.h"
@@ -45,7 +46,6 @@
 #include "src/slurmrestd/operations.h"
 
 #define OPENAPI_MAJOR_TYPE "openapi"
-#define DEPRECATED_PARSER "v0.0.40"
 
 typedef struct {
 	int (*init)(void);
@@ -168,7 +168,7 @@ static const struct {
 	struct {
 		char *name;
 		char *desc;
-	} tags[3];
+	} tags[4];
 	struct {
 		char *url;
 	} servers[1];
@@ -208,6 +208,10 @@ static const struct {
 		{
 			.name = "slurmdb",
 			.desc = "methods that query slurmdbd",
+		},
+		{
+			.name = "util",
+			.desc = "utilities available directly through slurmrestd",
 		},
 		{
 			.name = "openapi",
@@ -306,7 +310,7 @@ static const http_status_code_t *response_status_codes = NULL;
 static const http_status_code_t default_response_status_codes[] = {
 	HTTP_STATUS_CODE_SUCCESS_OK,
 	HTTP_STATUS_CODE_DEFAULT,
-	HTTP_STATUS_NONE
+	HTTP_STATUS_CODE_INVALID,
 };
 
 static char *_entry_to_string(entry_t *entry);
@@ -530,7 +534,7 @@ static void _check_openapi_path_binding(const openapi_path_binding_t *op_path)
 		xassert(method->response.description &&
 			method->response.description[0]);
 		xassert(method->method > HTTP_REQUEST_INVALID);
-		xassert(method->method < HTTP_REQUEST_MAX);
+		xassert(method->method < HTTP_REQUEST_INVALID_MAX);
 		xassert(method->tags && method->tags[0]);
 		xassert(method->response.type > DATA_PARSER_TYPE_INVALID);
 		xassert(method->response.type < DATA_PARSER_TYPE_MAX);
@@ -1132,8 +1136,7 @@ static int _populate_method(path_t *path, openapi_spec_t *spec, data_t *dpath,
 		data_set_string(data_key_set(dmethod, "description"),
 				method->description);
 
-	if (!xstrcmp(data_parser_get_plugin_version(path->parser),
-		     DEPRECATED_PARSER))
+	if (data_parser_g_is_deprecated(path->parser))
 		data_set_bool(data_key_set(dmethod, "deprecated"), true);
 
 	{

@@ -485,8 +485,7 @@ static void _destroy_local_cluster(void *object)
 {
 	local_cluster_t *local_cluster = (local_cluster_t *)object;
 	if (local_cluster) {
-		if (local_cluster->hl)
-			hostlist_destroy(local_cluster->hl);
+		FREE_NULL_HOSTLIST(local_cluster->hl);
 		FREE_NULL_BITMAP(local_cluster->asked_bitmap);
 		xfree(local_cluster);
 	}
@@ -506,7 +505,6 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 	MYSQL_RES *result = NULL, *step_result = NULL;
 	MYSQL_ROW row, step_row;
 	slurmdb_job_rec_t *job = NULL;
-	slurmdb_step_rec_t *step = NULL;
 	time_t now = time(NULL);
 	list_t *job_list = list_create(slurmdb_destroy_job_rec);
 	list_itr_t *itr = NULL, *itr2 = NULL;
@@ -783,7 +781,7 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 
 			job->elapsed = job->end - job->start;
 
-			if (row[JOB_REQ_SUSPENDED]) {
+			if (slurm_atoul(row[JOB_REQ_SUSPENDED])) {
 				MYSQL_RES *result2 = NULL;
 				MYSQL_ROW row2;
 				/* get the suspended time for this job */
@@ -912,7 +910,7 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 		    (job_cond &&
 		     (job_cond->flags & (JOBCOND_FLAG_NO_STEP |
 					 JOBCOND_FLAG_RUNAWAY))))
-			goto skip_steps;
+			continue;
 
 		if (job_cond && job_cond->step_list
 		    && list_count(job_cond->step_list)) {
@@ -991,6 +989,7 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 		   later with the job.
 		*/
 		while ((step_row = mysql_fetch_row(step_result))) {
+			slurmdb_step_rec_t *step = NULL;
 			/* check the bitmap to see if this is one of the steps
 			   we are looking for */
 			if (!good_nodes_from_inx(local_cluster_list,
@@ -1165,9 +1164,6 @@ static int _cluster_get_jobs(mysql_conn_t *mysql_conn,
 					xstrdup(step_row[STEP_REQ_TRES]);
 		}
 		mysql_free_result(step_result);
-	skip_steps:
-		/* need to reset here to make the above test valid */
-		step = NULL;
 	}
 	mysql_free_result(result);
 

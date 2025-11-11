@@ -180,8 +180,8 @@ void batch_bind(batch_job_launch_msg_t *req)
 			req->cpu_bind_type |= CPU_BIND_VERBOSE;
 		xfree(req->cpu_bind);
 		req->cpu_bind = (char *)bit_fmt_hexmask(hw_map);
-		info("job %u CPU input mask for node: %s",
-		     req->job_id, req->cpu_bind);
+		info("%pI CPU input mask for node: %s",
+		     &req->step_id, req->cpu_bind);
 		/* translate abstract masks to actual hardware layout */
 		_lllp_map_abstract_masks(1, &hw_map);
 #ifdef HAVE_NUMA
@@ -191,11 +191,10 @@ void batch_bind(batch_job_launch_msg_t *req)
 #endif
 		xfree(req->cpu_bind);
 		req->cpu_bind = (char *)bit_fmt_hexmask(hw_map);
-		info("job %u CPU final HW mask for node: %s",
-		     req->job_id, req->cpu_bind);
+		info("%pI CPU final HW mask for node: %s",
+		     &req->step_id, req->cpu_bind);
 	} else {
-		error("job %u allocated no CPUs",
-		      req->job_id);
+		error("%pI allocated no CPUs", &req->step_id);
 	}
 	FREE_NULL_BITMAP(hw_map);
 }
@@ -379,7 +378,8 @@ extern int lllp_distribution(launch_tasks_request_msg_t *req, uint32_t node_id,
 	if (only_one_thread_per_core)
 		req->cpu_bind_type |= CPU_BIND_ONE_THREAD_PER_CORE;
 
-	if (req->cpu_bind_type & bind_mode) {
+	if ((req->cpu_bind_type & bind_mode) &&
+	    (req->step_id.step_id != SLURM_INTERACTIVE_STEP)) {
 		/* Explicit step binding specified by user */
 		char *avail_mask = _alloc_mask(req,
 					       &whole_nodes,  &whole_sockets,
@@ -518,7 +518,8 @@ extern int lllp_distribution(launch_tasks_request_msg_t *req, uint32_t node_id,
 	case SLURM_DIST_BLOCK:
 	case SLURM_DIST_CYCLIC:
 	case SLURM_DIST_UNKNOWN:
-		if (slurm_conf.select_type_param & CR_CORE_DEFAULT_DIST_BLOCK) {
+		if (slurm_conf.select_type_param &
+		    SELECT_CORE_DEFAULT_DIST_BLOCK) {
 			debug2("JobId=%u will use lllp_block because of SelectTypeParameters",
 			       req->step_id.job_id);
 			rc = _task_layout_lllp_block(req, node_id, &masks);

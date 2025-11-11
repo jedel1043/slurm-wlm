@@ -50,6 +50,7 @@
 #include "src/interfaces/cred.h"
 
 #define MAX_CPU_CNT 1024
+#define STEPD_OOM_ADJ -999
 
 extern int devnull;
 extern bool get_reg_resp;
@@ -57,12 +58,11 @@ extern bool refresh_cached_features;
 extern pthread_mutex_t cached_features_mutex;
 
 typedef struct {
+	slurm_step_id_t step_id;
 	uint32_t derived_ec;
 	uint32_t exit_code;
 	char **gres_job_env;
 	uint32_t het_job_id;
-	uint32_t jobid;
-	uint32_t step_id;
 	char *node_aliases;
 	char *node_list;
 	char *partition;
@@ -122,6 +122,7 @@ typedef struct slurmd_config {
 	char         *instance_id;	/* cloud instance id		   */
 	char         *instance_type;	/* cloud instance type		   */
 	char         *logfile;		/* slurmd logfile, if any          */
+	char 	     *parameters;	/* additions to SlurmdParameters */
 	char         *pidfile;		/* slurmd pidfile, if any          */
 	char         *tmp_fs;		/* TmpFS                           */
 	uint32_t     syslog_debug;	/* send output to both logfile and
@@ -183,5 +184,8 @@ extern void update_stepd_logging(bool reconfig);
  * This must happen after all configuration is available, including topology
  */
 extern void build_conf_buf(void);
+
+/* True if listener is quiesced */
+extern bool listener_quiesced(void);
 
 #endif /* !_SLURMD_H */

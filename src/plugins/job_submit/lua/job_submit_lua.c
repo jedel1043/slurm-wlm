@@ -653,6 +653,11 @@ static int _get_job_req_field(const job_desc_msg_t *job_desc, const char *name)
 	} else if (!xstrcmp(name, "network")) {
 		lua_pushstring(L, job_desc->network);
 	} else if (!xstrcmp(name, "nice")) {
+		/*
+		 * nice will be NO_VAL when unset or offset by NICE_OFFSET.
+		 * Decrement nice by NICE_OFFSET in job_submit.lua if the value
+		 * needs to be human readable.
+		 */
 		lua_pushnumber(L, job_desc->nice);
 	} else if (!xstrcmp(name, "ntasks_per_board")) {
 		lua_pushnumber(L, job_desc->ntasks_per_board);
@@ -961,6 +966,10 @@ static int _set_job_req_field(lua_State *L)
 		if (strlen(value_str))
 			job_desc->name = xstrdup(value_str);
 	} else if (!xstrcmp(name, "nice")) {
+		/*
+		 * nice should be NO_VAL when unset or incremented by
+		 * NICE_OFFSET by the job_submit.lua script.
+		 */
 		job_desc->nice = luaL_checknumber(L, 3);
 	} else if (!xstrcmp(name, "ntasks_per_gpu")) {
 		job_desc->ntasks_per_tres = luaL_checknumber(L, 3);
@@ -1338,21 +1347,7 @@ static const struct luaL_Reg slurm_functions [] = {
 
 static void _register_local_output_functions(lua_State *L)
 {
-	char *unpack_str;
-	char tmp_string[100];
-
-#if LUA_VERSION_NUM == 501
-	unpack_str = "unpack";
-#else
-	unpack_str = "table.unpack";
-#endif
-
 	slurm_lua_table_register(L, NULL, slurm_functions);
-	snprintf(tmp_string, sizeof(tmp_string),
-		 "slurm.user_msg (string.format(%s({...})))",
-		 unpack_str);
-	luaL_loadstring(L, tmp_string);
-	lua_setfield(L, -2, "log_user");
 
 	/* Must be always done after we register the slurm_functions */
 	lua_setglobal(L, "slurm");
@@ -1389,7 +1384,7 @@ static void _loadscript_extra(lua_State *st)
  *   let alone called from multiple threads. Therefore, locking
  *   is unnecessary here.
  */
-int init(void)
+extern int init(void)
 {
 	int rc = SLURM_SUCCESS;
 
@@ -1403,7 +1398,7 @@ int init(void)
 				    _loadscript_extra, NULL);
 }
 
-int fini(void)
+extern void fini(void)
 {
 	if (L) {
 		debug3("%s: Unloading Lua script", __func__);
@@ -1414,8 +1409,6 @@ int fini(void)
 	xfree(lua_script_path);
 
 	slurm_lua_fini();
-
-	return SLURM_SUCCESS;
 }
 
 

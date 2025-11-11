@@ -85,6 +85,7 @@ typedef struct {
 	int alloc;
 	gres_device_id_t dev_desc;
 	int dev_num; /* Number at the end of the device filename */
+	uint32_t flags; /* See GRES_DEV_* */
 	char *path;
 	char *unique_id; /* Used for GPU binding with MIGs */
 } gres_device_t;
@@ -149,9 +150,13 @@ typedef struct {
 #define GRES_CONF_GLOBAL_INDEX SLURM_BIT(14) /* devices use global index */
 #define GRES_CONF_AUTODETECT SLURM_BIT(15) /* Conf was made with Autodetect */
 #define GRES_CONF_UPDATE_CONFIG SLURM_BIT(16) /* Flag to update gres config */
+#define GRES_CONF_MIG SLURM_BIT(17) /* GRES configuration is for NVIDIA MIG */
 
 #define GRES_CONF_ENV_SET    0x000008E0   /* Easy check if any of
 					   * GRES_CONF_ENV_* are set. */
+
+/* GRES_DEV_* flags for gres_device_t */
+#define GRES_DEV_MIG SLURM_BIT(0) /* GRES device is an NVIDIA MIG */
 
 /* GRES AutoDetect options */
 #define GRES_AUTODETECT_UNSET     0x00000000 /* Not set */
@@ -325,7 +330,8 @@ typedef struct gres_job_state {
 					   gres was allocated for which bit */
 
 	/*
-	 * Only initialized for gpus. One entry per node on the cluster.
+	 * Only initialized for gpus and gpu alt gres.
+	 * One entry per node on the cluster.
 	 * Used by select/cons_tres to keep track of which restricted cores each
 	 * gpu type has access to.
 	 */
@@ -614,26 +620,24 @@ extern int gres_node_config_unpack(buf_t *buffer, char *node_name);
 /*
  * Validate a node's configuration and put a gres record onto a list
  * Called immediately after gres_node_config_unpack().
- * IN node_name - name of the node for which the gres information applies
- * IN orig_config - Gres information supplied from merged slurm.conf/gres.conf
- * IN/OUT new_config - Updated gres info from slurm.conf
- * IN/OUT gres_list - List of Gres records for this node to track usage
+ * IN node_ptr - With the relevant attributes for this function being:
+ *	->name - name of the node for which the gres information applies
+ *	->config_ptr->gres - Gres information supplied from merged
+ *			     slurm.conf/gres.conf
+ *	->gres - Updated gres info from slurm.conf
+ *	->gres_list - List of Gres records for this node to track usage
  * IN threads_per_core - Count of CPUs (threads) per core on this node
  * IN cores_per_sock - Count of cores per socket on this node
  * IN sock_cnt - Count of sockets on this node
  * IN config_overrides - true: Don't validate hardware, use slurm.conf
  *                             configuration
- *		         false: Validate hardware config, but use slurm.conf
+ *			 false: Validate hardware config, but use slurm.conf
  *                              config
  * OUT reason_down - set to an explanation of failure, if any, don't set if NULL
  */
-extern int gres_node_config_validate(char *node_name,
-				     char *orig_config,
-				     char **new_config,
-				     list_t **gres_list,
-				     int threads_per_core,
-				     int cores_per_sock, int sock_cnt,
-				     bool config_overrides,
+extern int gres_node_config_validate(node_record_t *node_ptr,
+				     int threads_per_core, int cores_per_sock,
+				     int sock_cnt, bool config_overrides,
 				     char **reason_down);
 
 /*
@@ -983,11 +987,10 @@ extern uint64_t gres_step_count(list_t *step_gres_list, char *gres_name);
  * Configure the GRES hardware allocated to the current step while privileged
  *
  * IN step_gres_list - Step's GRES specification
- * IN node_id        - relative position of this node in step
  * IN settings       - string containing configuration settings for the hardware
  */
 extern void gres_g_step_hardware_init(list_t *step_gres_list,
-				      uint32_t node_id, char *settings);
+				      char *settings);
 
 /*
  * Optionally undo GRES hardware configuration while privileged
@@ -1082,6 +1085,8 @@ extern void add_gres_to_list(list_t *gres_list,
 			     gres_slurmd_conf_t *gres_slurmd_conf_in);
 
 extern int gres_find_id(void *x, void *key);
+
+extern int gres_find_gpu_or_alt(void *x, void *key);
 
 extern int gres_find_flags(void *x, void *key);
 
@@ -1214,4 +1219,11 @@ extern uint32_t gres_get_gpu_plugin_id(void);
  */
 extern bool gres_valid_name(char *name);
 
+/*
+ * Parse a '+' delimited list of gres_slurmd_conf_t's in comman-separated
+ * key=value format.
+ *
+ * Clears and adds to gres_conf_list.
+ */
+extern void gres_add_dynamic_gres(char *gres_str, char *node_name);
 #endif
