@@ -1,3 +1,13 @@
+slurm-wlm (25.11.0-1ppa1) noble; urgency=medium
+
+  [ José Julián Espina ]
+  * Rediff patches
+  * Update slurm-client manpages
+  * Update d/copyright
+  * Bump libslurm to version 44
+
+ -- José Julián Espina Del Ángel <julian.espina@canonical.com>  Tue, 11 Nov 2025 17:18:30 -0600
+
 slurm-wlm (25.05.3-1ppa2) noble; urgency=medium
 
   [ José Julián Espina ]
